@@ -1,0 +1,56 @@
+name: Flutter iOS Build
+
+# این بخش مشخص می‌کند که با هر بار Push کردن کد روی شاخه اصلی (main)، بیلد شروع شود
+on:
+  push:
+    branches: [ "master" ] # اگر نام شاخه اصلی شما master است، آن را به master تغییر دهید
+  workflow_dispatch: # این گزینه به شما اجازه می‌دهد بیلد را به صورت دستی هم اجرا کنید
+
+jobs:
+  build:
+    # استفاده از سرورهای مک گیت‌هاب که به صورت رایگان در اختیار شماست
+    runs-on: macos-latest
+
+    steps:
+      # ۱. دانلود کدهای پروژه شما روی سرور
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ۲. نصب محیط جاوا (برای پیش‌نیازهای عمومی)
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # ۳. نصب و تنظیم فلاتر روی سرور مک
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x' # یا نسخه دقیق فلاتر خودتان مثل 3.22.0
+          channel: 'stable'
+          cache: true
+
+      # ۴. دریافت پکیج‌های پروژه
+      - name: Install dependencies
+        run: flutter pub get
+
+      # ۵. ساخت نسخه iOS بدون نیاز به گواهی امضا (Code Signing)
+      # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign
+
+      # ۶. تبدیل خروجی به فایل .ipa قابل نصب
+      # از آنجا که بدون ساین بیلد گرفتیم، پوشه خروجی را برای راحتی کار زیپ یا آماده می‌کنیم
+      - name: Prepare Payload for IPA
+        run: |
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r GitHub_Build.ipa Payload
+
+      # ۷. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-ipa
+          path: GitHub_Build.ipa

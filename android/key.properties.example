@@ -1,0 +1,12 @@
+# برای ساخت نسخهٔ release واقعی برای Play Store:
+# ۱) یک کیستور بسازید (یک‌بار، و آن را جای امنی نگه دارید — اگر گم شود
+#    دیگر نمی‌توانید همان اپ را آپدیت کنید):
+#      keytool -genkey -v -keystore ~/afghanistan-girls-school.jks \
+#        -keyalg RSA -keysize 2048 -validity 10000 -alias afghanistan_girls_school
+#
+# ۲) این فایل را کپی کنید به android/key.properties (که در گیت نادیده گرفته
+#    می‌شود) و مقادیر زیر را با مقادیر واقعی خودتان پر کنید:
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=afghanistan_girls_school
+storeFile=/absolute/path/to/afghanistan-girls-school.jks
