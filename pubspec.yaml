@@ -34,6 +34,9 @@ dependencies:
   video_player: ^2.9.2
   chewie: ^1.8.5
   apivideo_live_stream: ^1.2.0
+  # ویدیوکنفرانس واقعی چندنفره برای اتاق فال‌بک سمینار (وقتی Cloudflare Stream
+  # و لینک جلسهٔ خارجی هیچ‌کدام تنظیم نشده باشند) — فقط اندروید/iOS.
+  jitsi_meet_flutter_sdk: ^12.1.3
 
 dev_dependencies:
   flutter_test:

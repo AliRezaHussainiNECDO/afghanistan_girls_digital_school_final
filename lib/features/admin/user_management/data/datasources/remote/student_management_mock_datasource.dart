@@ -11,6 +11,8 @@
 ///
 /// در فاز ۲ این کلاس با `StudentManagementRemoteDataSourceImpl` (Dio →
 /// `GET /admin/users?role=student`) جایگزین می‌شود؛ Interface ثابت می‌ماند.
+
+library;
 import '../../../../../../core/student/guardian_link_store.dart';
 import '../../../../../../core/student/student_directory.dart';
 import '../../../../../../shared_models/subject.dart';

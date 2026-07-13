@@ -41,3 +41,12 @@ final myInstructorSeminarsProvider = FutureProvider.autoDispose<List<Seminar>>((
   final result = await ref.read(getMySeminarsUseCaseProvider).call(user?.id ?? '');
   return result.fold((f) => throw f, (v) => v);
 });
+
+/// سمینارهای هر استاد دلخواه (نه لزوماً کاربر واردشده) — برای نمای «مدیریت
+/// استادان» پنل مدیر، تا آمار فعالیت هر استاد از داده‌ی واقعی سرور بیاید.
+final seminarsByInstructorProvider =
+    FutureProvider.autoDispose.family<List<Seminar>, String>((ref, instructorId) async {
+  if (instructorId.isEmpty) return const [];
+  final result = await ref.read(getMySeminarsUseCaseProvider).call(instructorId);
+  return result.fold((f) => throw f, (v) => v);
+});

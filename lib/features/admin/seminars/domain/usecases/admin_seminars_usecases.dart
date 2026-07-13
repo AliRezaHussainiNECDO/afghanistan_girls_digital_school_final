@@ -15,6 +15,7 @@ class GetAdminSeminarsUseCase implements UseCase<List<Seminar>, NoParams> {
 class CreateAdminSeminarParams extends Equatable {
   final String title;
   final String description;
+  final String? instructorId;
   final String instructorName;
   final DateTime scheduledStart;
   final int durationMinutes;
@@ -24,6 +25,7 @@ class CreateAdminSeminarParams extends Equatable {
   const CreateAdminSeminarParams({
     required this.title,
     this.description = '',
+    this.instructorId,
     required this.instructorName,
     required this.scheduledStart,
     required this.durationMinutes,
@@ -32,8 +34,17 @@ class CreateAdminSeminarParams extends Equatable {
     this.meetingLink = '',
   });
   @override
-  List<Object?> get props =>
-      [title, description, instructorName, scheduledStart, durationMinutes, capacity, audience, meetingLink];
+  List<Object?> get props => [
+        title,
+        description,
+        instructorId,
+        instructorName,
+        scheduledStart,
+        durationMinutes,
+        capacity,
+        audience,
+        meetingLink,
+      ];
 }
 
 class CreateAdminSeminarUseCase implements UseCase<Unit, CreateAdminSeminarParams> {
@@ -43,6 +54,7 @@ class CreateAdminSeminarUseCase implements UseCase<Unit, CreateAdminSeminarParam
   Future<Either<Failure, Unit>> call(CreateAdminSeminarParams params) => repository.create(
         title: params.title,
         description: params.description,
+        instructorId: params.instructorId,
         instructorName: params.instructorName,
         scheduledStart: params.scheduledStart,
         durationMinutes: params.durationMinutes,
@@ -56,6 +68,7 @@ class UpdateAdminSeminarParams extends Equatable {
   final String id;
   final String title;
   final String description;
+  final String? instructorId;
   final String instructorName;
   final DateTime scheduledStart;
   final int durationMinutes;
@@ -67,6 +80,7 @@ class UpdateAdminSeminarParams extends Equatable {
     required this.id,
     required this.title,
     this.description = '',
+    this.instructorId,
     required this.instructorName,
     required this.scheduledStart,
     required this.durationMinutes,
@@ -80,6 +94,7 @@ class UpdateAdminSeminarParams extends Equatable {
         id,
         title,
         description,
+        instructorId,
         instructorName,
         scheduledStart,
         durationMinutes,
@@ -98,6 +113,7 @@ class UpdateAdminSeminarUseCase implements UseCase<Unit, UpdateAdminSeminarParam
         id: params.id,
         title: params.title,
         description: params.description,
+        instructorId: params.instructorId,
         instructorName: params.instructorName,
         scheduledStart: params.scheduledStart,
         durationMinutes: params.durationMinutes,

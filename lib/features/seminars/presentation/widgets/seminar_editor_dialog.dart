@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/instructor/instructor_directory.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/seminar.dart';
 
@@ -7,6 +8,7 @@ import '../../../../shared_models/seminar.dart';
 class SeminarEditorResult {
   final String title;
   final String description;
+  final String? instructorId;
   final String? instructorName;
   final DateTime scheduledStart;
   final int durationMinutes;
@@ -18,6 +20,7 @@ class SeminarEditorResult {
   const SeminarEditorResult({
     required this.title,
     required this.description,
+    this.instructorId,
     this.instructorName,
     required this.scheduledStart,
     required this.durationMinutes,
@@ -40,7 +43,13 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
   final isEdit = existing != null;
   final titleController = TextEditingController(text: existing?.title ?? '');
   final descriptionController = TextEditingController(text: existing?.description ?? '');
-  final instructorController = TextEditingController(text: existing?.instructorName ?? '');
+  // انتخاب استاد واقعی (نه نام آزاد) — از منبع واحد حقیقت حساب‌های استاد،
+  // تا سمینار به‌درستی به یک حساب واقعی نسبت داده شود (بخش ۱۵.۲ سند).
+  final instructorOptions = InstructorDirectory.instance.all;
+  String? selectedInstructorId = existing != null &&
+          instructorOptions.any((i) => i.id == existing.instructorId)
+      ? existing.instructorId
+      : null;
   final durationController =
       TextEditingController(text: (existing?.durationMinutes ?? 45).toString());
   final capacityController = TextEditingController(text: existing?.capacity?.toString() ?? '');
@@ -110,16 +119,40 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
                     ),
                     if (showInstructorField) ...[
                       const SizedBox(height: 12),
-                      TextFormField(
-                        controller: instructorController,
-                        decoration: InputDecoration(
-                          labelText: dialogContext.tr('admin.instructorName'),
-                          prefixIcon: const Icon(Icons.person_rounded),
+                      if (instructorOptions.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: .12),
+                            borderRadius: BorderRadius.circular(AppRadii.md),
+                          ),
+                          child: const Text(
+                            'هنوز هیچ حساب استادی ثبت نشده — ابتدا از «مدیریت استادان» یک استاد بسازید.',
+                            style: TextStyle(fontSize: 12.5),
+                          ),
+                        )
+                      else
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedInstructorId,
+                          decoration: InputDecoration(
+                            labelText: dialogContext.tr('admin.instructorName'),
+                            prefixIcon: const Icon(Icons.person_rounded),
+                          ),
+                          items: instructorOptions
+                              .map((i) => DropdownMenuItem(
+                                    value: i.id,
+                                    child: Text(
+                                      i.specialty.isEmpty
+                                          ? i.fullName
+                                          : '${i.fullName} — ${i.specialty}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => selectedInstructorId = v),
+                          validator: (v) =>
+                              (v == null || v.isEmpty) ? dialogContext.tr('common.required') : null,
                         ),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? dialogContext.tr('common.required')
-                            : null,
-                      ),
                     ],
                     const SizedBox(height: 12),
                     // لینک جلسهٔ زندهٔ خارجی (Zoom/Google Meet/Jitsi).
@@ -141,7 +174,7 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
                     const SizedBox(height: 12),
                     // مخاطب: شاگردان یا والدین
                     DropdownButtonFormField<SeminarAudience>(
-                      value: audience,
+                      initialValue: audience,
                       decoration: InputDecoration(
                         labelText: dialogContext.tr('instructor.audienceLabel'),
                         prefixIcon: const Icon(Icons.groups_rounded),
@@ -195,7 +228,7 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
                     if (showStatusField && isEdit) ...[
                       const SizedBox(height: 12),
                       DropdownButtonFormField<SeminarStatus>(
-                        value: status,
+                        initialValue: status,
                         decoration: InputDecoration(
                           labelText: dialogContext.tr('common.status'),
                           prefixIcon: const Icon(Icons.flag_rounded),
@@ -258,13 +291,22 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
               FilledButton(
                 onPressed: () {
                   if (!(formKey.currentState?.validate() ?? false)) return;
+                  InstructorProfile? pickedInstructor;
+                  if (showInstructorField && selectedInstructorId != null) {
+                    for (final i in instructorOptions) {
+                      if (i.id == selectedInstructorId) {
+                        pickedInstructor = i;
+                        break;
+                      }
+                    }
+                  }
                   Navigator.of(dialogContext).pop(
                     SeminarEditorResult(
                       title: titleController.text.trim(),
                       description: descriptionController.text.trim(),
-                      instructorName: showInstructorField
-                          ? instructorController.text.trim()
-                          : null,
+                      instructorId: showInstructorField ? selectedInstructorId : null,
+                      instructorName:
+                          showInstructorField ? pickedInstructor?.fullName : null,
                       scheduledStart: selectedDate,
                       durationMinutes: int.parse(durationController.text),
                       capacity: int.tryParse(capacityController.text),

@@ -41,7 +41,7 @@ class CelebrationOverlayState extends State<CelebrationOverlay> {
     final internalRadius = halfWidth / 2.2;
     final path = Path();
     const degreesPerStep = (pi * 2) / points;
-    final halfStep = degreesPerStep / 2;
+    const halfStep = degreesPerStep / 2;
     path.moveTo(size.width, halfWidth);
     for (double step = 0; step < pi * 2; step += degreesPerStep) {
       path.lineTo(halfWidth + externalRadius * cos(step), halfWidth + externalRadius * sin(step));

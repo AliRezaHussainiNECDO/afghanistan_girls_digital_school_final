@@ -14,6 +14,7 @@ class AdminSeminarsMockDataSource implements AdminSeminarsDataSource {
   Future<void> create({
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -24,7 +25,8 @@ class AdminSeminarsMockDataSource implements AdminSeminarsDataSource {
       _store.create(
         title: title,
         description: description,
-        instructorId: 'u-admin-demo',
+        instructorId:
+            (instructorId != null && instructorId.isNotEmpty) ? instructorId : 'u-admin-demo',
         instructorName: instructorName,
         scheduledStart: scheduledStart,
         durationMinutes: durationMinutes,
@@ -38,6 +40,7 @@ class AdminSeminarsMockDataSource implements AdminSeminarsDataSource {
     required String id,
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -50,6 +53,7 @@ class AdminSeminarsMockDataSource implements AdminSeminarsDataSource {
         id: id,
         title: title,
         description: description,
+        instructorId: instructorId,
         instructorName: instructorName,
         scheduledStart: scheduledStart,
         durationMinutes: durationMinutes,

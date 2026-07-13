@@ -200,6 +200,8 @@ const Map<String, String> psStrings = {
   'room.startNow': 'سیمینار پیل کول',
   'room.waitingHost': 'د استاد لخوا د غونډې د پیل په تمه...',
   'room.notAllowed': 'دې غونډې ته د ننوتلو لپاره باید لومړی نوم لیکنه وکړئ.',
+  'room.joinNow': 'ژوندۍ غونډې ته یوځای کېدل',
+  'room.connecting': 'اړیکه نیول کیږي...',
 
   // chat
   'chat.conversations': 'خبرې اترې',

@@ -1,26 +1,35 @@
 /// صفحهٔ جزئیات/فعالیت‌های یک استاد — از دید مدیر (بخش ۱۵.۲ سند).
 ///
 /// «هر چه داشبورد استاد می‌بیند، مدیر همان را می‌بیند + کنترل کامل»:
-/// فعالیت‌ها از همان منبع واحد حقیقت داشبورد استاد (SeminarStore) خوانده
-/// می‌شوند و مدیر روی همهٔ داده‌ها کنترل کامل دارد — مسدود/فعال‌سازی حساب،
-/// تغییر وضعیت هر سمینار (State Machine بخش ۱۲.۲) و حذف سمینار.
+/// فعالیت‌ها از همان منبع واحد حقیقت داشبورد استاد (بک‌اند واقعی —
+/// `GET /seminars?instructor=`) خوانده می‌شوند و مدیر روی همهٔ داده‌ها کنترل
+/// کامل دارد — مسدود/فعال‌سازی حساب (`PATCH /admin/users/:id/toggle-suspend`)،
+/// تغییر وضعیت هر سمینار (State Machine بخش ۱۲.۲، `PATCH /seminars/:id/status`)
+/// و حذف سمینار — همه از طریق بک‌اند واقعی وقتی `kUseLiveBackend` فعال است.
+
+library;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/instructor/instructor_directory.dart';
 import '../../../../../core/instructor/instructor_invite_store.dart';
-import '../../../../seminars/data/datasources/seminar_store.dart';
+import '../../../../../core/network/network_providers.dart';
 import '../../../../../shared_models/seminar.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
+import '../../../../instructor/presentation/providers/instructor_providers.dart';
+import '../../../seminars/domain/usecases/admin_seminars_usecases.dart';
+import '../../../seminars/presentation/providers/admin_seminars_providers.dart';
 import '../widgets/common_widgets.dart';
 
-class InstructorDetailScreen extends StatefulWidget {
+class InstructorDetailScreen extends ConsumerStatefulWidget {
   final String instructorId;
   const InstructorDetailScreen({super.key, required this.instructorId});
 
   @override
-  State<InstructorDetailScreen> createState() => _InstructorDetailScreenState();
+  ConsumerState<InstructorDetailScreen> createState() => _InstructorDetailScreenState();
 }
 
-class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
+class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen> {
   static String _two(int n) => n.toString().padLeft(2, '0');
 
   static String _fmt(DateTime d) =>
@@ -36,20 +45,37 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
       };
 
   @override
+  void initState() {
+    super.initState();
+    // در حالت Backend واقعی، فهرست واقعی استادان را از سرور می‌گیریم —
+    // به‌جای دادهٔ نمایشی محلی (بخش ۱۵.۲ سند)، همان الگوی صفحهٔ لیست استادان.
+    if (kUseLiveBackend && !InstructorDirectory.instance.loadedFromBackend) {
+      Future.microtask(
+          () => InstructorDirectory.instance.loadFromBackend(ref.read(apiClientProvider)));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: ListenableBuilder(
         listenable: InstructorDirectory.instance,
         builder: (context, _) {
+          if (kUseLiveBackend && !InstructorDirectory.instance.loadedFromBackend) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
           final instructor =
               InstructorDirectory.instance.byId(widget.instructorId);
           if (instructor == null) {
             return const Scaffold(
                 body: Center(child: Text('استاد یافت نشد')));
           }
-          final seminars =
-              SeminarStore.instance.byInstructorSync(instructor.id);
+          // آمار فعالیت از همان منبع واحد حقیقت سمینارها — در حالت Backend
+          // واقعی مستقیماً از سرور، تا «هر چه داشبورد استاد می‌بیند، مدیر
+          // همان را ببیند» واقعاً درست باشد.
+          final seminarsAsync = ref.watch(seminarsByInstructorProvider(instructor.id));
+          final seminars = seminarsAsync.valueOrNull ?? const <Seminar>[];
           final liveCount = seminars.where((s) => s.isLiveNow).length;
           final endedCount = seminars.where((s) => s.hasEnded).length;
           final upcoming = seminars.length - liveCount - endedCount;
@@ -97,7 +123,7 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
                             tag: 'instructor-avatar-${instructor.id}',
                             child: CircleAvatar(
                               radius: 26,
-                              backgroundColor: Colors.white.withOpacity(.2),
+                              backgroundColor: Colors.white.withValues(alpha: .2),
                               child: Text(
                                 instructor.fullName.characters.first,
                                 style: const TextStyle(
@@ -112,7 +138,7 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
                             child: Text(
                               instructor.specialty,
                               style: TextStyle(
-                                  color: Colors.white.withOpacity(.9),
+                                  color: Colors.white.withValues(alpha: .9),
                                   fontSize: 12.5),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -167,14 +193,24 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
                         ),
                         Switch(
                           value: !instructor.suspended,
-                          activeColor: AppPalette.green,
-                          onChanged: (active) {
-                            InstructorDirectory.instance
-                                .setSuspended(instructor.id, !active);
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(active
-                                    ? 'حساب استاد فعال شد'
-                                    : 'حساب استاد مسدود شد')));
+                          activeThumbColor: AppPalette.green,
+                          onChanged: (active) async {
+                            if (kUseLiveBackend) {
+                              final ok = await InstructorDirectory.instance
+                                  .toggleSuspendRemote(ref.read(apiClientProvider), instructor.id);
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(ok
+                                      ? (active ? 'حساب استاد فعال شد' : 'حساب استاد مسدود شد')
+                                      : 'خطا در ارتباط با سرور')));
+                            } else {
+                              InstructorDirectory.instance
+                                  .setSuspended(instructor.id, !active);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(active
+                                      ? 'حساب استاد فعال شد'
+                                      : 'حساب استاد مسدود شد')));
+                            }
                           },
                         ),
                       ]),
@@ -206,7 +242,12 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
                         style: TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 8),
-                    if (seminars.isEmpty)
+                    if (seminarsAsync.isLoading && seminars.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (seminars.isEmpty)
                       const _Card(children: [
                         Padding(
                           padding: EdgeInsets.all(8),
@@ -220,7 +261,7 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
                           seminar: s,
                           statusView: _statusView(s),
                           formattedDate: _fmt(s.scheduledStart),
-                          onChanged: () => setState(() {}),
+                          instructorId: instructor.id,
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -236,22 +277,23 @@ class _InstructorDetailScreenState extends State<InstructorDetailScreen> {
 }
 
 /// کارت یک سمینار در نمای مدیر — با کنترل کامل: تغییر وضعیت (State Machine
-/// بخش ۱۲.۲) و حذف.
-class _SeminarAdminCard extends StatelessWidget {
+/// بخش ۱۲.۲) و حذف — هر دو از طریق بک‌اند واقعی (همان Use Case های بخش
+/// «مدیریت سمینارها» پنل مدیر) وقتی `kUseLiveBackend` فعال است.
+class _SeminarAdminCard extends ConsumerWidget {
   final Seminar seminar;
   final (String, Color) statusView;
   final String formattedDate;
-  final VoidCallback onChanged;
+  final String instructorId;
 
   const _SeminarAdminCard({
     required this.seminar,
     required this.statusView,
     required this.formattedDate,
-    required this.onChanged,
+    required this.instructorId,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final (statusLabel, statusColor) = statusView;
     return Material(
       color: Colors.white,
@@ -269,7 +311,7 @@ class _SeminarAdminCard extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: statusColor.withOpacity(.12),
+                color: statusColor.withValues(alpha: .12),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(statusLabel,
@@ -283,9 +325,9 @@ class _SeminarAdminCard extends StatelessWidget {
               onSelected: (action) async {
                 switch (action) {
                   case 'status':
-                    await _changeStatus(context);
+                    await _changeStatus(context, ref);
                   case 'delete':
-                    await _confirmDelete(context);
+                    await _confirmDelete(context, ref);
                 }
               },
               itemBuilder: (_) => const [
@@ -332,7 +374,7 @@ class _SeminarAdminCard extends StatelessWidget {
     );
   }
 
-  Future<void> _changeStatus(BuildContext context) async {
+  Future<void> _changeStatus(BuildContext context, WidgetRef ref) async {
     final selected = await showModalBottomSheet<SeminarStatus>(
       context: context,
       showDragHandle: true,
@@ -364,15 +406,22 @@ class _SeminarAdminCard extends StatelessWidget {
       ),
     );
     if (selected == null || selected == seminar.status) return;
-    await SeminarStore.instance.setStatus(seminar.id, selected);
-    onChanged();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('وضعیت سمینار به‌روز شد')));
-    }
+    final result = await ref
+        .read(setAdminSeminarStatusUseCaseProvider)
+        .call(SetAdminSeminarStatusParams(id: seminar.id, status: selected));
+    if (!context.mounted) return;
+    result.fold(
+      (f) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(f.message))),
+      (_) {
+        ref.invalidate(seminarsByInstructorProvider(instructorId));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('وضعیت سمینار به‌روز شد')));
+      },
+    );
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => Directionality(
@@ -395,12 +444,17 @@ class _SeminarAdminCard extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await SeminarStore.instance.delete(seminar.id);
-    onChanged();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('سمینار حذف شد')));
-    }
+    final result = await ref.read(deleteAdminSeminarUseCaseProvider).call(seminar.id);
+    if (!context.mounted) return;
+    result.fold(
+      (f) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(f.message))),
+      (_) {
+        ref.invalidate(seminarsByInstructorProvider(instructorId));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('سمینار حذف شد')));
+      },
+    );
   }
 }
 

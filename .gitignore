@@ -43,3 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android signing (never commit real keystores/credentials)
+/android/key.properties
+*.jks
+*.keystore
+
+# Backend (Cloudflare Worker) — secrets and local dev artifacts
+backend/node_modules/
+backend/.dev.vars
+backend/.wrangler/
+backend/*.tmp

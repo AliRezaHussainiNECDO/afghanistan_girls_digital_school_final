@@ -8,39 +8,38 @@ import '../../domain/engine/book_section_utils.dart';
 import '../../domain/entities/learning_progress.dart';
 
 /// منبع دادهٔ «پیشرفت یادگیری» — کنار وضعیت گفتگوی معلم هوشمند
-/// (ai_state_v1_*) ذخیره می‌شود تا درسِ خوانده‌شده حفظ و قابل ادامه باشد.
+/// (ai_state_v2_*) ذخیره می‌شود تا درسِ خوانده‌شده حفظ و قابل ادامه باشد.
+///
+/// **صنف شاگرد اینجا هرگز به‌صورت محلی/مستقل ذخیره نمی‌شود** — منبع واحد
+/// حقیقتِ صنف، `activeGradeProvider` (بر اساس حساب واقعی و پیشرفت رسمی
+/// شاگرد) است و از بیرون به این کلاس داده می‌شود. همهٔ کلیدهای ذخیره‌سازی
+/// با شمارهٔ صنف مشخص می‌شوند تا با ارتقای صنف، گفتگو/پیشرفت صنف قبلی با
+/// صنف جدید قاطی نشود و هر صنف پیشرفت مستقل خودش را داشته باشد.
 class LearningProgressDataSource {
   final CurriculumLibraryLocalDataSource library;
   LearningProgressDataSource(this.library);
 
-  static const kGradeKey = 'student_grade_v1';
-  static String masteredKey(String subjectId) => 'ai_mastered_v1_$subjectId';
-  static String lastStudiedKey(String subjectId) =>
-      'ai_last_studied_v1_$subjectId';
-  static String stateKey(String subjectId) => 'ai_state_v1_$subjectId';
-
-  Future<int> getStudentGrade() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(kGradeKey) ?? 7;
-  }
-
-  Future<void> setStudentGrade(int grade) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(kGradeKey, grade);
-  }
+  static String masteredKey(String subjectId, int grade) =>
+      'ai_mastered_v2_g${grade}_$subjectId';
+  static String lastStudiedKey(String subjectId, int grade) =>
+      'ai_last_studied_v2_g${grade}_$subjectId';
+  static String stateKey(String subjectId, int grade) =>
+      'ai_state_v2_g${grade}_$subjectId';
+  static String conversationKey(String subjectId, int grade) =>
+      'ai_conversation_v2_g${grade}_$subjectId';
 
   /// ثبت فعالیت مطالعه (هر تعامل با معلم هوشمند).
-  Future<void> recordActivity(String subjectId) async {
+  Future<void> recordActivity(String subjectId, int grade) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        lastStudiedKey(subjectId), DateTime.now().toIso8601String());
+        lastStudiedKey(subjectId, grade), DateTime.now().toIso8601String());
   }
 
   /// ثبت «یادگرفته‌شدن» یک بخش (پس از پاسخ شاگرد به سوال معلم).
-  Future<void> recordMastered(String subjectId) async {
+  Future<void> recordMastered(String subjectId, int grade) async {
     final prefs = await SharedPreferences.getInstance();
-    final current = prefs.getInt(masteredKey(subjectId)) ?? 0;
-    await prefs.setInt(masteredKey(subjectId), current + 1);
+    final current = prefs.getInt(masteredKey(subjectId, grade)) ?? 0;
+    await prefs.setInt(masteredKey(subjectId, grade), current + 1);
   }
 
   Future<SubjectLearningProgress> getForSubject(
@@ -55,7 +54,7 @@ class LearningProgressDataSource {
         BookSectionUtils.sectionsForBooks(effective).length;
 
     var sectionIndex = 0;
-    final rawState = prefs.getString(stateKey(subjectId));
+    final rawState = prefs.getString(stateKey(subjectId, grade));
     if (rawState != null) {
       try {
         sectionIndex =
@@ -63,8 +62,8 @@ class LearningProgressDataSource {
       } catch (_) {}
     }
 
-    final mastered = prefs.getInt(masteredKey(subjectId)) ?? 0;
-    final lastRaw = prefs.getString(lastStudiedKey(subjectId));
+    final mastered = prefs.getInt(masteredKey(subjectId, grade)) ?? 0;
+    final lastRaw = prefs.getString(lastStudiedKey(subjectId, grade));
 
     final subject = mockSubjects.firstWhere((s) => s.id == subjectId,
         orElse: () => mockSubjects.first);
@@ -81,9 +80,9 @@ class LearningProgressDataSource {
     );
   }
 
-  /// پیشرفت همهٔ مضامین صنف شاگرد — پایهٔ داشبورد و تقسیم اوقات هوشمند.
-  Future<List<SubjectLearningProgress>> getAll() async {
-    final grade = await getStudentGrade();
+  /// پیشرفت همهٔ مضامین **صنف فعال واقعی شاگرد** — پایهٔ داشبورد و تقسیم
+  /// اوقات هوشمند. `grade` باید از `activeGradeProvider` بیاید.
+  Future<List<SubjectLearningProgress>> getAll(int grade) async {
     final result = <SubjectLearningProgress>[];
     for (final s in mockSubjects) {
       result.add(await getForSubject(s.id, grade));

@@ -172,7 +172,7 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<int>(
-                      value: _grade,
+                      initialValue: _grade,
                       decoration: InputDecoration(labelText: context.tr('auth.currentGrade')),
                       items: AppConstants.grades
                           .map((g) => DropdownMenuItem(value: g, child: Text('$g')))
@@ -181,7 +181,7 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: _province,
+                      initialValue: _province,
                       decoration: InputDecoration(labelText: context.tr('common.province')),
                       isExpanded: true,
                       items: AppConstants.provinces

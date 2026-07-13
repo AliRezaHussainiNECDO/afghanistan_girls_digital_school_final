@@ -1,7 +1,21 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// امضای نسخهٔ release: اگر android/key.properties وجود داشته باشد (که در گیت
+// نادیده گرفته می‌شود)، از کلید واقعی شما استفاده می‌شود؛ در غیر این صورت
+// برای این‌که `flutter run --release` هنوز کار کند، از کلید debug استفاده
+// می‌شود. راهنما در android/key.properties.example.
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -19,19 +33,37 @@ android {
         applicationId = "com.example.afghanistan_girls_digital_school"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // پکیج‌های پخش زنده (apivideo_live_stream) و chewie حداقل به API 21 نیاز
-        // دارند. از maxOf استفاده می‌کنیم تا اگر پیش‌فرض فلاتر بالاتر بود پایین نیاید.
-        minSdk = maxOf(21, flutter.minSdkVersion)
+        // jitsi_meet_flutter_sdk (ویدیوکنفرانس واقعی اتاق فال‌بک سمینار) حداقل
+        // به API 24 نیاز دارد؛ apivideo_live_stream/chewie با آن سازگارند.
+        // از maxOf استفاده می‌کنیم تا اگر پیش‌فرض فلاتر بالاتر بود پایین نیاید.
+        minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // اگر android/key.properties موجود باشد از کلید واقعی release استفاده
+            // می‌شود؛ در غیر این صورت (مثلاً روی ماشین توسعه‌دهنده‌ای که هنوز
+            // کیستور نساخته) با کلید debug ساخته می‌شود تا build نشکند — اما
+            // قبل از انتشار در Play Store حتماً باید key.properties را بسازید.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

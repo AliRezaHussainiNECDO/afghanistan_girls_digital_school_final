@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../network/api_client.dart';
 
 /// پروفایل یک استاد سمینار — از دید پنل مدیریت (بخش ۱۵.۲ سند).
 class InstructorProfile {
@@ -70,6 +71,12 @@ class InstructorDirectory extends ChangeNotifier {
 
   final List<InstructorProfile> _instructors = [];
 
+  /// آیا حداقل یک‌بار با موفقیت از سرور واقعی بارگذاری شده؟ در حالت
+  /// Backend واقعی، صفحات مدیر تا این مقدار `true` نشود دادهٔ نمایشی
+  /// (Seed) را به‌جای دادهٔ واقعی نشان نمی‌دهند.
+  bool loadedFromBackend = false;
+  bool loading = false;
+
   /// همهٔ استادان — جدیدترین اول (برای لیست مدیر).
   List<InstructorProfile> get all {
     final list = [..._instructors]..sort((a, b) => b.joinedAt.compareTo(a.joinedAt));
@@ -113,11 +120,61 @@ class InstructorDirectory extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// مسدود/فعال‌سازی حساب استاد توسط مدیر (بخش ۱۵.۲ — کنترل کامل مدیر).
+  /// مسدود/فعال‌سازی حساب استاد توسط مدیر (بخش ۱۵.۲ — کنترل کامل مدیر) —
+  /// فقط محلی (حالت Mock/فاز ۱ بدون سرور).
   void setSuspended(String id, bool suspended) {
     final idx = _instructors.indexWhere((i) => i.id == id);
     if (idx == -1) return;
     _instructors[idx] = _instructors[idx].copyWith(suspended: suspended);
     notifyListeners();
   }
+
+  /// بارگذاری فهرست واقعی استادان از سرور — `GET /admin/users?role=seminar_instructor`
+  /// (بخش ۱۵.۲ سند). لیست نمایشی/Seed را با دادهٔ واقعی جایگزین می‌کند.
+  Future<void> loadFromBackend(ApiClient api) async {
+    loading = true;
+    notifyListeners();
+    try {
+      final data = await api.get('/admin/users', queryParameters: {'role': 'seminar_instructor'});
+      final list = (data is Map ? data['users'] as List? : null) ?? const [];
+      _instructors
+        ..clear()
+        ..addAll(list.map((e) => _fromJson(Map<String, dynamic>.from(e as Map))));
+      loadedFromBackend = true;
+    } catch (_) {
+      // خطای شبکه/سرور — فهرست فعلی (Seed یا آخرین بارگذاری موفق) دست‌نخورده می‌ماند.
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  /// مسدود/فعال‌سازی واقعی روی سرور — `PATCH /admin/users/:id/toggle-suspend`.
+  Future<bool> toggleSuspendRemote(ApiClient api, String id) async {
+    try {
+      final data = await api.patch('/admin/users/$id/toggle-suspend');
+      final status = (data is Map ? data['status'] as String? : null) ?? 'active';
+      final idx = _instructors.indexWhere((i) => i.id == id);
+      if (idx != -1) {
+        _instructors[idx] = _instructors[idx].copyWith(suspended: status != 'active');
+        notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  InstructorProfile _fromJson(Map<String, dynamic> j) => InstructorProfile(
+        id: j['id'] as String,
+        fullName: (j['name'] as String?)?.trim().isNotEmpty == true
+            ? (j['name'] as String).trim()
+            : (j['email'] as String? ?? ''),
+        email: j['email'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+        specialty: j['specialty'] as String? ?? '',
+        bio: j['bio'] as String? ?? '',
+        joinedAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+        suspended: j['suspended'] as bool? ?? false,
+      );
 }

@@ -60,7 +60,7 @@ class BookSectionUtils {
     final queryTokens = _tokenize(query);
     if (queryTokens.isEmpty || sections.isEmpty) return [];
     final scored = sections.map((s) {
-      final sectionTokens = _tokenize(s.content + ' ' + s.heading);
+      final sectionTokens = _tokenize('${s.content} ${s.heading}');
       final overlap = queryTokens.intersection(sectionTokens).length;
       return MapEntry(s, overlap);
     }).where((e) => e.value > 0).toList()

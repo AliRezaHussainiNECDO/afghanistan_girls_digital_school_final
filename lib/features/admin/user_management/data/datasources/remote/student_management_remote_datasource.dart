@@ -1,6 +1,8 @@
 /// DataSource واقعی مدیریت تفصیلی شاگرد — از `ApiClient` مشترک (با
 /// Interceptor های JWT) استفاده می‌کند تا با بقیهٔ اپ هماهنگ باشد.
 /// Endpointها زیر `/api/v1/admin` (بخش ۱۵.۲ سند SPEC).
+
+library;
 import '../../../../../../core/network/api_client.dart';
 import '../../../domain/entities/student_entities.dart';
 import '../../models/student_models.dart';

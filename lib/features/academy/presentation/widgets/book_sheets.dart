@@ -253,7 +253,7 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<T>(
-        value: value,
+        initialValue: value,
         isExpanded: true,
         decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
         items: items.map((e) => DropdownMenuItem<T>(value: e.$1, child: Text(e.$2))).toList(),

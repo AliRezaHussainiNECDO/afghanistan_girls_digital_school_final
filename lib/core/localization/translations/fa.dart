@@ -200,6 +200,8 @@ const Map<String, String> faStrings = {
   'room.startNow': 'شروع سمینار',
   'room.waitingHost': 'در انتظار شروع جلسه توسط استاد...',
   'room.notAllowed': 'برای ورود به این جلسه ابتدا باید ثبت‌نام کرده باشید.',
+  'room.joinNow': 'پیوستن به جلسهٔ زنده',
+  'room.connecting': 'در حال اتصال...',
 
   // chat
   'chat.conversations': 'گفتگوها',

@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ── مجوزهای دستگاه (لازم برای انتشار در Play Store) ── -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -18,6 +19,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
     <application
+        tools:replace="android:label"
         android:label="Afghanistan Girls Digital School"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

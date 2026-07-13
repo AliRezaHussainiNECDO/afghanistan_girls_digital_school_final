@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../curriculum_library/data/datasources/curriculum_library_local_datasource.dart';
 import '../../../curriculum_library/domain/entities/curriculum_book.dart';
 import '../../../../shared_models/subject.dart';
+import 'learning_progress_datasource.dart';
 import '../../domain/engine/ai_engine.dart';
 import '../../domain/engine/book_section_utils.dart';
 import '../../domain/entities/chat_message.dart';
@@ -17,6 +18,12 @@ class AiCommands {
   static const example = '__cmd_example__';
   static const question = '__cmd_question__';
 }
+
+/// شخصیت پیش‌فرض معلم هوشمند — وقتی مدیر هنوز از «مدیریت معلم هوشمند»
+/// شخصیتی برای این مضمون تنظیم نکرده باشد.
+const String kDefaultAiTeacherPersona =
+    'دقیق و قدم‌به‌قدم، با مثال‌های بومی افغانستان و لحنی گرم، صبور و '
+    'تشویق‌کننده برای یک دانش‌آموز دختر — همیشه دلگرمی می‌دهد، هرگز سرزنش نمی‌کند.';
 
 class _ConversationState {
   int sectionIndex;
@@ -37,22 +44,38 @@ class _ConversationState {
 /// مدیر تدریس می‌کند (طبق درخواست صریح کاربر که این بخش «قلب تپندهٔ برنامه»
 /// است). گفتگو و وضعیت درس هر شاگرد به‌صورت محلی ذخیره می‌شود تا با
 /// بازگشت به برنامه از همان‌جا ادامه یابد.
+///
+/// **هماهنگی صنف/مضمون:** صنف شاگرد هرگز داخل این کلاس ذخیره نمی‌شود — هر
+/// متد `grade` را از بیرون می‌گیرد (منبع واحد حقیقت: `activeGradeProvider`،
+/// همان صنفی که در نقشهٔ صنوف/داشبورد/نصاب استفاده می‌شود). به همین دلیل
+/// معلم هوشمند همیشه دقیقاً از کتاب همان صنفی که شاگرد الان در آن است
+/// تدریس می‌کند، و با ارتقای صنف خودکار به کتاب صنف جدید می‌رود — بدون
+/// قاطی‌شدن گفتگو/پیشرفت صنف قبلی با صنف جدید (کلیدهای ذخیره‌سازی به‌ازای
+/// هر صنف جدا هستند).
 class AiTeacherEngineDataSource {
   final CurriculumLibraryLocalDataSource _library;
   final AiEngine Function() _engineProvider;
 
+  /// شخصیت تنظیم‌شدهٔ مدیر برای یک مضمون (از «مدیریت معلم هوشمند»)؛ `null`
+  /// اگر تنظیم نشده — آنگاه [kDefaultAiTeacherPersona] استفاده می‌شود.
+  final Future<String?> Function(String subjectId)? _personaLookup;
+
   AiTeacherEngineDataSource({
     required CurriculumLibraryLocalDataSource library,
     required AiEngine Function() engineProvider,
+    Future<String?> Function(String subjectId)? personaLookup,
   })  : _library = library,
-        _engineProvider = engineProvider;
+        _engineProvider = engineProvider,
+        _personaLookup = personaLookup;
 
-  String _convKey(String subjectId) => 'ai_conversation_v1_$subjectId';
-  String _stateKey(String subjectId) => 'ai_state_v1_$subjectId';
+  String _convKey(String subjectId, int grade) =>
+      LearningProgressDataSource.conversationKey(subjectId, grade);
+  String _stateKey(String subjectId, int grade) =>
+      LearningProgressDataSource.stateKey(subjectId, grade);
 
-  Future<List<AiChatMessage>> _readConversation(String subjectId) async {
+  Future<List<AiChatMessage>> _readConversation(String subjectId, int grade) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_convKey(subjectId));
+    final raw = prefs.getString(_convKey(subjectId, grade));
     if (raw == null) return [];
     final list = jsonDecode(raw) as List;
     return list
@@ -60,22 +83,23 @@ class AiTeacherEngineDataSource {
         .toList();
   }
 
-  Future<void> _writeConversation(String subjectId, List<AiChatMessage> messages) async {
+  Future<void> _writeConversation(
+      String subjectId, int grade, List<AiChatMessage> messages) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-        _convKey(subjectId), jsonEncode(messages.map(_messageToJson).toList()));
+        _convKey(subjectId, grade), jsonEncode(messages.map(_messageToJson).toList()));
   }
 
-  Future<_ConversationState> _readState(String subjectId) async {
+  Future<_ConversationState> _readState(String subjectId, int grade) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_stateKey(subjectId));
+    final raw = prefs.getString(_stateKey(subjectId, grade));
     if (raw == null) return _ConversationState();
     return _ConversationState.fromJson(Map<String, dynamic>.from(jsonDecode(raw) as Map));
   }
 
-  Future<void> _writeState(String subjectId, _ConversationState state) async {
+  Future<void> _writeState(String subjectId, int grade, _ConversationState state) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_stateKey(subjectId), jsonEncode(state.toJson()));
+    await prefs.setString(_stateKey(subjectId, grade), jsonEncode(state.toJson()));
   }
 
   Map<String, dynamic> _messageToJson(AiChatMessage m) => {
@@ -97,12 +121,10 @@ class AiTeacherEngineDataSource {
   String _subjectNameFa(String subjectId) =>
       mockSubjects.firstWhere((s) => s.id == subjectId, orElse: () => mockSubjects.first).nameFa;
 
-  /// بخش‌های قابل‌تدریس — **مطابق صنف شاگرد**: اگر کتاب صنف او وارد شده
-  /// باشد فقط از همان کتاب تدریس می‌شود (طبق نصاب رسمی)؛ در غیر این صورت از
-  /// همهٔ کتاب‌های مضمون.
-  Future<List<BookSection>> _sectionsFor(String subjectId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final grade = prefs.getInt('student_grade_v1') ?? 7;
+  /// بخش‌های قابل‌تدریس — **مطابق صنف واقعی شاگرد**: اگر کتاب صنف او وارد
+  /// شده باشد فقط از همان کتاب تدریس می‌شود (طبق نصاب رسمی)؛ در غیر این
+  /// صورت از همهٔ کتاب‌های مضمون (تا شاگرد هرگز بدون درس نماند).
+  Future<List<BookSection>> _sectionsFor(String subjectId, int grade) async {
     final books = await _library.getBooksForSubject(subjectId);
     final gradeBooks = books.where((b) => b.gradeId == grade).toList();
     final effective = gradeBooks.isNotEmpty ? gradeBooks : books;
@@ -111,28 +133,57 @@ class AiTeacherEngineDataSource {
     return BookSectionUtils.sectionsForBooks(sorted);
   }
 
-  Future<List<AiChatMessage>> getConversation(String subjectId) async {
-    final existing = await _readConversation(subjectId);
-    if (existing.isNotEmpty) return existing;
-    // اولین بار: پیام خوش‌آمدگویی + شروع خودکار درس.
-    final welcome = AiChatMessage(
-      id: 'welcome-$subjectId',
-      sender: ChatSender.ai,
-      body:
-          'سلام! 🌸 من معلم هوشمند مضمون «${_subjectNameFa(subjectId)}» هستم و مستقیماً از روی کتاب رسمی نصاب تعلیمی افغانستان با تو کار می‌کنم.',
-      timestamp: DateTime.now(),
-    );
-    await _writeConversation(subjectId, [welcome]);
-    await sendMessage(subjectId, AiCommands.start);
-    return _readConversation(subjectId);
+  Future<String> _personaFor(String subjectId) async {
+    if (_personaLookup == null) return kDefaultAiTeacherPersona;
+    try {
+      final p = await _personaLookup(subjectId);
+      return (p == null || p.trim().isEmpty) ? kDefaultAiTeacherPersona : p.trim();
+    } catch (_) {
+      return kDefaultAiTeacherPersona;
+    }
   }
 
-  Future<AiChatMessage> sendMessage(String subjectId, String text) async {
-    final sections = await _sectionsFor(subjectId);
-    final state = await _readState(subjectId);
-    final history = await _readConversation(subjectId);
-    final personaDescription =
-        'دقیق و قدم‌به‌قدم، با مثال‌های بومی افغانستان و لحنی گرم و تشویق‌کننده برای دختران دانش‌آموز.';
+  /// دستورهای داخلی UI (`__cmd_*__`) هرگز نباید عیناً به موتور هوش مصنوعی
+  /// ابری/Ollama فرستاده شوند — آن‌ها فقط متن انسانی می‌فهمند. اینجا هر
+  /// دستور را به یک درخواست طبیعی و گرم به زبان دری ترجمه می‌کنیم؛ موتور
+  /// محلی رایگان از روی `intent` کار می‌کند و این متن را نادیده می‌گیرد.
+  String _naturalInstructionFor(AiIntent intent, String raw) {
+    switch (intent) {
+      case AiIntent.startLesson:
+        return 'سلام معلم! درس این بخش از کتاب را برایم به‌صورت ساده و قدم‌به‌قدم شروع کن.';
+      case AiIntent.nextSection:
+        return 'این بخش را فهمیدم — لطفاً به بخش بعدی کتاب برو و ادامهٔ درس را بده.';
+      case AiIntent.giveExample:
+        return 'می‌شود یک مثال واقعی از همین بخش کتاب برایم بزنی تا بهتر بفهمم؟';
+      case AiIntent.askQuestion:
+        return 'یک سؤال دربارهٔ همین بخش از من بپرس تا ببینیم چقدر یاد گرفته‌ام.';
+      case AiIntent.answerAttempt:
+      case AiIntent.freeQuestion:
+        return raw;
+    }
+  }
+
+  Future<List<AiChatMessage>> getConversation(String subjectId, int grade) async {
+    final existing = await _readConversation(subjectId, grade);
+    if (existing.isNotEmpty) return existing;
+    // اولین بار در این صنف: پیام خوش‌آمدگویی + شروع خودکار درس.
+    final welcome = AiChatMessage(
+      id: 'welcome-$subjectId-g$grade',
+      sender: ChatSender.ai,
+      body:
+          'سلام! 🌸 من معلم هوشمند مضمون «${_subjectNameFa(subjectId)}» صنف $grade هستم و مستقیماً از روی کتاب رسمی نصاب تعلیمی افغانستان با تو کار می‌کنم. آماده‌ای شروع کنیم؟',
+      timestamp: DateTime.now(),
+    );
+    await _writeConversation(subjectId, grade, [welcome]);
+    await sendMessage(subjectId, AiCommands.start, grade);
+    return _readConversation(subjectId, grade);
+  }
+
+  Future<AiChatMessage> sendMessage(String subjectId, String text, int grade) async {
+    final sections = await _sectionsFor(subjectId, grade);
+    final state = await _readState(subjectId, grade);
+    final history = await _readConversation(subjectId, grade);
+    final personaDescription = await _personaFor(subjectId);
 
     AiIntent intent;
     switch (text) {
@@ -180,22 +231,25 @@ class AiTeacherEngineDataSource {
       allSections: sections,
       pendingHintSentence: state.hintSentence,
       history: updatedHistory,
-      studentMessage: text,
+      // دستورهای داخلی (`__cmd_*__`) هرگز عیناً به موتور فرستاده نمی‌شوند —
+      // ترجمهٔ طبیعی و گرم آن‌ها اینجا ساخته می‌شود (رفع اشکال نشتِ دستور).
+      studentMessage: _naturalInstructionFor(intent, text),
     ));
 
-    // ── ثبت پیشرفت یادگیری (ذخیرهٔ دروس خوانده/یادگرفته‌شده) ──
+    // ── ثبت پیشرفت یادگیری (ذخیرهٔ دروس خوانده/یادگرفته‌شده)، به‌ازای صنف ──
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-        'ai_last_studied_v1_$subjectId', DateTime.now().toIso8601String());
+    await prefs.setString(LearningProgressDataSource.lastStudiedKey(subjectId, grade),
+        DateTime.now().toIso8601String());
     if (intent == AiIntent.answerAttempt) {
       // شاگرد به سوال معلم پاسخ داد → این بخش «یادگرفته‌شده» حساب می‌شود.
-      final mastered = prefs.getInt('ai_mastered_v1_$subjectId') ?? 0;
-      await prefs.setInt('ai_mastered_v1_$subjectId', mastered + 1);
+      final masteredKey = LearningProgressDataSource.masteredKey(subjectId, grade);
+      final mastered = prefs.getInt(masteredKey) ?? 0;
+      await prefs.setInt(masteredKey, mastered + 1);
     }
 
     state.awaitingAnswer = response.posedNewQuestion;
     state.hintSentence = response.newHintSentence ?? (response.posedNewQuestion ? state.hintSentence : null);
-    await _writeState(subjectId, state);
+    await _writeState(subjectId, grade, state);
 
     final aiMessage = AiChatMessage(
       id: 'm${DateTime.now().millisecondsSinceEpoch + 1}',
@@ -205,7 +259,7 @@ class AiTeacherEngineDataSource {
       sourceReference: response.sourceReference,
     );
     updatedHistory.add(aiMessage);
-    await _writeConversation(subjectId, updatedHistory);
+    await _writeConversation(subjectId, grade, updatedHistory);
     return aiMessage;
   }
 }

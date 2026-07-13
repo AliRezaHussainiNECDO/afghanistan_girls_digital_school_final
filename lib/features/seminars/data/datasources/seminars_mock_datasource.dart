@@ -19,4 +19,8 @@ class SeminarsMockDataSource implements SeminarsDataSource {
   @override
   Future<void> register(String seminarId, String userId) =>
       _store.register(seminarId, userId);
+
+  @override
+  Future<void> setStatus(String seminarId, SeminarStatus status) =>
+      _store.setStatus(seminarId, status);
 }

@@ -10,6 +10,7 @@ abstract class AdminSeminarsRepository {
   Future<Either<Failure, Unit>> create({
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -22,6 +23,7 @@ abstract class AdminSeminarsRepository {
     required String id,
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,

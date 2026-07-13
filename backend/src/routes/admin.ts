@@ -63,7 +63,7 @@ admin.get('/users', async (c) => {
     binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   const { results } = await c.env.DB.prepare(
-    `SELECT id, email, first_name, last_name, role, status, email_verified, avatar_url FROM users
+    `SELECT id, email, first_name, last_name, role, status, email_verified, avatar_url, phone, specialty, bio, created_at FROM users
      WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
   )
     .bind(...binds)
@@ -76,6 +76,10 @@ admin.get('/users', async (c) => {
     suspended: u.status !== 'active',
     emailVerified: u.email_verified === 1,
     avatarUrl: u.avatar_url,
+    phone: u.phone ?? '',
+    specialty: u.specialty ?? '',
+    bio: u.bio ?? '',
+    createdAt: u.created_at,
   }));
   return c.json({ users });
 });

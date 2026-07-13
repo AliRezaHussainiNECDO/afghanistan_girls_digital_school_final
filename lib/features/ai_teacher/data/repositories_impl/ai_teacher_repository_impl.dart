@@ -9,18 +9,18 @@ class AiTeacherRepositoryImpl implements AiTeacherRepository {
   AiTeacherRepositoryImpl(this.dataSource);
 
   @override
-  Future<Either<Failure, List<AiChatMessage>>> getConversation(String subjectId) async {
+  Future<Either<Failure, List<AiChatMessage>>> getConversation(String subjectId, int grade) async {
     try {
-      return Right(await dataSource.getConversation(subjectId));
+      return Right(await dataSource.getConversation(subjectId, grade));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
   }
 
   @override
-  Future<Either<Failure, AiChatMessage>> sendMessage(String subjectId, String text) async {
+  Future<Either<Failure, AiChatMessage>> sendMessage(String subjectId, String text, int grade) async {
     try {
-      return Right(await dataSource.sendMessage(subjectId, text));
+      return Right(await dataSource.sendMessage(subjectId, text, grade));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }

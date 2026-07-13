@@ -35,6 +35,11 @@ abstract class SeminarsDataSource {
   Future<List<Seminar>> getUpcoming(SeminarAudience audience);
   Future<Seminar> getById(String id);
   Future<void> register(String seminarId, String userId);
+
+  /// تغییر وضعیت (شروع/پایان دستی) — برای اتاق داخلی سمینار (فال‌بک بدون
+  /// Cloudflare Stream) وقتی میزبان (استاد/مدیر) شروع/پایان را می‌زند، تا
+  /// وضعیت واقعاً روی سرور/پایگاه‌داده ثبت و برای همهٔ نقش‌ها هماهنگ شود.
+  Future<void> setStatus(String seminarId, SeminarStatus status);
 }
 
 /// پیاده‌سازی واقعی — روتر seminars زیر `/api/v1` (بخش ۱۲/۱۹.۸ سند).
@@ -58,5 +63,10 @@ class SeminarsRemoteDataSource implements SeminarsDataSource {
   @override
   Future<void> register(String seminarId, String userId) async {
     await _api.post('/seminars/$seminarId/register');
+  }
+
+  @override
+  Future<void> setStatus(String seminarId, SeminarStatus status) async {
+    await _api.patch('/seminars/$seminarId/status', data: {'status': status.name});
   }
 }

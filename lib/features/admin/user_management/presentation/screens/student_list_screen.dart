@@ -1,4 +1,6 @@
 /// صفحهٔ لیست شاگردان — مسیر /admin/users (بخش ۲۴.۴).
+
+library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,7 +52,7 @@ class StudentListScreen extends ConsumerWidget {
                       data: (p) => Text(
                         '${p.total} شاگرد ثبت‌شده',
                         style: TextStyle(
-                            color: Colors.white.withOpacity(.85), fontSize: 13),
+                            color: Colors.white.withValues(alpha: .85), fontSize: 13),
                       ),
                       orElse: () => const SizedBox.shrink(),
                     ),
@@ -184,7 +186,7 @@ class _FilterBar extends ConsumerWidget {
         label: Text(label),
         selected: selected,
         onSelected: (_) => onTap(),
-        selectedColor: color.withOpacity(.15),
+        selectedColor: color.withValues(alpha: .15),
         checkmarkColor: color,
         labelStyle: TextStyle(
             color: selected ? color : AppPalette.ink,
@@ -247,7 +249,7 @@ class _StudentCard extends StatelessWidget {
               tag: 'avatar-${student.id}',
               child: CircleAvatar(
                 radius: 26,
-                backgroundColor: AppPalette.green.withOpacity(.15),
+                backgroundColor: AppPalette.green.withValues(alpha: .15),
                 child: Text(
                   student.fullName.characters.first,
                   style: const TextStyle(

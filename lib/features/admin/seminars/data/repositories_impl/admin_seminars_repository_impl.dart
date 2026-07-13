@@ -30,6 +30,7 @@ class AdminSeminarsRepositoryImpl implements AdminSeminarsRepository {
   Future<Either<Failure, Unit>> create({
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -41,6 +42,7 @@ class AdminSeminarsRepositoryImpl implements AdminSeminarsRepository {
         await dataSource.create(
           title: title,
           description: description,
+          instructorId: instructorId,
           instructorName: instructorName,
           scheduledStart: scheduledStart,
           durationMinutes: durationMinutes,
@@ -56,6 +58,7 @@ class AdminSeminarsRepositoryImpl implements AdminSeminarsRepository {
     required String id,
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -69,6 +72,7 @@ class AdminSeminarsRepositoryImpl implements AdminSeminarsRepository {
           id: id,
           title: title,
           description: description,
+          instructorId: instructorId,
           instructorName: instructorName,
           scheduledStart: scheduledStart,
           durationMinutes: durationMinutes,

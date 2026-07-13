@@ -177,11 +177,24 @@ seminars.post('/seminars', async (c) => {
   if (!b?.title || !b?.scheduledStart) {
     return c.json(fail('BAD_REQUEST', 'عنوان و زمان الزامی است', 'Missing fields'), 400);
   }
-  // نام استاد: اگر در بدنه آمده (مثلاً مدیر به‌نمایندگی می‌سازد) همان؛ وگرنه از رکورد کاربر.
+  // مالک واقعی سمینار: به‌طور پیش‌فرض خودِ سازنده. فقط مدیر ارشد می‌تواند با
+  // فرستادن instructorId، سمینار را به‌نمایندگی از یک استاد واقعیِ دیگر
+  // بسازد (تا آن سمینار در «سمینارهای من» همان استاد هم دیده شود).
+  let instructorId = me.sub;
+  if (me.role === 'super_admin' && typeof b.instructorId === 'string' && b.instructorId.trim()) {
+    const target = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND role = 'seminar_instructor'")
+      .bind(b.instructorId.trim())
+      .first<{ id: string }>();
+    if (!target) {
+      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found'), 400);
+    }
+    instructorId = target.id;
+  }
+  // نام استاد: اگر در بدنه آمده همان؛ وگرنه از رکورد کاربر مالک واقعی.
   let instructorName = String(b.instructorName ?? '').trim();
   if (!instructorName) {
     const u = await c.env.DB.prepare('SELECT first_name, last_name FROM users WHERE id = ?')
-      .bind(me.sub)
+      .bind(instructorId)
       .first<{ first_name: string; last_name: string }>();
     instructorName = u ? `${u.first_name} ${u.last_name}`.trim() : '';
   }
@@ -194,7 +207,7 @@ seminars.post('/seminars', async (c) => {
       id,
       String(b.title),
       String(b.description ?? ''),
-      me.sub,
+      instructorId,
       instructorName,
       String(b.scheduledStart),
       Number(b.durationMinutes ?? 45),
@@ -259,10 +272,24 @@ seminars.put('/seminars/:id', async (c) => {
   if (!existing) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404);
   const b = await c.req.json<any>().catch(() => null);
   if (!b) return c.json(fail('BAD_REQUEST', 'بدنهٔ نامعتبر', 'Invalid body'), 400);
+
+  // واگذاری سمینار به استاد واقعی دیگر — فقط مدیر ارشد مجاز است (بخش ۱۵.۲).
+  let instructorId: string | null = null;
+  if (me.role === 'super_admin' && typeof b.instructorId === 'string' && b.instructorId.trim()) {
+    const target = await c.env.DB.prepare("SELECT id FROM users WHERE id = ? AND role = 'seminar_instructor'")
+      .bind(b.instructorId.trim())
+      .first<{ id: string }>();
+    if (!target) {
+      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found'), 400);
+    }
+    instructorId = target.id;
+  }
+
   await c.env.DB.prepare(
     `UPDATE seminars SET
        title = COALESCE(?, title),
        description = COALESCE(?, description),
+       instructor_id = COALESCE(?, instructor_id),
        instructor_name = COALESCE(?, instructor_name),
        scheduled_start = COALESCE(?, scheduled_start),
        duration_minutes = COALESCE(?, duration_minutes),
@@ -275,6 +302,7 @@ seminars.put('/seminars/:id', async (c) => {
     .bind(
       b.title ?? null,
       b.description ?? null,
+      instructorId,
       b.instructorName ?? null,
       b.scheduledStart ?? null,
       b.durationMinutes != null ? Number(b.durationMinutes) : null,

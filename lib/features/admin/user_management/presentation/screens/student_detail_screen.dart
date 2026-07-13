@@ -1,5 +1,7 @@
 /// صفحهٔ جزئیات شاگرد — تب‌ها: نمای کلی / پیشرفت / حاضری / گزارش استاد AI.
 /// اکشن‌های مدیر (مسدودسازی، حذف، ریست رمز، …) از Registry توسعه‌پذیر.
+
+library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -123,7 +125,7 @@ class _Header extends ConsumerWidget {
                         Text(
                             'صنف ${s.grade} • ${s.province} • رتبه ${detail.classRank} از ${detail.classSize}',
                             style: TextStyle(
-                                color: Colors.white.withOpacity(.85),
+                                color: Colors.white.withValues(alpha: .85),
                                 fontSize: 12)),
                         const SizedBox(height: 8),
                         Row(children: [
@@ -369,9 +371,9 @@ class _AttendanceTab extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 14),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppPalette.red.withOpacity(.08),
+            color: AppPalette.red.withValues(alpha: .08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppPalette.red.withOpacity(.3)),
+            border: Border.all(color: AppPalette.red.withValues(alpha: .3)),
           ),
           child: const Row(children: [
             Icon(Icons.warning_amber_rounded, color: AppPalette.red),
@@ -484,7 +486,7 @@ class _AiReportTab extends ConsumerWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: AppPalette.green.withOpacity(.12),
+                                  color: AppPalette.green.withValues(alpha: .12),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(n.subjectName,
@@ -564,9 +566,9 @@ class _AdvisorTab extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               margin: const EdgeInsets.only(bottom: 14),
               decoration: BoxDecoration(
-                color: (hasFlag ? AppPalette.red : AppPalette.green).withOpacity(.08),
+                color: (hasFlag ? AppPalette.red : AppPalette.green).withValues(alpha: .08),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: (hasFlag ? AppPalette.red : AppPalette.green).withOpacity(.3)),
+                border: Border.all(color: (hasFlag ? AppPalette.red : AppPalette.green).withValues(alpha: .3)),
               ),
               child: Row(children: [
                 Icon(hasFlag ? Icons.priority_high_rounded : Icons.volunteer_activism_rounded,
@@ -599,11 +601,11 @@ class _AdvisorBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final isStudent = msg.role == AdvisorRole.student;
     final bg = msg.flagged
-        ? AppPalette.red.withOpacity(.08)
-        : (isStudent ? AppPalette.green.withOpacity(.10) : Colors.white);
+        ? AppPalette.red.withValues(alpha: .08)
+        : (isStudent ? AppPalette.green.withValues(alpha: .10) : Colors.white);
     final border = msg.flagged
-        ? AppPalette.red.withOpacity(.4)
-        : (isStudent ? AppPalette.green.withOpacity(.3) : Colors.grey.shade300);
+        ? AppPalette.red.withValues(alpha: .4)
+        : (isStudent ? AppPalette.green.withValues(alpha: .3) : Colors.grey.shade300);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -674,7 +676,7 @@ class _PromotionSection extends StatelessWidget {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: AppPalette.green.withOpacity(.12),
+              color: AppPalette.green.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text('صنف فعلی: ${p.currentGrade}',
@@ -717,7 +719,7 @@ class _PromotionSection extends StatelessWidget {
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppPalette.red,
-                    side: BorderSide(color: AppPalette.red.withOpacity(.5)),
+                    side: BorderSide(color: AppPalette.red.withValues(alpha: .5)),
                   ),
                   onPressed: canDemote
                       ? () {

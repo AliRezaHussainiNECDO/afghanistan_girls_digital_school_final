@@ -1,4 +1,6 @@
 /// لایهٔ presentation فقط UseCase صدا می‌زند (بخش ۲۴.۵ — Riverpod 2+).
+
+library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/network/network_providers.dart';

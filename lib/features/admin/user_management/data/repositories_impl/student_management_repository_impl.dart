@@ -1,4 +1,6 @@
 /// پیاده‌سازی Concrete از Interface لایهٔ domain (بخش ۲۴.۳).
+
+library;
 import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 

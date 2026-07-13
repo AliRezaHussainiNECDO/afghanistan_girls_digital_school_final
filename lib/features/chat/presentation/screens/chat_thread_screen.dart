@@ -124,7 +124,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   /// گزارش تخلف — طبق بند ۳ قوانین و شرایط استفاده. با نگه‌داشتن انگشت روی
   /// پیامِ طرف مقابل باز می‌شود.
   Future<void> _showReportSheet(PeerMessage message) async {
-    final reasons = const [
+    const reasons = [
       'محتوای نامناسب یا توهین‌آمیز',
       'مزاحمت یا آزار',
       'تبلیغات یا اسپم',

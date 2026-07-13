@@ -1,6 +1,8 @@
 /// Bottom Sheet اکشن‌های مدیریتی — Registry توسعه‌پذیر (اصل ۸ بخش ۱.۲):
 /// نیازمندی آیندهٔ مدیر = افزودن یک AdminActionItem جدید به لیست، بدون
 /// تغییر در ساختار موجود. هر اکشن با reason در audit_logs سرور ثبت می‌شود.
+
+library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -99,7 +101,7 @@ Future<void> showAdminActionsSheet(
                   backgroundColor: (a.destructive
                           ? AppPalette.red
                           : AppPalette.green)
-                      .withOpacity(.12),
+                      .withValues(alpha: .12),
                   child: Icon(a.icon,
                       size: 20,
                       color:

@@ -253,7 +253,7 @@ class _ImportRow extends StatelessWidget {
               // مضمون
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: item.subjectId,
+                  initialValue: item.subjectId,
                   isDense: true,
                   decoration: const InputDecoration(
                       labelText: 'مضمون', border: OutlineInputBorder()),
@@ -274,7 +274,7 @@ class _ImportRow extends StatelessWidget {
               SizedBox(
                 width: 110,
                 child: DropdownButtonFormField<int>(
-                  value: item.grade,
+                  initialValue: item.grade,
                   isDense: true,
                   decoration: const InputDecoration(
                       labelText: 'صنف', border: OutlineInputBorder()),

@@ -200,6 +200,8 @@ const Map<String, String> enStrings = {
   'room.startNow': 'Start seminar',
   'room.waitingHost': 'Waiting for the host to start the session...',
   'room.notAllowed': 'You must register for this seminar before joining.',
+  'room.joinNow': 'Join live session',
+  'room.connecting': 'Connecting...',
 
   // chat
   'chat.conversations': 'Conversations',

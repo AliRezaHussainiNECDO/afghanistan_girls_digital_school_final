@@ -11,4 +11,8 @@ abstract class SeminarsRepository {
 
   /// طبق `POST /seminars/{id}/register` بخش ۱۹.۸ — هر کاربر فقط یک‌بار.
   Future<Either<Failure, Unit>> register(String seminarId, String userId);
+
+  /// تغییر وضعیت سمینار (شروع/پایان دستی از اتاق داخلی) — طبق
+  /// `PATCH /seminars/{id}/status`؛ فقط میزبان (استاد/مدیر) مجاز است.
+  Future<Either<Failure, Unit>> setStatus(String seminarId, SeminarStatus status);
 }

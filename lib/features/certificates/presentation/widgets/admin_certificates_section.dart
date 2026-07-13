@@ -96,7 +96,7 @@ class AdminCertificatesSection extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: DropdownButtonFormField<int>(
-                              value: grade,
+                              initialValue: grade,
                               decoration: const InputDecoration(
                                   labelText: 'صنف تکمیل‌شده',
                                   border: OutlineInputBorder()),
@@ -133,7 +133,7 @@ class AdminCertificatesSection extends ConsumerWidget {
                       ),
                       const SizedBox(height: 10),
                       DropdownButtonFormField<String>(
-                        value: honor,
+                        initialValue: honor,
                         decoration: const InputDecoration(
                             labelText: 'لقب افتخاری (اختیاری)',
                             border: OutlineInputBorder()),

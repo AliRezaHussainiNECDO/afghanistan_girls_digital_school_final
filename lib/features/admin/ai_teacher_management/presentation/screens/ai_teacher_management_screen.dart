@@ -138,7 +138,7 @@ class AiTeacherManagementScreen extends ConsumerWidget {
                       Container(
                         width: 44,
                         height: 44,
-                        decoration: BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
                         child: const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 22),
                       ),
                       const SizedBox(width: 14),

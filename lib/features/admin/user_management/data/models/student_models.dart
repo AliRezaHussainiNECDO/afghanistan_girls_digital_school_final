@@ -1,4 +1,6 @@
 /// DTO ها — نگاشت JSON ↔ Entity (بخش ۲۴.۱، data/models).
+
+library;
 import '../../domain/entities/student_entities.dart';
 
 AccountStatus _statusFrom(String s) => switch (s) {

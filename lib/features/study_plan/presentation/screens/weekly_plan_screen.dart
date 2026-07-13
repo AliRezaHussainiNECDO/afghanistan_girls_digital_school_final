@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../auth/domain/entities/app_user.dart';
@@ -36,7 +37,10 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final planAsync = ref.watch(weeklyPlanProvider);
-    final gradeAsync = ref.watch(studentGradeProvider);
+    // صنف فعال واقعی شاگرد — همان صنفی که در نقشهٔ صنوف/داشبورد نشان داده
+    // می‌شود؛ اینجا دیگر قابل تغییر دستی نیست (شاگرد فقط به صنف خودش
+    // دسترسی دارد، طبق ماتریس مجوزها).
+    final grade = ref.watch(activeGradeProvider);
 
     return AppScaffold(
       title: 'تقسیم اوقات هفتگی من',
@@ -77,13 +81,10 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
                               fontSize: 13),
                         ),
                         const SizedBox(height: 2),
-                        gradeAsync.maybeWhen(
-                          data: (g) => Text('صنف $g — هفتهٔ ${plan.weekKey}',
-                              style: TextStyle(
-                                  color: Colors.white.withValues(alpha: .9),
-                                  fontSize: 11)),
-                          orElse: () => const SizedBox.shrink(),
-                        ),
+                        Text('صنف $grade — هفتهٔ ${plan.weekKey}',
+                            style: TextStyle(
+                                color: Colors.white.withValues(alpha: .9),
+                                fontSize: 11)),
                       ],
                     ),
                   ),
@@ -103,36 +104,28 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            // ── انتخاب صنف شاگرد ──
+            // ── صنف من (فقط نمایشی) ──
+            // صنف شاگرد از حساب/پیشرفت واقعی او می‌آید، نه یک انتخاب دستی؛
+            // با ارتقای صنف (بعد از تکمیل نصاب و کامیابی در امتحان) این
+            // برچسب و کل برنامهٔ هفتگی خودکار به‌روز می‌شود.
             Row(
               children: [
                 Text('صنف من:',
                     style: TextStyle(
                         fontSize: 13, color: scheme.onSurfaceVariant)),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (var g = 7; g <= 12; g++)
-                          Padding(
-                            padding:
-                                const EdgeInsetsDirectional.only(end: 6),
-                            child: ChoiceChip(
-                              label: Text('$g'),
-                              selected: gradeAsync.valueOrNull == g,
-                              onSelected: (_) async {
-                                await ref
-                                    .read(studentGradeProvider.notifier)
-                                    .setGrade(g);
-                                await ref.read(regeneratePlanProvider)();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
                   ),
+                  child: Text('صنف $grade',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onPrimaryContainer)),
                 ),
               ],
             ),

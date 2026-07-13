@@ -49,6 +49,20 @@ class SeminarsRepositoryImpl implements SeminarsRepository {
     }
   }
 
+  @override
+  Future<Either<Failure, Unit>> setStatus(String seminarId, SeminarStatus status) async {
+    try {
+      await dataSource.setStatus(seminarId, status);
+      return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
+    } on Failure catch (f) {
+      return Left(f);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
   Failure _mapApi(ApiException e) => e.isNetworkError
       ? NetworkFailure(e.message)
       : (e.type == ApiErrorType.badRequest

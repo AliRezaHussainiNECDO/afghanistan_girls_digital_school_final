@@ -59,7 +59,7 @@ class LocalCurriculumAiEngine implements AiEngine {
     final questionSentence = BookSectionUtils.pickQuestionSourceSentence(section);
     final question = _toQuestion(questionSentence);
     final body =
-        '📖 ${section.heading}\n\n${section.content}\n\n❓ ${question}';
+        '📖 ${section.heading}\n\n${section.content}\n\n❓ $question';
     return AiEngineResponse(
       body: body,
       sourceReference: '${section.bookTitle} — بخش ${section.index + 1}',

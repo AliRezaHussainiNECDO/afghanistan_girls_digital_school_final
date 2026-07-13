@@ -10,6 +10,7 @@ abstract class AdminSeminarsDataSource {
   Future<void> create({
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -21,6 +22,7 @@ abstract class AdminSeminarsDataSource {
     required String id,
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -50,6 +52,7 @@ class AdminSeminarsRemoteDataSource implements AdminSeminarsDataSource {
   Future<void> create({
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -60,6 +63,7 @@ class AdminSeminarsRemoteDataSource implements AdminSeminarsDataSource {
     await _api.post('/seminars', data: {
       'title': title,
       'description': description,
+      if (instructorId != null && instructorId.isNotEmpty) 'instructorId': instructorId,
       'instructorName': instructorName,
       'scheduledStart': scheduledStart.toUtc().toIso8601String(),
       'durationMinutes': durationMinutes,
@@ -74,6 +78,7 @@ class AdminSeminarsRemoteDataSource implements AdminSeminarsDataSource {
     required String id,
     required String title,
     required String description,
+    String? instructorId,
     required String instructorName,
     required DateTime scheduledStart,
     required int durationMinutes,
@@ -85,6 +90,7 @@ class AdminSeminarsRemoteDataSource implements AdminSeminarsDataSource {
     await _api.put('/seminars/$id', data: {
       'title': title,
       'description': description,
+      if (instructorId != null && instructorId.isNotEmpty) 'instructorId': instructorId,
       'instructorName': instructorName,
       'scheduledStart': scheduledStart.toUtc().toIso8601String(),
       'durationMinutes': durationMinutes,

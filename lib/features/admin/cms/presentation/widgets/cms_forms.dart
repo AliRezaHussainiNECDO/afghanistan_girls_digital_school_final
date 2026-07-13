@@ -88,7 +88,7 @@ Widget _statusDropdown(ContentStatus value, ValueChanged<ContentStatus> onChange
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<ContentStatus>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: context.tr('common.status'),
         border: const OutlineInputBorder(),
@@ -306,7 +306,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
-            value: _difficulty,
+            initialValue: _difficulty,
             decoration: InputDecoration(
               labelText: context.tr('admin.fDifficulty'),
               border: const OutlineInputBorder(),
@@ -323,7 +323,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
-            value: _type,
+            initialValue: _type,
             decoration: InputDecoration(
               labelText: context.tr('admin.fType'),
               border: const OutlineInputBorder(),

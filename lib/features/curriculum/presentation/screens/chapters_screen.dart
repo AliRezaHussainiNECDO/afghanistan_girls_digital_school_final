@@ -45,7 +45,7 @@ class ChaptersScreen extends ConsumerWidget {
                       Container(
                         width: 40,
                         height: 40,
-                        decoration: BoxDecoration(gradient: AppColors.heroGradient, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(gradient: AppColors.heroGradient, shape: BoxShape.circle),
                         child: Center(
                           child: Text('${chapter.orderIndex}',
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),

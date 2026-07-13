@@ -56,6 +56,15 @@ class AiTeacherManagementLocalDataSource {
     return mockSubjects.map((s) => all[s.id] ?? _defaultFor(s)).toList();
   }
 
+  /// شخصیت تنظیم‌شدهٔ یک مضمون — بدون تأخیر مصنوعی (این متد در هر پیام
+  /// چت با معلم هوشمند صدا زده می‌شود، پس باید سریع باشد). اگر مدیر هنوز
+  /// شخصیتی برای این مضمون تنظیم نکرده، `null` برمی‌گرداند تا موتور از
+  /// شخصیت پیش‌فرض گرم و تشویق‌کننده استفاده کند.
+  Future<String?> personaFor(String subjectId) async {
+    final all = await _readAll();
+    return all[subjectId]?.personaDescription;
+  }
+
   Future<void> updatePersona(String subjectId, String newDescription) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final all = await _readAll();

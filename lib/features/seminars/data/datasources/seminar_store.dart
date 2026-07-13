@@ -184,6 +184,7 @@ class SeminarStore {
     required String id,
     String? title,
     String? description,
+    String? instructorId,
     String? instructorName,
     DateTime? scheduledStart,
     int? durationMinutes,
@@ -199,6 +200,7 @@ class SeminarStore {
     _seminars[idx] = _seminars[idx].copyWith(
       title: title,
       description: description,
+      instructorId: instructorId,
       instructorName: instructorName,
       scheduledStart: scheduledStart,
       durationMinutes: durationMinutes,

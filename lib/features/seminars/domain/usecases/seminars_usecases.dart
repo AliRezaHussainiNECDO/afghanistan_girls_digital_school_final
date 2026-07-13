@@ -36,3 +36,21 @@ class RegisterSeminarUseCase implements UseCase<Unit, RegisterSeminarParams> {
   Future<Either<Failure, Unit>> call(RegisterSeminarParams params) =>
       repository.register(params.seminarId, params.userId);
 }
+
+class SetSeminarStatusParams extends Equatable {
+  final String seminarId;
+  final SeminarStatus status;
+  const SetSeminarStatusParams({required this.seminarId, required this.status});
+  @override
+  List<Object?> get props => [seminarId, status];
+}
+
+/// شروع/پایان دستی سمینار از اتاق داخلی — تا وضعیت واقعاً روی سرور ثبت و
+/// برای همهٔ نقش‌ها (شاگرد/والد/استاد/مدیر) هماهنگ شود.
+class SetSeminarStatusUseCase implements UseCase<Unit, SetSeminarStatusParams> {
+  final SeminarsRepository repository;
+  SetSeminarStatusUseCase(this.repository);
+  @override
+  Future<Either<Failure, Unit>> call(SetSeminarStatusParams params) =>
+      repository.setStatus(params.seminarId, params.status);
+}

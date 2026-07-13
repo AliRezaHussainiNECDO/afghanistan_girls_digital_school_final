@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
+import '../../../../../core/instructor/instructor_directory.dart';
 import '../../../../../core/localization/app_localizations.dart';
+import '../../../../../core/network/network_providers.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/empty_view.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../../shared_models/seminar.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../../../seminars/presentation/providers/seminars_providers.dart';
 import '../../../../seminars/presentation/widgets/go_live_flow.dart';
 import '../../../../seminars/presentation/widgets/seminar_editor_dialog.dart';
@@ -28,6 +31,17 @@ class AdminSeminarsScreen extends ConsumerStatefulWidget {
 class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
   /// null = همه؛ در غیر این صورت فقط مخاطب انتخاب‌شده.
   SeminarAudience? _filter;
+
+  @override
+  void initState() {
+    super.initState();
+    // فهرست واقعی استادان را از پیش بارگذاری می‌کنیم تا دیالوگ ساخت/ویرایش
+    // سمینار بتواند از میان حساب‌های واقعی استاد انتخاب کند (بخش ۱۵.۲ سند).
+    if (kUseLiveBackend && !InstructorDirectory.instance.loadedFromBackend) {
+      Future.microtask(
+          () => InstructorDirectory.instance.loadFromBackend(ref.read(apiClientProvider)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,6 +113,7 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
           CreateAdminSeminarParams(
             title: result.title,
             description: result.description,
+            instructorId: result.instructorId,
             instructorName: result.instructorName ?? '',
             scheduledStart: result.scheduledStart,
             durationMinutes: result.durationMinutes,
@@ -494,6 +509,7 @@ class _AdminSeminarCard extends ConsumerWidget {
             id: seminar.id,
             title: result.title,
             description: result.description,
+            instructorId: result.instructorId,
             instructorName: result.instructorName ?? seminar.instructorName,
             scheduledStart: result.scheduledStart,
             durationMinutes: result.durationMinutes,

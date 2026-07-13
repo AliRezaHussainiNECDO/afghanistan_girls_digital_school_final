@@ -25,6 +25,8 @@ final getSeminarByIdUseCaseProvider =
     Provider((ref) => GetSeminarByIdUseCase(ref.watch(seminarsRepositoryProvider)));
 final registerSeminarUseCaseProvider =
     Provider((ref) => RegisterSeminarUseCase(ref.watch(seminarsRepositoryProvider)));
+final setSeminarStatusUseCaseProvider =
+    Provider((ref) => SetSeminarStatusUseCase(ref.watch(seminarsRepositoryProvider)));
 
 /// سرویس پخش زندهٔ Cloudflare Stream (شروع/پایان پخش توسط استاد/مدیر).
 final seminarLiveServiceProvider = Provider<SeminarLiveService>(

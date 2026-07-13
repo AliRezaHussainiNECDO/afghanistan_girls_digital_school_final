@@ -26,4 +26,13 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, String?>> getPersonaFor(String subjectId) async {
+    try {
+      return Right(await dataSource.personaFor(subjectId));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
 }

@@ -91,9 +91,9 @@ class AttendanceScreen extends ConsumerWidget {
                           width: 34,
                           height: 34,
                           decoration: BoxDecoration(
-                            color: _statusColor(day.status).withOpacity(0.15),
+                            color: _statusColor(day.status).withValues(alpha: 0.15),
                             shape: BoxShape.circle,
-                            border: Border.all(color: _statusColor(day.status).withOpacity(0.4)),
+                            border: Border.all(color: _statusColor(day.status).withValues(alpha: 0.4)),
                           ),
                           child: Center(
                             child: Container(

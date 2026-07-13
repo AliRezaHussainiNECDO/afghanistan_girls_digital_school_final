@@ -1,4 +1,6 @@
 /// کامپوننت‌های مشترک بخش مدیریت شاگردان — طراحی مدرن Material 3.
+
+library;
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/student_entities.dart';
@@ -54,7 +56,7 @@ class _Pill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: color.withOpacity(.12),
+          color: color.withValues(alpha: .12),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -100,7 +102,7 @@ class ScoreBar extends StatelessWidget {
         child: LinearProgressIndicator(
           value: value / 100,
           minHeight: 8,
-          backgroundColor: color.withOpacity(.12),
+          backgroundColor: color.withValues(alpha: .12),
           valueColor: AlwaysStoppedAnimation(color),
         ),
       ),
@@ -129,7 +131,7 @@ class StatTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(.05),
+                color: Colors.black.withValues(alpha: .05),
                 blurRadius: 10,
                 offset: const Offset(0, 4)),
           ],
@@ -139,7 +141,7 @@ class StatTile extends StatelessWidget {
           children: [
             CircleAvatar(
                 radius: 16,
-                backgroundColor: color.withOpacity(.12),
+                backgroundColor: color.withValues(alpha: .12),
                 child: Icon(icon, size: 18, color: color)),
             const SizedBox(height: 10),
             Text(value,
@@ -171,7 +173,7 @@ class AttendanceHeatmap extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: d.present
                           ? AppPalette.green
-                          : AppPalette.red.withOpacity(.75),
+                          : AppPalette.red.withValues(alpha: .75),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   ),
@@ -237,7 +239,7 @@ class SectionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(.05),
+                color: Colors.black.withValues(alpha: .05),
                 blurRadius: 12,
                 offset: const Offset(0, 4)),
           ],

@@ -49,7 +49,7 @@ class ReportsScreen extends ConsumerWidget {
                   Container(
                     width: 42,
                     height: 42,
-                    decoration: BoxDecoration(color: color.withOpacity(0.15), shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: color.withValues(alpha: 0.15), shape: BoxShape.circle),
                     child: Icon(Icons.bar_chart_rounded, color: color),
                   ),
                   const SizedBox(width: 14),

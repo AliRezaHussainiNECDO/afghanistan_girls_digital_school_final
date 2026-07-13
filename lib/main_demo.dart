@@ -5,6 +5,8 @@
 /// این فایل فقط برای تست سریع ماژول است؛ اپ اصلی از lib/main.dart اجرا می‌شود
 /// و صفحهٔ مدیریت شاگردان در آن از مسیر /admin/users → دکمهٔ «مدیریت شاگردان»
 /// (یا مستقیم /admin/students) در دسترس است.
+
+library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

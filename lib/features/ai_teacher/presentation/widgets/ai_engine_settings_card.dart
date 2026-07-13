@@ -57,7 +57,7 @@ class _AiEngineSettingsCardState extends ConsumerState<AiEngineSettingsCard> {
               ),
               Switch(
                 value: settings.useOllama,
-                activeColor: Colors.white,
+                activeThumbColor: Colors.white,
                 onChanged: (v) => ref.read(aiEngineSettingsProvider.notifier).update(useOllama: v),
               ),
             ],

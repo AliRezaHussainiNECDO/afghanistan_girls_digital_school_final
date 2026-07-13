@@ -41,12 +41,18 @@ class StudyPlanDataSource {
     return '${saturday.year}-W$week';
   }
 
-  Future<WeeklyStudyPlan> getCurrentPlan({bool regenerate = false}) async {
+  /// کلید ذخیرهٔ برنامهٔ هفتگی — به‌ازای هر صنف جدا (با ارتقای صنف، برنامهٔ
+  /// صنف قبلی باقی می‌ماند اما دیگر بارگذاری نمی‌شود؛ برنامهٔ صنف جدید تازه
+  /// ساخته می‌شود).
+  String _planKeyFor(int grade) => '${_planKey}_g$grade';
+
+  Future<WeeklyStudyPlan> getCurrentPlan({bool regenerate = false, required int grade}) async {
     final prefs = await SharedPreferences.getInstance();
     final weekKey = currentWeekKey();
+    final planKey = _planKeyFor(grade);
 
     if (!regenerate) {
-      final raw = prefs.getString(_planKey);
+      final raw = prefs.getString(planKey);
       if (raw != null) {
         try {
           final stored = WeeklyStudyPlan.fromJson(
@@ -58,7 +64,7 @@ class StudyPlanDataSource {
       }
     }
 
-    final all = await progress.getAll();
+    final all = await progress.getAll(grade);
     // فقط مضامینی که کتاب دارند برنامه‌ریزی می‌شوند.
     final withBooks = all.where((p) => p.hasBook).toList();
 
@@ -78,7 +84,7 @@ class StudyPlanDataSource {
           _generateSmart(weekKey, withBooks);
     }
 
-    await prefs.setString(_planKey, jsonEncode(plan.toJson()));
+    await prefs.setString(planKey, jsonEncode(plan.toJson()));
     return plan;
   }
 

@@ -1,22 +1,38 @@
 /// صفحهٔ لیست استادان — «مدیریت استادان» پنل مدیر (بخش ۱۵.۲ سند)،
 /// هم‌الگو با صفحهٔ «مدیریت شاگردان» (student_list_screen.dart):
 /// لیست با جزئیات هر استاد؛ کلیک روی هر نام ← صفحهٔ فعالیت‌های او.
+
+library;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../../core/instructor/instructor_directory.dart';
-import '../../../../seminars/data/datasources/seminar_store.dart';
+import '../../../../../core/network/network_providers.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
+import '../../../../instructor/presentation/providers/instructor_providers.dart';
 import '../widgets/common_widgets.dart';
 
-class InstructorListScreen extends StatefulWidget {
+class InstructorListScreen extends ConsumerStatefulWidget {
   const InstructorListScreen({super.key});
 
   @override
-  State<InstructorListScreen> createState() => _InstructorListScreenState();
+  ConsumerState<InstructorListScreen> createState() => _InstructorListScreenState();
 }
 
-class _InstructorListScreenState extends State<InstructorListScreen> {
+class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // در حالت Backend واقعی، فهرست واقعی استادان را از سرور می‌گیریم —
+    // به‌جای دادهٔ نمایشی محلی (بخش ۱۵.۲ سند).
+    if (kUseLiveBackend) {
+      Future.microtask(
+          () => InstructorDirectory.instance.loadFromBackend(ref.read(apiClientProvider)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +43,11 @@ class _InstructorListScreenState extends State<InstructorListScreen> {
         body: ListenableBuilder(
           listenable: InstructorDirectory.instance,
           builder: (context, _) {
-            final instructors = InstructorDirectory.instance.search(_query);
+            final dir = InstructorDirectory.instance;
+            if (kUseLiveBackend && !dir.loadedFromBackend) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final instructors = dir.search(_query);
             return CustomScrollView(slivers: [
               SliverAppBar(
                 expandedHeight: 150,
@@ -54,7 +74,7 @@ class _InstructorListScreenState extends State<InstructorListScreen> {
                         child: Text(
                           '${InstructorDirectory.instance.all.length} استاد ثبت‌شده',
                           style: TextStyle(
-                              color: Colors.white.withOpacity(.85),
+                              color: Colors.white.withValues(alpha: .85),
                               fontSize: 13),
                         ),
                       ),
@@ -102,15 +122,17 @@ class _InstructorListScreenState extends State<InstructorListScreen> {
   }
 }
 
-class _InstructorCard extends StatelessWidget {
+class _InstructorCard extends ConsumerWidget {
   final InstructorProfile instructor;
   const _InstructorCard({required this.instructor});
 
   @override
-  Widget build(BuildContext context) {
-    // آمار فعالیت از همان منبع واحد حقیقت سمینارها (SeminarStore) —
-    // «هر چه داشبورد استاد می‌بیند، مدیر همان را می‌بیند».
-    final seminars = SeminarStore.instance.byInstructorSync(instructor.id);
+  Widget build(BuildContext context, WidgetRef ref) {
+    // آمار فعالیت از همان منبع واحد حقیقت سمینارها — در حالت Backend واقعی
+    // مستقیماً از سرور (`GET /seminars?instructor=`)، تا «هر چه داشبورد
+    // استاد می‌بیند، مدیر همان را ببیند» واقعاً درست باشد.
+    final seminarsAsync = ref.watch(seminarsByInstructorProvider(instructor.id));
+    final seminars = seminarsAsync.valueOrNull ?? const [];
     final liveCount = seminars.where((s) => s.isLiveNow).length;
     final upcoming =
         seminars.where((s) => !s.hasEnded && !s.isLiveNow).length;
@@ -131,8 +153,8 @@ class _InstructorCard extends StatelessWidget {
               child: CircleAvatar(
                 radius: 26,
                 backgroundColor: instructor.suspended
-                    ? Colors.grey.withOpacity(.2)
-                    : AppPalette.green.withOpacity(.15),
+                    ? Colors.grey.withValues(alpha: .2)
+                    : AppPalette.green.withValues(alpha: .15),
                 child: Text(
                   instructor.fullName.characters.first,
                   style: TextStyle(
@@ -207,7 +229,7 @@ class _SuspendPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(.12),
+        color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(suspended ? 'مسدود' : 'فعال',
@@ -228,7 +250,7 @@ class _StatChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: color.withOpacity(.08),
+          color: color.withValues(alpha: .08),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
