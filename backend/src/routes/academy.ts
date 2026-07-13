@@ -1,0 +1,256 @@
+/**
+ * routes/academy.ts — «آکادمی»: کتابخانه، بانک سؤال و پاسخ‌ها روی سرور.
+ * زیر `/api/v1` mount می‌شود.
+ *
+ * خواندن برای هر کاربر واردشده؛ نوشتن کتاب/سؤال فقط مدیر؛ ثبت پاسخ توسط شاگرد.
+ * شناسهٔ رکوردها را کلاینت می‌فرستد (Upsert با INSERT OR REPLACE) تا کشِ محلی
+ * و سرور همیشه هماهنگ بمانند.
+ */
+import { Hono } from 'hono';
+import { verifyBearer } from '../lib/auth';
+
+type Bindings = {
+  DB: D1Database;
+  JWT_SECRET: string;
+};
+
+const academy = new Hono<{ Bindings: Bindings }>();
+const uid = () => crypto.randomUUID();
+
+function fail(code: string, fa: string, en: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en } };
+}
+
+async function me(c: any): Promise<{ sub: string; role: string } | null> {
+  const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  if (!p?.['sub']) return null;
+  return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
+}
+
+// ─────────────────────────────── Books ──────────────────────────────────────
+
+function bookJson(r: any) {
+  return {
+    id: r.id,
+    title: r.title,
+    subject: r.subject,
+    gradeId: r.grade_id,
+    category: r.category,
+    author: r.author,
+    description: r.description,
+    language: r.language,
+    pdfFileName: r.pdf_file_name,
+    fileSizeMb: r.file_size_mb,
+    pageCount: r.page_count,
+    coverIndex: r.cover_index,
+    includeInRag: r.include_in_rag === 1,
+    status: r.status,
+    uploadedAt: r.uploaded_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+academy.get('/academy/books', async (c) => {
+  if (!(await me(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM academy_books ORDER BY updated_at DESC',
+  ).all<any>();
+  return c.json({ books: results.map(bookJson) });
+});
+
+academy.post('/academy/books', async (c) => {
+  const u = await me(c);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req.json<Record<string, any>>().catch(() => null);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  const id = String(b.id ?? '').trim() || `lb_${Date.now()}`;
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO academy_books
+       (id, title, subject, grade_id, category, author, description, language,
+        pdf_file_name, file_size_mb, page_count, cover_index, include_in_rag, status,
+        uploaded_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        COALESCE((SELECT uploaded_at FROM academy_books WHERE id = ?), datetime('now')),
+        datetime('now'))`,
+  )
+    .bind(
+      id,
+      String(b.title ?? ''),
+      String(b.subject ?? ''),
+      Number(b.gradeId ?? 0),
+      String(b.category ?? ''),
+      String(b.author ?? ''),
+      String(b.description ?? ''),
+      String(b.language ?? 'دری'),
+      String(b.pdfFileName ?? ''),
+      Number(b.fileSizeMb ?? 0),
+      Number(b.pageCount ?? 0),
+      Number(b.coverIndex ?? 0),
+      b.includeInRag ? 1 : 0,
+      b.status === 'published' ? 'published' : 'draft',
+      id,
+    )
+    .run();
+  const row = await c.env.DB.prepare('SELECT * FROM academy_books WHERE id = ?').bind(id).first<any>();
+  return c.json({ book: bookJson(row) }, 201);
+});
+
+academy.delete('/academy/books/:id', async (c) => {
+  const u = await me(c);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  await c.env.DB.prepare('DELETE FROM academy_books WHERE id = ?').bind(c.req.param('id')).run();
+  return c.json({ success: true });
+});
+
+// ────────────────────────────── Questions ───────────────────────────────────
+
+function questionJson(r: any) {
+  let options: string[] = [];
+  try {
+    options = JSON.parse(r.options_json ?? '[]');
+  } catch {
+    options = [];
+  }
+  return {
+    id: r.id,
+    subject: r.subject,
+    gradeId: r.grade_id,
+    chapter: r.chapter,
+    kind: r.kind,
+    text: r.text,
+    options,
+    correctIndex: r.correct_index,
+    correctBool: r.correct_bool === 1,
+    modelAnswer: r.model_answer,
+    points: r.points,
+    status: r.status,
+    aiGenerated: r.ai_generated === 1,
+    createdAt: r.created_at,
+  };
+}
+
+academy.get('/academy/questions', async (c) => {
+  if (!(await me(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM academy_questions ORDER BY created_at DESC',
+  ).all<any>();
+  return c.json({ questions: results.map(questionJson) });
+});
+
+academy.post('/academy/questions', async (c) => {
+  const u = await me(c);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req.json<Record<string, any>>().catch(() => null);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  const id = String(b.id ?? '').trim() || `bq_${Date.now()}`;
+  const kind = ['mcq', 'trueFalse', 'essay'].includes(b.kind) ? b.kind : 'mcq';
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO academy_questions
+       (id, subject, grade_id, chapter, kind, text, options_json, correct_index,
+        correct_bool, model_answer, points, status, ai_generated,
+        created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        COALESCE((SELECT created_at FROM academy_questions WHERE id = ?), datetime('now')))`,
+  )
+    .bind(
+      id,
+      String(b.subject ?? ''),
+      Number(b.gradeId ?? 0),
+      String(b.chapter ?? ''),
+      kind,
+      String(b.text ?? ''),
+      JSON.stringify(Array.isArray(b.options) ? b.options : []),
+      Number(b.correctIndex ?? 0),
+      b.correctBool ? 1 : 0,
+      String(b.modelAnswer ?? ''),
+      Number(b.points ?? 1),
+      b.status === 'published' ? 'published' : 'draft',
+      b.aiGenerated ? 1 : 0,
+      id,
+    )
+    .run();
+  const row = await c.env.DB.prepare('SELECT * FROM academy_questions WHERE id = ?').bind(id).first<any>();
+  return c.json({ question: questionJson(row) }, 201);
+});
+
+academy.delete('/academy/questions/:id', async (c) => {
+  const u = await me(c);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  await c.env.DB.prepare('DELETE FROM academy_questions WHERE id = ?').bind(c.req.param('id')).run();
+  return c.json({ success: true });
+});
+
+// ───────────────────────────── Submissions ──────────────────────────────────
+
+function submissionJson(r: any) {
+  let answers: unknown[] = [];
+  try {
+    answers = JSON.parse(r.answers_json ?? '[]');
+  } catch {
+    answers = [];
+  }
+  return {
+    id: r.id,
+    studentId: r.student_id,
+    studentName: r.student_name,
+    gradeId: r.grade_id,
+    subject: r.subject,
+    submittedAt: r.submitted_at,
+    answers,
+    scorePercent: r.score_percent,
+    earnedPoints: r.earned_points,
+    totalPoints: r.total_points,
+    aiAssisted: r.ai_assisted === 1,
+  };
+}
+
+academy.get('/academy/submissions', async (c) => {
+  const u = await me(c);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  // شاگرد فقط پاسخ‌های خودش؛ مدیر می‌تواند studentId دلخواه یا همه را ببیند.
+  const requested = c.req.query('studentId');
+  const target = u.role === 'super_admin' ? requested : u.sub;
+  let stmt;
+  if (target) {
+    stmt = c.env.DB.prepare(
+      'SELECT * FROM academy_submissions WHERE student_id = ? ORDER BY submitted_at DESC',
+    ).bind(target);
+  } else {
+    stmt = c.env.DB.prepare('SELECT * FROM academy_submissions ORDER BY submitted_at DESC');
+  }
+  const { results } = await stmt.all<any>();
+  return c.json({ submissions: results.map(submissionJson) });
+});
+
+academy.post('/academy/submissions', async (c) => {
+  const u = await me(c);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const b = await c.req.json<Record<string, any>>().catch(() => null);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  const id = String(b.id ?? '').trim() || `sub_${Date.now()}_${uid().slice(0, 6)}`;
+  // شاگرد فقط به نام خودش ثبت می‌کند (ضد جعل).
+  const studentId = u.role === 'super_admin' ? String(b.studentId ?? u.sub) : u.sub;
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO academy_submissions
+       (id, student_id, student_name, grade_id, subject, submitted_at, answers_json,
+        score_percent, earned_points, total_points, ai_assisted)
+     VALUES (?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id,
+      studentId,
+      String(b.studentName ?? ''),
+      Number(b.gradeId ?? 0),
+      String(b.subject ?? ''),
+      JSON.stringify(Array.isArray(b.answers) ? b.answers : []),
+      Number(b.scorePercent ?? 0),
+      Number(b.earnedPoints ?? 0),
+      Number(b.totalPoints ?? 0),
+      b.aiAssisted ? 1 : 0,
+    )
+    .run();
+  const row = await c.env.DB.prepare('SELECT * FROM academy_submissions WHERE id = ?').bind(id).first<any>();
+  return c.json({ submission: submissionJson(row) }, 201);
+});
+
+export default academy;

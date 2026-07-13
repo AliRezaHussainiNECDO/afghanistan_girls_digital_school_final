@@ -1,0 +1,29 @@
+import 'package:dartz/dartz.dart';
+import '../../../../../core/errors/failures.dart';
+import '../../domain/entities/ai_teacher_config.dart';
+import '../../domain/repositories/ai_teacher_management_repository.dart';
+import '../datasources/ai_teacher_management_local_datasource.dart';
+
+class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository {
+  final AiTeacherManagementLocalDataSource dataSource;
+  AiTeacherManagementRepositoryImpl(this.dataSource);
+
+  @override
+  Future<Either<Failure, List<AiTeacherConfig>>> getConfigs() async {
+    try {
+      return Right(await dataSource.getConfigs());
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, Unit>> updatePersona(String subjectId, String newDescription) async {
+    try {
+      await dataSource.updatePersona(subjectId, newDescription);
+      return const Right(unit);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+}

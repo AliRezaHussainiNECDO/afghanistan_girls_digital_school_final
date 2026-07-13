@@ -1,0 +1,35 @@
+{
+    "name": "Afghanistan Girls Digital School",
+    "short_name": "AGDS",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#07120B",
+    "theme_color": "#0B1A11",
+    "description": "مکتب دیجیتال دختران افغانستان — Afghanistan Girls Digital School",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

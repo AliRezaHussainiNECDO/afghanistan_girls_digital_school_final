@@ -1,0 +1,47 @@
+# پیکربندی Cloudflare Worker — بک‌اند «مکتب دیجیتال دختران افغانستان».
+# طبق درخواست کاربر: چت واقعی بین کاربران، پیام صوتی، و ذخیرهٔ کتاب‌های
+# پی‌دی‌اف نصاب تعلیمی نیاز به یک بک‌اند واقعی دارد (نه فقط داده‌های محلی).
+#
+# بعد از ساخت D1 و R2 (طبق backend/README.md)، مقادیر زیر را با شناسه‌های
+# واقعی خودتان جایگزین کنید.
+
+name = "afghan-girls-school-api"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# دامنهٔ شما — بعداً می‌توانید روی afghanistangirlsdigitalschool.org هم Route بسازید.
+# routes = [{ pattern = "api.afghanistangirlsdigitalschool.org/*", zone_name = "afghanistangirlsdigitalschool.org" }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "afghan_girls_school_db"
+database_id = "76b6e211-eecd-4464-ae0f-8fb65a21eebe"
+
+# R2 — فضای ذخیرهٔ فایل‌های صوتی چت و PDF کتابخانه.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "afghan-girls-school-storage"
+
+[vars]
+ALLOWED_ORIGIN = "*"
+# ── پخش زندهٔ سمینار با Cloudflare Stream ──────────────────────────────────
+#   ۱) در داشبورد Cloudflare، بخش Stream را فعال کنید (پلن پخش زنده).
+#   ۲) شناسهٔ حساب و زیردامنهٔ مشتری استریم را اینجا بگذارید:
+#        CF_ACCOUNT_ID       = شناسهٔ حساب (Account ID)
+#        CF_STREAM_CUSTOMER  = کد مشتری در نشانی customer-XXXX.cloudflarestream.com
+#   ۳) توکن API با دسترسی «Stream:Edit» را به‌صورت راز (secret) بگذارید:
+#        wrangler secret put CF_STREAM_TOKEN
+#   اگر این‌ها تنظیم نشوند، مسیر go-live با ۵۰۳ پاسخ می‌دهد و اپ به «لینک
+#   جلسهٔ دستی» (meetingLink) یا اتاق داخلی برمی‌گردد؛ پس اپ همیشه کار می‌کند.
+# CF_ACCOUNT_ID = "..."
+# CF_STREAM_CUSTOMER = "..."
+# معلم هوشمند (LLM) — کلید را با `wrangler secret put AI_PROVIDER_KEY` بگذارید.
+# URL و مدل را می‌توانید برای هر ارائه‌دهندهٔ سازگار با OpenAI تغییر دهید.
+AI_PROVIDER_URL = "https://api.openai.com/v1/chat/completions"
+AI_MODEL = "gpt-4o-mini"
+# صدای معلم AI (TTS/STT):
+#   • صدای خانم دری با Azure:  wrangler secret put AZURE_TTS_KEY
+#     و AZURE_TTS_REGION را (مثلاً "eastus") زیر تنظیم کنید.
+#   • در نبود Azure، از همان AI_PROVIDER_KEY برای TTS/Whisper استفاده می‌شود.
+# AZURE_TTS_REGION = "eastus"
+# AZURE_TTS_VOICE = "prs-AF-FatimaNeural"   # اگر نامعتبر بود: prs-AF-LatifaNeural
