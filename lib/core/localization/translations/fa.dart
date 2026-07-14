@@ -61,6 +61,7 @@ const Map<String, String> faStrings = {
 'auth.email': 'ایمیل',
 'auth.password': 'رمز عبور',
 'auth.phone': 'شماره تلفن',
+  'auth.searchCountry': 'جستجوی کشور',
 'auth.firstName': 'نام',
 'auth.lastName': 'تخلص',
 'auth.dateOfBirth': 'تاریخ تولد',
