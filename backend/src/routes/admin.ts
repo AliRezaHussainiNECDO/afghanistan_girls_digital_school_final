@@ -3,18 +3,19 @@
  * فقط برای Super Admin (بررسی نقش از JWT).
  *
  * Endpointها (زیر `/api/v1/admin`):
- *   GET   /users?role=&q=
- *   PATCH /users/:id/toggle-suspend
- *   PATCH /users/:id                 body {status}
- *   GET   /invite-codes?type=&status=
- *   POST  /invite-codes/bulk-generate  body {type,count,batchLabel}
- *   PATCH /invite-codes/:id/revoke
+ *   GET    /users?role=&q=
+ *   PATCH  /users/:id/toggle-suspend
+ *   PATCH  /users/:id                       body {status}
+ *   GET    /invite-codes?type=&status=
+ *   POST   /invite-codes/bulk-generate      body {type,count,batchLabel}
+ *   PATCH  /invite-codes/:id/revoke
+ *   GET    /system-health                   پایش زندهٔ اتصال سرور/دیتابیس/ذخیره‌سازی
  *   ── مدیریت تفصیلی شاگرد (بخش ۱۵.۲) ──
- *   GET   /students?q=&grade=&province=&status=&at_risk=&page=   لیست صفحه‌بندی‌شده
- *   GET   /students/:id                جزئیات کامل تحصیلی
- *   GET   /students/:id/ai-report      گزارش معلم هوشمند (محاسبه‌شده از داده واقعی)
- *   PATCH /students/:id/status         body {status, reason}
- *   POST  /students/:id/password-reset-link   ارسال کد بازیابی به ایمیل شاگرد
+ *   GET    /students?q=&grade=&province=&status=&at_risk=&page=   لیست صفحه‌بندی‌شده
+ *   GET    /students/:id                    جزئیات کامل تحصیلی
+ *   GET    /students/:id/ai-report          گزارش معلم هوشمند (محاسبه‌شده از داده واقعی)
+ *   PATCH  /students/:id/status             body {status, reason}
+ *   POST   /students/:id/password-reset-link ارسال کد بازیابی به ایمیل شاگرد
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -27,9 +28,13 @@ import {
 
 type Bindings = {
   DB: D1Database;
+  BUCKET: R2Bucket;
   JWT_SECRET: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  AI_PROVIDER_KEY?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_STREAM_CUSTOMER?: string;
 };
 
 const admin = new Hono<{ Bindings: Bindings }>();
@@ -192,8 +197,8 @@ admin.get('/dashboard/stats', async (c) => {
   const totalStudents = await one("SELECT COUNT(*) AS n FROM users WHERE role='student' AND status='active'");
   const activeToday = await one(
     `SELECT COUNT(DISTINCT uid) AS n FROM (
-        SELECT user_id AS uid FROM student_lesson_views WHERE date(viewed_at)=date('now')
-        UNION SELECT user_id AS uid FROM exam_attempts WHERE date(submitted_at)=date('now'))`,
+       SELECT user_id AS uid FROM student_lesson_views WHERE date(viewed_at)=date('now')
+       UNION SELECT user_id AS uid FROM exam_attempts WHERE date(submitted_at)=date('now'))`,
   );
   const atRisk = await one(
     `SELECT COUNT(*) AS n FROM users u WHERE u.role='student' AND u.status='active'
@@ -213,6 +218,124 @@ admin.get('/dashboard/stats', async (c) => {
     atRiskCount: atRisk,
     avgScorePercent: avgRow?.a != null ? Math.round(avgRow.a * 10) / 10 : 0,
     gradeDistribution,
+  });
+});
+
+// ─────────────────────── سلامت زندهٔ سیستم (پایش مدیر) ──────────────────────
+// دیتابیس (D1) و فضای ذخیره‌سازی (R2) به‌صورت واقعی و زنده تست می‌شوند؛
+// خدمات جانبی (AI، ایمیل، پخش زنده) فقط از نظر «پیکربندی‌شده بودن» بررسی
+// می‌شوند تا هزینه/تأخیر تماس واقعی با آن‌ها به این Endpoint تحمیل نشود.
+// شناسهٔ هر بررسی (`id`) عمداً رشته‌ای و باز است — می‌توان بعداً بررسی‌های
+// جدید اضافه کرد بدون نیاز به تغییر کلاینت (اپ آن‌ها را با آیکون/برچسب
+// پیش‌فرض نمایش می‌دهد).
+type HealthCheck = {
+  id: string;
+  status: 'ok' | 'warning' | 'error';
+  latencyMs?: number;
+  detail_fa?: string;
+  detail_en?: string;
+};
+
+admin.get('/system-health', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+
+  const checks: HealthCheck[] = [];
+
+  // API — اگر به این‌جا رسیده‌ایم، خود سرور در دسترس است.
+  checks.push({ id: 'api', status: 'ok', latencyMs: 0 });
+
+  // دیتابیس D1 — یک پرس‌وجوی سبک و واقعی.
+  {
+    const start = Date.now();
+    try {
+      await c.env.DB.prepare('SELECT 1 AS ok').first();
+      checks.push({ id: 'database', status: 'ok', latencyMs: Date.now() - start });
+    } catch {
+      checks.push({
+        id: 'database',
+        status: 'error',
+        latencyMs: Date.now() - start,
+        detail_fa: 'اتصال به دیتابیس D1 برقرار نشد',
+        detail_en: 'Could not connect to the D1 database',
+      });
+    }
+  }
+
+  // فضای ذخیره‌سازی R2.
+  {
+    const start = Date.now();
+    try {
+      await c.env.BUCKET.list({ limit: 1 });
+      checks.push({ id: 'storage', status: 'ok', latencyMs: Date.now() - start });
+    } catch {
+      checks.push({
+        id: 'storage',
+        status: 'error',
+        latencyMs: Date.now() - start,
+        detail_fa: 'اتصال به فضای ذخیره‌سازی R2 برقرار نشد',
+        detail_en: 'Could not connect to the R2 storage bucket',
+      });
+    }
+  }
+
+  // احراز هویت — بودن JWT_SECRET.
+  checks.push(
+    c.env.JWT_SECRET
+      ? { id: 'auth', status: 'ok' }
+      : {
+          id: 'auth',
+          status: 'error',
+          detail_fa: 'JWT_SECRET تنظیم نشده است',
+          detail_en: 'JWT_SECRET is not configured',
+        },
+  );
+
+  // معلم هوشمند (LLM) — فقط بررسی پیکربندی، نه تماس واقعی.
+  checks.push(
+    c.env.AI_PROVIDER_KEY
+      ? { id: 'aiTeacher', status: 'ok' }
+      : {
+          id: 'aiTeacher',
+          status: 'warning',
+          detail_fa: 'AI_PROVIDER_KEY تنظیم نشده — معلم هوشمند غیرفعال است',
+          detail_en: 'AI_PROVIDER_KEY is not configured — the AI teacher is disabled',
+        },
+  );
+
+  // ایمیل (Resend) — فقط بررسی پیکربندی.
+  checks.push(
+    c.env.RESEND_API_KEY
+      ? { id: 'email', status: 'ok' }
+      : {
+          id: 'email',
+          status: 'warning',
+          detail_fa: 'RESEND_API_KEY تنظیم نشده — ارسال ایمیل غیرفعال است',
+          detail_en: 'RESEND_API_KEY is not configured — email sending is disabled',
+        },
+  );
+
+  // پخش زندهٔ سمینار (Cloudflare Stream) — نبودش خطرناک نیست چون اپ به‌صورت
+  // خودکار به لینک دستی/اتاق داخلی برمی‌گردد.
+  checks.push(
+    c.env.CF_ACCOUNT_ID && c.env.CF_STREAM_CUSTOMER
+      ? { id: 'liveStream', status: 'ok' }
+      : {
+          id: 'liveStream',
+          status: 'warning',
+          detail_fa: 'Cloudflare Stream پیکربندی نشده — به لینک دستی جلسه بازمی‌گردد',
+          detail_en: 'Cloudflare Stream is not configured — falls back to a manual meeting link',
+        },
+  );
+
+  const hasError = checks.some((x) => x.status === 'error');
+  const hasWarning = checks.some((x) => x.status === 'warning');
+  const overallStatus = hasError ? 'down' : hasWarning ? 'degraded' : 'operational';
+
+  return c.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    overallStatus,
+    checks,
   });
 });
 
@@ -277,7 +400,7 @@ admin.get('/safety-queue', async (c) => {
        WHERE u.role='student' AND u.status='active' AND u.created_at <= date('now','-5 days')
        AND NOT EXISTS (SELECT 1 FROM student_lesson_views v WHERE v.user_id=u.id AND v.viewed_at>=date('now','-5 days'))
        AND NOT EXISTS (SELECT 1 FROM exam_attempts a WHERE a.user_id=u.id AND a.submitted_at>=date('now','-5 days'))
-     LIMIT 100`,
+       LIMIT 100`,
   ).all<{ id: string; first_name: string; last_name: string; current_grade: number | null }>();
 
   const items = stored.map(safetyJson);
@@ -316,8 +439,8 @@ admin.patch('/safety-queue/:id/resolve', async (c) => {
       .first<{ first_name: string; last_name: string; current_grade: number | null }>();
     await c.env.DB.prepare(
       `INSERT INTO safety_events (id, type, summary, high_priority, status, student_id, student_name, student_grade, source, trigger_reason)
-       VALUES (?, 'atRisk', ?, 1, ?, ?, ?, ?, 'سیستم حاضری', 'عدم فعالیت ۵ روزه')
-       ON CONFLICT(id) DO UPDATE SET status=excluded.status`,
+         VALUES (?, 'atRisk', ?, 1, ?, ?, ?, ?, 'سیستم حاضری', 'عدم فعالیت ۵ روزه')
+         ON CONFLICT(id) DO UPDATE SET status=excluded.status`,
     )
       .bind(
         id,
@@ -369,11 +492,11 @@ async function attendanceRateOf(db: D1Database, userId: string): Promise<number>
   const { results } = await db
     .prepare(
       `SELECT DISTINCT d FROM (
-          SELECT date(viewed_at) AS d FROM student_lesson_views
-            WHERE user_id = ? AND viewed_at >= date('now','-13 days')
-          UNION
-          SELECT date(submitted_at) AS d FROM exam_attempts
-            WHERE user_id = ? AND submitted_at >= date('now','-13 days')
+         SELECT date(viewed_at) AS d FROM student_lesson_views
+         WHERE user_id = ? AND viewed_at >= date('now','-13 days')
+         UNION
+         SELECT date(submitted_at) AS d FROM exam_attempts
+         WHERE user_id = ? AND submitted_at >= date('now','-13 days')
        )`,
     )
     .bind(userId, userId)
@@ -445,7 +568,7 @@ admin.get('/students', async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT id, first_name, last_name, avatar_url, current_grade, province, status FROM users
-     WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+       WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE)
     .all<any>();
@@ -479,7 +602,7 @@ admin.get('/students/:id', async (c) => {
           WHERE a.user_id=? AND e.subject_id=s.id AND e.type IN ('daily_quiz','homework')) AS quiz_avg,
        (SELECT AVG(a.score_percent) FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
           WHERE a.user_id=? AND e.subject_id=s.id AND e.type IN ('monthly','final')) AS exam_avg
-     FROM subjects s ORDER BY s.order_index`,
+       FROM subjects s ORDER BY s.order_index`,
   )
     .bind(grade, id, grade, id, id)
     .all<any>();
@@ -510,8 +633,8 @@ admin.get('/students/:id', async (c) => {
   // حاضری ۳۰ روزه.
   const { results: actDays } = await c.env.DB.prepare(
     `SELECT DISTINCT d FROM (
-        SELECT date(viewed_at) AS d FROM student_lesson_views WHERE user_id=? AND viewed_at >= date('now','-29 days')
-        UNION SELECT date(submitted_at) AS d FROM exam_attempts WHERE user_id=? AND submitted_at >= date('now','-29 days')
+       SELECT date(viewed_at) AS d FROM student_lesson_views WHERE user_id=? AND viewed_at >= date('now','-29 days')
+       UNION SELECT date(submitted_at) AS d FROM exam_attempts WHERE user_id=? AND submitted_at >= date('now','-29 days')
      )`,
   )
     .bind(id, id)
@@ -555,10 +678,10 @@ admin.get('/students/:id', async (c) => {
     .first<{ n: number }>();
   const higherRow = await c.env.DB.prepare(
     `SELECT COUNT(*) AS n FROM (
-        SELECT u2.id, AVG(a.score_percent) AS a FROM users u2
-        LEFT JOIN exam_attempts a ON a.user_id = u2.id
-        WHERE u2.role='student' AND u2.status='active' AND u2.current_grade = ?
-        GROUP BY u2.id HAVING a > ?
+       SELECT u2.id, AVG(a.score_percent) AS a FROM users u2
+       LEFT JOIN exam_attempts a ON a.user_id = u2.id
+       WHERE u2.role='student' AND u2.status='active' AND u2.current_grade = ?
+       GROUP BY u2.id HAVING a > ?
      )`,
   )
     .bind(grade, myAvg)
@@ -633,7 +756,7 @@ admin.get('/students/:id/ai-report', async (c) => {
   const { results: subjPerf } = await c.env.DB.prepare(
     `SELECT s.name_fa, AVG(a.score_percent) AS avg FROM exam_attempts a
        JOIN exams e ON e.id=a.exam_id JOIN subjects s ON s.id=e.subject_id
-     WHERE a.user_id = ? GROUP BY s.id ORDER BY avg DESC`,
+       WHERE a.user_id = ? GROUP BY s.id ORDER BY avg DESC`,
   )
     .bind(id)
     .all<{ name_fa: string; avg: number }>();
