@@ -8,10 +8,11 @@
  *   GET   /students/me/parent-links?status=     (دانش‌آموز) درخواست‌های پیوند
  *   PATCH /students/me/parent-links/:id         (دانش‌آموز) تأیید/رد
  *   GET   /parents/me/children                  (والد) فرزندان تأییدشده
- *   GET   /parents/me/children/:sid/summary     (والد) کارنامهٔ زندهٔ فرزند
+ *   GET   /parents/me/children/:sid/summary     (والد) کارنامهٔ زندهٔ فرزند — پیشرفت و امتیاز دقیقاً مطابق داشبورد شاگرد
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 
 type Bindings = {
   DB: D1Database;
@@ -199,6 +200,8 @@ parents.get('/parents/me/children', async (c) => {
 });
 
 // کارنامهٔ زندهٔ فرزند — فقط اگر پیوند approved باشد (Allow-list بخش ۱۳ب.۳).
+// پیشرفت هر مضمون و امتیاز فعالیت از lib/progress.ts می‌آید — همان منبعی که
+// داشبورد خود شاگرد استفاده می‌کند، تا عدد اینجا دقیقاً با آنجا یکسان باشد.
 parents.get('/parents/me/children/:sid/summary', async (c) => {
   const me = await auth(c);
   if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
@@ -217,42 +220,38 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
   const grade = student?.current_grade ?? 7;
   const displayName = student ? `${student.first_name} ${student.last_name}`.trim() : 'فرزند';
 
-  // پیشرفت هر مضمون + نمرهٔ میانگین امتحان (بخش ۶/۷).
-  const { results: subjects } = await c.env.DB.prepare(
-    `SELECT s.id AS subject_id, s.name_fa AS name_fa,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS total,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS viewed,
+  // پیشرفت هر مضمون (منبع واحد — همان محاسبهٔ داشبورد شاگرد) + میانگین امتحان جداگانه.
+  const subjectsProgress = await getSubjectProgressList(c.env.DB, studentId, grade);
+  const { results: examAvgRows } = await c.env.DB.prepare(
+    `SELECT s.id,
        (SELECT AVG(a.score_percent) FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
           WHERE a.user_id=? AND e.subject_id=s.id AND e.grade_number=?) AS avg_score
      FROM subjects s ORDER BY s.order_index`,
   )
-    .bind(grade, studentId, grade, studentId, grade)
-    .all<{ subject_id: string; name_fa: string; total: number; viewed: number; avg_score: number | null }>();
+    .bind(studentId, grade)
+    .all<{ id: string; avg_score: number | null }>();
+  const examAvgMap = new Map(examAvgRows.map((r) => [r.id, r.avg_score]));
 
-  let sum = 0;
   let completedCount = 0;
-  const subjectSummaries = subjects.map((r) => {
-    const completion = r.total > 0 ? (r.viewed / r.total) * 100 : 0;
-    sum += completion;
+  const subjectSummaries = subjectsProgress.map((sp) => {
     let statusLabel: string;
-    if (r.total > 0 && r.viewed >= r.total) {
+    if (sp.status === 'completed') {
       statusLabel = 'completed';
       completedCount++;
-    } else if (r.viewed > 0) {
+    } else if (sp.status === 'inProgress') {
       statusLabel = 'in_progress';
     } else {
       statusLabel = 'locked';
     }
+    const avgScore = examAvgMap.get(sp.subjectId) ?? null;
     return {
-      subjectNameFa: r.name_fa,
+      subjectNameFa: sp.nameFa,
       statusLabel,
-      finalScore: r.avg_score != null ? Math.round(r.avg_score * 10) / 10 : null,
+      progressPercent: sp.percent,
+      finalScore: avgScore != null ? Math.round(avgScore * 10) / 10 : null,
     };
   });
-  const gradeCompletion = subjects.length ? sum / subjects.length : 0;
+  const gradeCompletion = averagePercent(subjectsProgress);
 
   // حاضری از فعالیت واقعی ۱۴ روز اخیر (بخش ۹.۱).
   const { results: actDays } = await c.env.DB.prepare(
@@ -279,22 +278,29 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
     "SELECT title FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 3",
   ).all<{ title: string }>();
 
+  // امتیاز فعالیت (Gamification) — همان امتیازی که در خانهٔ شاگرد نمایش داده می‌شود.
+  const points = await getPointsSummary(c.env.DB, studentId);
+
   // دستاوردهای ساده از دادهٔ واقعی.
   const achievements: string[] = [];
   if (completedCount >= 1) achievements.push(`تکمیل ${completedCount} مضمون`);
   if (attendanceRate >= 75) achievements.push('حاضری منظم');
   if (certs.length > 0) achievements.push('دارندهٔ گواهی‌نامه');
+  if (points.totalPoints >= 100) achievements.push(`رسیدن به سطح «${points.levelTitleFa}»`);
 
   return c.json({
     studentId,
     displayName,
     gradeNumber: grade,
-    gradeCompletionPercent: Math.round(gradeCompletion * 10) / 10,
+    gradeCompletionPercent: gradeCompletion,
     attendanceRatePercent: attendanceRate,
     subjects: subjectSummaries,
     achievements,
     certificates: certificateTitles,
     upcomingSeminarTitles: sems.map((s) => s.title),
+    pointsTotal: points.totalPoints,
+    pointsLevel: points.level,
+    pointsLevelTitleFa: points.levelTitleFa,
   });
 });
 
