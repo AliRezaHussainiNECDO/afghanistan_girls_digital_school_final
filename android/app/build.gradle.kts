@@ -36,7 +36,7 @@ android {
         // jitsi_meet_flutter_sdk (ویدیوکنفرانس واقعی اتاق فال‌بک سمینار) حداقل
         // به API 24 نیاز دارد؛ apivideo_live_stream/chewie با آن سازگارند.
         // از maxOf استفاده می‌کنیم تا اگر پیش‌فرض فلاتر بالاتر بود پایین نیاید.
-        minSdk = maxOf(24, flutter.minSdkVersion)
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
