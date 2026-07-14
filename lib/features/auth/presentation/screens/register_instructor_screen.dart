@@ -5,6 +5,7 @@ import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../../../core/widgets/country_phone_field.dart';
 import '../../domain/usecases/auth_usecases.dart';
 import '../providers/auth_providers.dart';
 import '../widgets/terms_gate.dart';
@@ -177,15 +178,11 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                                 (v == null || !v.contains('@')) ? context.tr('common.required') : null,
                           ),
                           const SizedBox(height: 12),
-                          TextFormField(
+                          // شمارهٔ تلفن با انتخاب‌گر پویای کد کشور — به‌جای پیش‌فرض
+                          // ثابتِ افغانستان، تا استادان از هر کشوری بتوانند ثبت‌نام کنند.
+                          CountryPhoneField(
                             controller: _phone,
-                            keyboardType: TextInputType.phone,
-                            decoration: InputDecoration(
-                              labelText: context.tr('auth.phone'),
-                              prefixIcon: const Icon(Icons.phone_rounded),
-                            ),
-                            validator: (v) =>
-                                (v == null || v.trim().length < 9) ? context.tr('common.required') : null,
+                            label: context.tr('auth.phone'),
                           ),
                           const SizedBox(height: 12),
                           // ── معلومات ضروری تدریس ──

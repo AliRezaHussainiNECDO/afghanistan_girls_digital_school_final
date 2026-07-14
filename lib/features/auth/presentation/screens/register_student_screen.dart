@@ -6,6 +6,7 @@ import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../../../core/widgets/country_phone_field.dart';
 import '../../domain/usecases/auth_usecases.dart';
 import '../providers/auth_providers.dart';
 import '../widgets/terms_gate.dart';
@@ -114,122 +115,115 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                       boxShadow: AppShadows.soft,
                     ),
                     child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _firstName,
-                          decoration: InputDecoration(labelText: context.tr('auth.firstName')),
-                          validator: (v) => (v == null || v.trim().length < 2)
-                              ? context.tr('common.required')
-                              : null,
-                        ),
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _firstName,
+                                decoration: InputDecoration(labelText: context.tr('auth.firstName')),
+                                validator: (v) => (v == null || v.trim().length < 2)
+                                    ? context.tr('common.required')
+                                    : null,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _lastName,
+                                decoration: InputDecoration(labelText: context.tr('auth.lastName')),
+                                validator: (v) => (v == null || v.trim().length < 2)
+                                    ? context.tr('common.required')
+                                    : null,
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _dob,
+                            decoration: InputDecoration(
+                              labelText: context.tr('auth.dateOfBirth'),
+                              hintText: 'YYYY-MM-DD',
+                            ),
+                            validator: (v) => (v == null || v.isEmpty) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(labelText: context.tr('auth.email')),
+                            validator: (v) =>
+                                (v == null || !v.contains('@')) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 12),
+                          // شمارهٔ تلفن با انتخاب‌گر پویای کد کشور — به‌جای پیش‌فرض
+                          // ثابتِ افغانستان، تا شاگردان از هر کشوری بتوانند ثبت‌نام کنند.
+                          CountryPhoneField(
+                            controller: _phone,
+                            label: context.tr('auth.phone'),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<int>(
+                            initialValue: _grade,
+                            decoration: InputDecoration(labelText: context.tr('auth.currentGrade')),
+                            items: AppConstants.grades
+                                .map((g) => DropdownMenuItem(value: g, child: Text('$g')))
+                                .toList(),
+                            onChanged: (v) => setState(() => _grade = v ?? _grade),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: _province,
+                            decoration: InputDecoration(labelText: context.tr('common.province')),
+                            isExpanded: true,
+                            items: AppConstants.provinces
+                                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                                .toList(),
+                            onChanged: (v) => setState(() => _province = v ?? _province),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _password,
+                            obscureText: true,
+                            decoration: InputDecoration(labelText: context.tr('auth.password')),
+                            validator: (v) =>
+                                (v == null || v.length < 8) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _inviteCode,
+                            textCapitalization: TextCapitalization.characters,
+                            decoration: InputDecoration(
+                              labelText: context.tr('auth.inviteCode'),
+                              helperText: context.tr('auth.inviteCodeHint'),
+                            ),
+                            validator: (v) =>
+                                (v == null || v.trim().isEmpty) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 8),
+                          TermsConsentField(
+                            accepted: _acceptedTerms,
+                            showError: _showTermsError,
+                            onChanged: (v) => setState(() {
+                              _acceptedTerms = v;
+                              if (v) _showTermsError = false;
+                            }),
+                          ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 8),
+                            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                          ],
+                          const SizedBox(height: 20),
+                          AppPrimaryButton(
+                            label: context.tr('auth.registerButton'),
+                            loading: _submitting,
+                            onPressed: _submit,
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _lastName,
-                          decoration: InputDecoration(labelText: context.tr('auth.lastName')),
-                          validator: (v) => (v == null || v.trim().length < 2)
-                              ? context.tr('common.required')
-                              : null,
-                        ),
-                      ),
-                    ]),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _dob,
-                      decoration: InputDecoration(
-                        labelText: context.tr('auth.dateOfBirth'),
-                        hintText: 'YYYY-MM-DD',
-                      ),
-                      validator: (v) => (v == null || v.isEmpty) ? context.tr('common.required') : null,
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(labelText: context.tr('auth.email')),
-                      validator: (v) =>
-                          (v == null || !v.contains('@')) ? context.tr('common.required') : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phone,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(labelText: context.tr('auth.phone')),
-                      // اعتبارسنجی فرمت افغانستان +93 به‌دنبال ۹ رقم (بخش ۳.۱)؛
-                      // در فاز ۲ با کتابخانهٔ libphonenumber جایگزین می‌شود (بخش ۳ب.۲).
-                      validator: (v) {
-                        final pattern = RegExp(r'^\+93\d{9}$');
-                        return (v == null || !pattern.hasMatch(v.trim()))
-                            ? '+93XXXXXXXXX'
-                            : null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      initialValue: _grade,
-                      decoration: InputDecoration(labelText: context.tr('auth.currentGrade')),
-                      items: AppConstants.grades
-                          .map((g) => DropdownMenuItem(value: g, child: Text('$g')))
-                          .toList(),
-                      onChanged: (v) => setState(() => _grade = v ?? _grade),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: _province,
-                      decoration: InputDecoration(labelText: context.tr('common.province')),
-                      isExpanded: true,
-                      items: AppConstants.provinces
-                          .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                          .toList(),
-                      onChanged: (v) => setState(() => _province = v ?? _province),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _password,
-                      obscureText: true,
-                      decoration: InputDecoration(labelText: context.tr('auth.password')),
-                      validator: (v) =>
-                          (v == null || v.length < 8) ? context.tr('common.required') : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _inviteCode,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(
-                        labelText: context.tr('auth.inviteCode'),
-                        helperText: context.tr('auth.inviteCodeHint'),
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? context.tr('common.required') : null,
-                    ),
-                    const SizedBox(height: 8),
-                    TermsConsentField(
-                      accepted: _acceptedTerms,
-                      showError: _showTermsError,
-                      onChanged: (v) => setState(() {
-                        _acceptedTerms = v;
-                        if (v) _showTermsError = false;
-                      }),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 8),
-                      Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ],
-                    const SizedBox(height: 20),
-                    AppPrimaryButton(
-                      label: context.tr('auth.registerButton'),
-                      loading: _submitting,
-                      onPressed: _submit,
-                    ),
-                  ],
-                ),
-              ),
                   ),
                 ],
               ),

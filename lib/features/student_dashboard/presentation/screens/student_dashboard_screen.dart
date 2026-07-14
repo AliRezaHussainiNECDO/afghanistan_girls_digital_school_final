@@ -135,13 +135,19 @@ class StudentDashboardScreen extends ConsumerWidget {
               onTap: () => context.push(AppRoutes.certificates),
             ).animate().fadeIn(delay: 160.ms, duration: 380.ms).slideY(
                 begin: 0.15, end: 0, delay: 160.ms, duration: 380.ms, curve: Curves.easeOutCubic),
+            // نکته (رفع اشکال): باید هم عنوان و هم تاریخ موجود باشد؛ سرور
+            // ممکن است فقط عنوان امتحان را بفرستد و تاریخ را null بگذارد
+            // (چون هنوز فیلد تاریخ در جدول امتحانات وجود ندارد) — قبلاً این‌جا
+            // فقط عنوان چک می‌شد و «!» روی تاریخِ null کرش می‌کرد.
             if (summary.upcomingExamTitle != null) ...[
               const SizedBox(height: 12),
               _ActionCard(
                 icon: Icons.assignment_rounded,
                 iconColor: scheme.tertiary,
                 title: context.tr('dashboard.upcomingExam'),
-                subtitle: '${summary.upcomingExamTitle} — ${_fmtDate(summary.upcomingExamDate!)}',
+                subtitle: summary.upcomingExamDate != null
+                    ? '${summary.upcomingExamTitle} — ${_fmtDate(summary.upcomingExamDate!)}'
+                    : summary.upcomingExamTitle!,
                 onTap: () => context.push(AppRoutes.exams),
               ).animate().fadeIn(delay: 200.ms, duration: 380.ms).slideY(
                   begin: 0.15, end: 0, delay: 200.ms, duration: 380.ms, curve: Curves.easeOutCubic),
@@ -152,7 +158,9 @@ class StudentDashboardScreen extends ConsumerWidget {
                 icon: Icons.groups_rounded,
                 iconColor: scheme.secondary,
                 title: context.tr('dashboard.upcomingSeminar'),
-                subtitle: '${summary.upcomingSeminarTitle} — ${_fmtDate(summary.upcomingSeminarDate!)}',
+                subtitle: summary.upcomingSeminarDate != null
+                    ? '${summary.upcomingSeminarTitle} — ${_fmtDate(summary.upcomingSeminarDate!)}'
+                    : summary.upcomingSeminarTitle!,
                 onTap: () => context.push(AppRoutes.seminars),
               ).animate().fadeIn(delay: 260.ms, duration: 380.ms).slideY(
                   begin: 0.15, end: 0, delay: 260.ms, duration: 380.ms, curve: Curves.easeOutCubic),

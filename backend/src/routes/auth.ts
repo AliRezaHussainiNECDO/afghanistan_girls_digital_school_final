@@ -2,15 +2,15 @@
  * routes/auth.ts — روتر احراز هویت (بخش ۳ و ۱۹.۱ سند).
  *
  * Endpointها (زیر `/api/v1/auth`):
- *   POST /register         ثبت‌نام با بررسی Invite Code + هش رمز + صدور JWT
- *   POST /login            تأیید ایمیل/رمز + صدور JWT
- *   POST /refresh          تمدید Access Token با Refresh Token (Rotation)
- *   POST /logout           ابطال Refresh Token
- *   GET  /me               کاربر فعلی از روی Access Token
- *   GET  /verify-email     تأیید ایمیل با توکن لینک (صفحهٔ HTML)
- *   POST /resend-verification  ارسال مجدد لینک تأیید ایمیل
- *   POST /forgot-password  ارسال کد ۶ رقمی بازیابی به ایمیل
- *   POST /reset-password   تغییر رمز با کد ۶ رقمی
+ *  POST   /register              ثبت‌نام با بررسی Invite Code + هش رمز + صدور JWT
+ *  POST   /login                 تأیید ایمیل/رمز + صدور JWT
+ *  POST   /refresh                تمدید Access Token با Refresh Token (Rotation)
+ *  POST   /logout                 ابطال Refresh Token
+ *  GET    /me                    کاربر فعلی از روی Access Token
+ *  GET    /verify-email           تأیید ایمیل با توکن لینک (صفحهٔ HTML)
+ *  POST   /resend-verification    ارسال مجدد لینک تأیید ایمیل
+ *  POST   /forgot-password        ارسال کد ۶ رقمی بازیابی به ایمیل
+ *  POST   /reset-password          تغییر رمز با کد ۶ رقمی
  */
 import { Hono } from 'hono';
 import { hashPassword, verifyPassword, signJwt, verifyJwt, verifyBearer } from '../lib/auth';
@@ -114,9 +114,9 @@ function verifyResultPage(ok: boolean, message: string): string {
 <title>مکتب دیجیتال دختران افغانستان</title></head>
 <body style="margin:0;background:#f4f6f8;font-family:Tahoma,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
 <div style="background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:40px 32px;max-width:420px;text-align:center;">
-  <div style="font-size:48px;">${icon}</div>
-  <h2 style="color:${color};margin:16px 0 8px;">${message}</h2>
-  <p style="color:#7b8794;font-size:13px;">اکنون می‌توانید به اپلیکیشن برگردید.</p>
+<div style="font-size:48px;">${icon}</div>
+<h2 style="color:${color};margin:16px 0 8px;">${message}</h2>
+<p style="color:#7b8794;font-size:13px;">اکنون می‌توانید به اپلیکیشن برگردید.</p>
 </div></body></html>`;
 }
 
@@ -255,19 +255,45 @@ auth.post('/register', async (c) => {
 
 // ─────────────────────────── Verify Email ─────────────────────────────────
 
-/** کلیک روی لینک داخل ایمیل — خروجی HTML چون در مرورگر باز می‌شود. */
+/**
+ * کلیک روی لینک داخل ایمیل — خروجی HTML چون در مرورگر باز می‌شود.
+ *
+ * نکتهٔ مهم (رفع اشکال): بعضی از اپلیکیشن‌های ایمیل (Apple Mail Privacy
+ * Protection، پیش‌نمایش لینک در Safari/iMessage، اسکنرهای امنیتی شرکتی و
+ * غیره) به‌صورت خودکار همین URL را در پس‌زمینه بارگذاری می‌کنند تا پیش‌نمایش
+ * بسازند — این یعنی توکن یک‌بارمصرف ممکن است قبل از کلیک واقعی کاربر مصرف
+ * شده باشد. برای جلوگیری از نمایش گمراه‌کنندهٔ «لینک نامعتبر» در این حالت،
+ * ابتدا بررسی می‌کنیم که آیا ایمیل کاربر از قبل تأیید شده — اگر بله، نتیجه
+ * را «موفق» نشان می‌دهیم (Idempotent) حتی اگر همین توکن قبلاً مصرف شده باشد.
+ */
 auth.get('/verify-email', async (c) => {
   const token = c.req.query('token') ?? '';
   if (!token) return c.html(verifyResultPage(false, 'لینک ناقص است'), 400);
 
   const tokenHash = await sha256B64Url(token);
+  // در WHERE عمداً روی «used = 0» فیلتر نمی‌کنیم تا بتوانیم بین «توکن اصلاً
+  // وجود ندارد» و «توکن قبلاً مصرف شده» تمایز قائل شویم.
   const row = await c.env.DB.prepare(
-    "SELECT id, user_id FROM email_tokens WHERE token_hash = ? AND type = 'verify' " +
-      "AND used = 0 AND expires_at > datetime('now')",
+    "SELECT id, user_id, used, expires_at FROM email_tokens WHERE token_hash = ? AND type = 'verify'",
   )
     .bind(tokenHash)
-    .first<{ id: string; user_id: string }>();
+    .first<{ id: string; user_id: string; used: number; expires_at: string }>();
+
   if (!row) {
+    return c.html(verifyResultPage(false, 'لینک نامعتبر یا منقضی شده است'), 400);
+  }
+
+  const user = await c.env.DB.prepare('SELECT email_verified FROM users WHERE id = ?')
+    .bind(row.user_id)
+    .first<{ email_verified: number }>();
+  if (user?.email_verified === 1) {
+    // احتمالاً پیش‌بارگذاری خودکار همین لینک قبلاً ایمیل را تأیید کرده —
+    // نتیجه را موفق نشان بده تا کاربر واقعی با خطای کاذب مواجه نشود.
+    return c.html(verifyResultPage(true, 'ایمیل شما با موفقیت تأیید شد'));
+  }
+
+  const expired = new Date(row.expires_at).getTime() <= Date.now();
+  if (row.used === 1 || expired) {
     return c.html(verifyResultPage(false, 'لینک نامعتبر یا منقضی شده است'), 400);
   }
 
@@ -472,7 +498,7 @@ auth.post('/logout', async (c) => {
   return c.json({ success: true });
 });
 
-// ────────────────────────────────── Me ────────────────────────────────────
+// ──────────────────────────────────  Me  ────────────────────────────────────
 
 auth.get('/me', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
