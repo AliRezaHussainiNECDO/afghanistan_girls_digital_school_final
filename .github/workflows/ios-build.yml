@@ -31,24 +31,29 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # ۴. دریافت پکیج‌های پروژه
+      # ۴. دریافت پکیج‌های پروژه فلاتر
       - name: Install dependencies
         run: flutter pub get
 
-      # ۵. ساخت نسخه iOS با غیرفعال کردن Swift Package Manager جهت سازگاری با پکیج‌های قدیمی
+      # ۵. به‌روزرسانی دیتابیس CocoaPods (رفع خطای اصلی)
+      - name: Update CocoaPods Repo
+        run: |
+          pod repo update
+
+      # ۶. ساخت نسخه iOS با غیرفعال کردن Swift Package Manager جهت سازگاری با پکیج‌های قدیمی
       - name: Build iOS
         run: |
           flutter config --no-enable-swift-package-manager
           flutter build ios --release --no-codesign
 
-      # ۶. تبدیل خروجی به فایل .ipa قابل نصب
+      # ۷. تبدیل خروجی به فایل .ipa قابل نصب
       - name: Prepare Payload for IPA
         run: |
           mkdir -p Payload
           mv build/ios/iphoneos/Runner.app Payload/
           zip -r GitHub_Build.ipa Payload
 
-      # ۷. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
+      # ۸. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
