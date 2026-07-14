@@ -181,7 +181,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerLowest,
                       borderRadius: BorderRadius.circular(AppRadii.xl),
                       boxShadow: AppShadows.soft,
                     ),
