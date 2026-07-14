@@ -377,7 +377,7 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: context.tr('auth.searchCountry'),
+                      hintText: 'جستجوی کشور / Search country',
                       prefixIcon: const Icon(Icons.search_rounded),
                       isDense: true,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadii.md)),
