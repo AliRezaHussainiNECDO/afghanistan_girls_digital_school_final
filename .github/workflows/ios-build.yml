@@ -1,22 +1,20 @@
 name: Flutter iOS Build
 
-# این بخش مشخص می‌کند که با هر بار Push کردن کد روی شاخه اصلی (master)، بیلد شروع شود
 on:
   push:
     branches: [ "master" ]
-  workflow_dispatch: # این گزینه به شما اجازه می‌دهد بیلد را به صورت دستی هم اجرا کنید
+  workflow_dispatch:
 
 jobs:
   build:
-    # استفاده از سرورهای مک گیت‌هاب
     runs-on: macos-latest
 
     steps:
-      # ۱. دانلود کدهای پروژه شما روی سرور
+      # ۱. دانلود کدهای پروژه شما
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ۲. نصب محیط جاوا (برای پیش‌نیازهای عمومی)
+      # ۲. نصب محیط جاوا
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -29,18 +27,31 @@ jobs:
         with:
           flutter-version: '3.x'
           channel: 'stable'
-          cache: true
+          cache: false
 
       # ۴. دریافت پکیج‌های پروژه فلاتر
       - name: Install dependencies
         run: flutter pub get
 
-      # ۵. به‌روزرسانی دیتابیس CocoaPods (رفع خطای اصلی)
-      - name: Update CocoaPods Repo
+      # ۵. ساخت فایل Podfile و تنظیم نسخه iOS به صورت خودکار
+      - name: Generate and configure Podfile
         run: |
+          cd ios
+          # اگر فایل Podfile وجود نداشت، یک ساختار اولیه برای آن ایجاد کن
+          if [ ! -f Podfile ]; then
+            echo "platform :ios, '14.0'" > Podfile
+            echo "use_frameworks!" >> Podfile
+            echo "target 'Runner' do" >> Podfile
+            echo "  use_frameworks!" >> Podfile
+            echo "end" >> Podfile
+          else
+            # اگر وجود داشت، خط مربوط به پلتفرم را اصلاح کن
+            sed -i '' "s/# platform :ios, '9.0'/platform :ios, '14.0'/g" Podfile
+            sed -i '' "s/platform :ios, '9.0'/platform :ios, '14.0'/g" Podfile
+          fi
           pod repo update
 
-      # ۶. ساخت نسخه iOS با غیرفعال کردن Swift Package Manager جهت سازگاری با پکیج‌های قدیمی
+      # ۶. ساخت نسخه iOS بدون SPM و بدون ساین
       - name: Build iOS
         run: |
           flutter config --no-enable-swift-package-manager
@@ -53,7 +64,7 @@ jobs:
           mv build/ios/iphoneos/Runner.app Payload/
           zip -r GitHub_Build.ipa Payload
 
-      # ۸. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
+      # ۸. آپلود فایل نهایی
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
