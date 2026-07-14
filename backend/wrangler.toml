@@ -25,23 +25,23 @@ bucket_name = "afghan-girls-school-storage"
 [vars]
 ALLOWED_ORIGIN = "*"
 # ── پخش زندهٔ سمینار با Cloudflare Stream ──────────────────────────────────
-#   ۱) در داشبورد Cloudflare، بخش Stream را فعال کنید (پلن پخش زنده).
-#   ۲) شناسهٔ حساب و زیردامنهٔ مشتری استریم را اینجا بگذارید:
-#        CF_ACCOUNT_ID       = شناسهٔ حساب (Account ID)
-#        CF_STREAM_CUSTOMER  = کد مشتری در نشانی customer-XXXX.cloudflarestream.com
-#   ۳) توکن API با دسترسی «Stream:Edit» را به‌صورت راز (secret) بگذارید:
-#        wrangler secret put CF_STREAM_TOKEN
-#   اگر این‌ها تنظیم نشوند، مسیر go-live با ۵۰۳ پاسخ می‌دهد و اپ به «لینک
-#   جلسهٔ دستی» (meetingLink) یا اتاق داخلی برمی‌گردد؛ پس اپ همیشه کار می‌کند.
-# CF_ACCOUNT_ID = "..."
-# CF_STREAM_CUSTOMER = "..."
+# ۱) در داشبورد Cloudflare، بخش Stream را فعال کنید (پلن پخش زنده).
+# ۲) شناسهٔ حساب و زیردامنهٔ مشتری استریم را اینجا بگذارید:
+# CF_ACCOUNT_ID = شناسهٔ حساب (Account ID)
+# CF_STREAM_CUSTOMER = کد مشتری در نشانی customer-XXXX.cloudflarestream.com
+# ۳) توکن API با دسترسی «Stream:Edit» را به‌صورت راز (secret) بگذارید:
+# wrangler secret put CF_STREAM_TOKEN
+# اگر این‌ها تنظیم نشوند، مسیر go-live با ۵۰۳ پاسخ می‌دهد و اپ به «لینک
+# جلسهٔ دستی» (meetingLink) یا اتاق داخلی برمی‌گردد؛ پس اپ همیشه کار می‌کند.
+CF_ACCOUNT_ID = "3276f5f2f9915da134fc398e98b6539d"
+CF_STREAM_CUSTOMER = "3xsnqty4gq6f5bah"
 # معلم هوشمند (LLM) — کلید را با `wrangler secret put AI_PROVIDER_KEY` بگذارید.
 # URL و مدل را می‌توانید برای هر ارائه‌دهندهٔ سازگار با OpenAI تغییر دهید.
 AI_PROVIDER_URL = "https://api.openai.com/v1/chat/completions"
 AI_MODEL = "gpt-4o-mini"
 # صدای معلم AI (TTS/STT):
-#   • صدای خانم دری با Azure:  wrangler secret put AZURE_TTS_KEY
-#     و AZURE_TTS_REGION را (مثلاً "eastus") زیر تنظیم کنید.
-#   • در نبود Azure، از همان AI_PROVIDER_KEY برای TTS/Whisper استفاده می‌شود.
+# • صدای خانم دری با Azure: wrangler secret put AZURE_TTS_KEY
+# و AZURE_TTS_REGION را (مثلاً "eastus") زیر تنظیم کنید.
+# • در نبود Azure، از همان AI_PROVIDER_KEY برای TTS/Whisper استفاده می‌شود.
 # AZURE_TTS_REGION = "eastus"
-# AZURE_TTS_VOICE = "prs-AF-FatimaNeural"   # اگر نامعتبر بود: prs-AF-LatifaNeural
+# AZURE_TTS_VOICE = "prs-AF-FatimaNeural" # اگر نامعتبر بود: prs-AF-LatifaNeural
