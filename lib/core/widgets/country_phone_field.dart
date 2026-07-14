@@ -355,11 +355,10 @@ class _CountryPickerSheetState extends State<_CountryPickerSheet> {
       maxChildSize: 0.94,
       expand: false,
       builder: (ctx, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadii.xl)),
-          ),
+        return Material(
+          color: scheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadii.xl)),
+          clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Column(
