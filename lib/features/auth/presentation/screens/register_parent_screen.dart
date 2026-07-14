@@ -5,6 +5,7 @@ import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_primary_button.dart';
+import '../../../../core/widgets/country_phone_field.dart';
 import '../../domain/usecases/auth_usecases.dart';
 import '../providers/auth_providers.dart';
 import '../widgets/terms_gate.dart';
@@ -101,60 +102,61 @@ class _RegisterParentScreenState extends ConsumerState<RegisterParentScreen> {
                       boxShadow: AppShadows.soft,
                     ),
                     child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    TextFormField(
-                      controller: _fullName,
-                      decoration: InputDecoration(labelText: context.tr('auth.firstName')),
-                      validator: (v) =>
-                          (v == null || v.trim().length < 2) ? context.tr('common.required') : null,
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextFormField(
+                            controller: _fullName,
+                            decoration: InputDecoration(labelText: context.tr('auth.firstName')),
+                            validator: (v) =>
+                                (v == null || v.trim().length < 2) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _email,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(labelText: context.tr('auth.email')),
+                            validator: (v) =>
+                                (v == null || !v.contains('@')) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 12),
+                          // شمارهٔ تلفن با انتخاب‌گر پویای کد کشور (قبلاً بدون
+                          // اعتبارسنجی و ثابت روی افغانستان بود).
+                          CountryPhoneField(
+                            controller: _phone,
+                            label: context.tr('auth.phone'),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _password,
+                            obscureText: true,
+                            decoration: InputDecoration(labelText: context.tr('auth.password')),
+                            validator: (v) =>
+                                (v == null || v.length < 8) ? context.tr('common.required') : null,
+                          ),
+                          const SizedBox(height: 8),
+                          TermsConsentField(
+                            accepted: _acceptedTerms,
+                            showError: _showTermsError,
+                            onChanged: (v) => setState(() {
+                              _acceptedTerms = v;
+                              if (v) _showTermsError = false;
+                            }),
+                          ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 8),
+                            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                          ],
+                          const SizedBox(height: 20),
+                          AppPrimaryButton(
+                            label: context.tr('auth.registerButton'),
+                            loading: _submitting,
+                            onPressed: _submit,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(labelText: context.tr('auth.email')),
-                      validator: (v) =>
-                          (v == null || !v.contains('@')) ? context.tr('common.required') : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phone,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(labelText: context.tr('auth.phone')),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _password,
-                      obscureText: true,
-                      decoration: InputDecoration(labelText: context.tr('auth.password')),
-                      validator: (v) =>
-                          (v == null || v.length < 8) ? context.tr('common.required') : null,
-                    ),
-                    const SizedBox(height: 8),
-                    TermsConsentField(
-                      accepted: _acceptedTerms,
-                      showError: _showTermsError,
-                      onChanged: (v) => setState(() {
-                        _acceptedTerms = v;
-                        if (v) _showTermsError = false;
-                      }),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 8),
-                      Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    ],
-                    const SizedBox(height: 20),
-                    AppPrimaryButton(
-                      label: context.tr('auth.registerButton'),
-                      loading: _submitting,
-                      onPressed: _submit,
-                    ),
-                  ],
-                ),
-              ),
                   ),
                 ],
               ),
