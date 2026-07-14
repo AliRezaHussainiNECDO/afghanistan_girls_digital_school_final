@@ -91,3 +91,11 @@ subprojects {
         }
     }
 }
+
+
+// exclude: از تداخل کلاس تکراری RtspMediaSource بین media3-exoplayer-rtsp
+// مستقل و نسخهٔ داخلی react-native-video که jitsi-meet-sdk با خودش می‌آورد
+// جلوگیری می‌کند (خطای checkDebugDuplicateClasses).
+configurations.all {
+exclude(group = "androidx.media3", module = "media3-exoplayer-rtsp")
+}
