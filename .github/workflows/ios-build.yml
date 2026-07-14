@@ -35,6 +35,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # ۴.۵. به‌روزرسانی مخزن CocoaPods (رفع خطای specs out-of-date)
+      - name: Update CocoaPods repo
+        run: pod repo update
+
       # ۵. ساخت نسخه iOS بدون نیاز به گواهی امضا (Code Signing)
       # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند
       - name: Build iOS
