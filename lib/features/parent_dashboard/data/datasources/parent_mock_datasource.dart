@@ -63,6 +63,7 @@ class ParentMockDataSource implements ParentDataSource {
         subjectNameFa: s.nameFa,
         statusLabel: status,
         finalScore: latestBySubject[s.nameFa]?.scorePercent,
+        progressPercent: completion.toDouble(),
       );
     }).toList();
 
@@ -89,6 +90,15 @@ class ParentMockDataSource implements ParentDataSource {
     // ── حاضری: همان منبع صفحهٔ حاضری شاگرد ──
     final attendance = await AttendanceMockDataSource().getSummary(studentId);
 
+    // ── امتیاز فعالیت (Gamification) — تخمین سبک محلی هم‌ارز با
+    // `getPointsSummary` سرور: هر بازدید/امتحان ۱۰ امتیاز، هر مضمون
+    // تکمیل‌شده ۲۵ امتیاز پاداش؛ هر ۱۰۰ امتیاز یک سطح بالاتر.
+    final mockPointsTotal = allSubs.length * 10 + completedCount * 25;
+    final mockPointsLevel = (mockPointsTotal ~/ 100) + 1;
+    const levelTitles = ['نوآموز', 'کاوشگر', 'کوشا', 'ستاره', 'قهرمان درس'];
+    final mockPointsLevelTitleFa =
+        levelTitles[(mockPointsLevel - 1).clamp(0, levelTitles.length - 1)];
+
     return ChildSummary(
       studentId: studentId,
       displayName: displayName,
@@ -102,6 +112,9 @@ class ParentMockDataSource implements ParentDataSource {
       // فقط عنوان‌های نمونهٔ پیش رو نمایش داده می‌شود (بخش ۱۳ب.۳: فقط
       // عنوان/تاریخ، نه محتوای سمینار).
       upcomingSeminarTitles: const ['مهارت‌های مطالعهٔ مؤثر'],
+      pointsTotal: mockPointsTotal,
+      pointsLevel: mockPointsLevel,
+      pointsLevelTitleFa: mockPointsLevelTitleFa,
     );
   }
 
