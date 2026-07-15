@@ -218,4 +218,18 @@ class AiTeacherReportModel extends AiTeacherReport {
       AiTeacherReportModel(
         generatedAt: DateTime.parse(json['generated_at'] as String),
         overallProgress: (json['overall_progress'] as num).toDouble(),
-        trend:
+        trend: _trendFrom(json['trend'] as String?),
+        stressLevel: _stressFrom(json['stress_level'] as String?),
+        engagementScore: (json['engagement_score'] as num).toDouble(),
+        strengths: List<String>.from(json['strengths'] as List? ?? []),
+        concerns: List<String>.from(json['concerns'] as List? ?? []),
+        recommendations:
+            List<String>.from(json['recommendations'] as List? ?? []),
+        subjectNotes: (json['subject_notes'] as List? ?? [])
+            .map((e) => SubjectNote(
+                  subjectName: e['subject_name'] as String,
+                  note: e['note'] as String,
+                ))
+            .toList(),
+      );
+}

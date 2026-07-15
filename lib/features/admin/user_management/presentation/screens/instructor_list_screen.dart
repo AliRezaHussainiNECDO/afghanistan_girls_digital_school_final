@@ -245,4 +245,40 @@ class _SuspendPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    fin
+    final color = suspended ? AppPalette.red : AppPalette.green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(suspended ? 'مسدود' : 'فعال',
+          style: TextStyle(
+              color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _StatChip(
+      {required this.icon, required this.label, this.color = AppPalette.greenDark});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+        ]),
+      );
+}

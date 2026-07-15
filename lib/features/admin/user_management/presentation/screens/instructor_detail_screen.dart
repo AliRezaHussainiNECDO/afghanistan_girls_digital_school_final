@@ -513,4 +513,56 @@ class _InfoRow extends StatelessWidget {
               style: TextStyle(
                   fontSize: 12.5,
                   color: Colors.grey.shade600,
-                  fontW
+                  fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+      );
+}
+
+class _StatBox extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  const _StatBox(
+      {required this.value, required this.label, this.color = AppPalette.green});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: color)),
+            const SizedBox(height: 2),
+            Text(label,
+                style:
+                    TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          ]),
+        ),
+      );
+}
+
+class _Meta extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _Meta({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 14, color: Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(text,
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+      ]);
+}

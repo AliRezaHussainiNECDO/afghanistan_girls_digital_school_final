@@ -102,4 +102,27 @@ class AppSpacing {
 class AppShadows {
   AppShadows._();
 
-  static List
+  static List<BoxShadow> soft = [
+    BoxShadow(
+      color: AppColors.ink900.withValues(alpha: 0.06),
+      blurRadius: 20,
+      offset: const Offset(0, 8),
+    ),
+  ];
+
+  static List<BoxShadow> warm = [
+    BoxShadow(
+      color: AppColors.orange600.withValues(alpha: 0.22),
+      blurRadius: 24,
+      offset: const Offset(0, 10),
+    ),
+  ];
+
+  static List<BoxShadow> green = [
+    BoxShadow(
+      color: AppColors.green700.withValues(alpha: 0.20),
+      blurRadius: 24,
+      offset: const Offset(0, 10),
+    ),
+  ];
+}

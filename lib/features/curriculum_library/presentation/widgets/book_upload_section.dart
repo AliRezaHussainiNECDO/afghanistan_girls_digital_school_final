@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -92,7 +94,8 @@ class _GradeBookRow extends ConsumerStatefulWidget {
   ConsumerState<_GradeBookRow> createState() => _GradeBookRowState();
 }
 
-class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
+class _GradeBookRowState extends ConsumerState<_GradeBookRow>
+    with SingleTickerProviderStateMixin {
   bool _extracting = false;
   String? _extractError;
 
@@ -100,11 +103,55 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
   /// «۸ فصل شناسایی و منتشر شد» یا نمایش این‌که فصل‌بندی خودکار ممکن نشد.
   String? _chapterInfo;
 
+  /// پیام موفقیت‌آمیز بودن خود آپلود (مستقل از فصل‌بندی) — چند ثانیه بعد
+  /// از پایان آپلود به‌صورت خودکار محو می‌شود.
+  bool _showSuccess = false;
+  Duration _lastUploadDuration = Duration.zero;
+
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _tickTimer;
+  Timer? _successHideTimer;
+
+  /// انیمیشن ضربان‌دار برای آیکن آپلود در حین پردازش — جلوه‌ای زنده و مدرن.
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _tickTimer?.cancel();
+    _successHideTimer?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  void _startProgressClock() {
+    _stopwatch
+      ..reset()
+      ..start();
+    _tickTimer?.cancel();
+    _tickTimer = Timer.periodic(const Duration(milliseconds: 150), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _stopProgressClock() {
+    _tickTimer?.cancel();
+    _tickTimer = null;
+    _stopwatch.stop();
+  }
+
+  String get _elapsedLabel =>
+      '${(_stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} ثانیه';
+
   Future<void> _pickAndUpload() async {
     setState(() {
       _extractError = null;
       _chapterInfo = null;
+      _showSuccess = false;
     });
+    _successHideTimer?.cancel();
     FilePickerResult? result;
     try {
       // اصلاح متد برای سازگاری با نسخه‌های جدید و رفع خطای Member not found
@@ -126,6 +173,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
     }
 
     setState(() => _extracting = true);
+    _startProgressClock();
     try {
       final document = PdfDocument(inputBytes: bytes);
       final text = PdfTextExtractor(document).extractText();
@@ -182,13 +230,25 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
         }
       });
 
-      if (mounted) setState(() => _extracting = false);
+      if (mounted) {
+        _lastUploadDuration = _stopwatch.elapsed;
+        setState(() {
+          _extracting = false;
+          _showSuccess = true;
+        });
+        _successHideTimer?.cancel();
+        _successHideTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _showSuccess = false);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _extracting = false;
         _extractError = 'خطا در پردازش پی‌دی‌اف: $e';
       });
+    } finally {
+      _stopProgressClock();
     }
   }
 
@@ -254,16 +314,118 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
                   icon: _extracting
                       ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.upload_file_rounded, size: 16),
-                  label: Text(_extracting ? 'در حال پردازش...' : 'آپلود', style: const TextStyle(fontSize: 12.5)),
+                  label: Text(_extracting ? 'در حال آپلود...' : 'آپلود', style: const TextStyle(fontSize: 12.5)),
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
                 ),
             ],
           ),
+
+          // ── کارت پیشرفت آپلود — مدرن و پویا، با نمایش زندهٔ زمان سپری‌شده ──
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            transitionBuilder: (child, anim) => SizeTransition(
+              sizeFactor: anim,
+              axisAlignment: -1,
+              child: FadeTransition(opacity: anim, child: child),
+            ),
+            child: _extracting
+                ? Container(
+                    key: const ValueKey('uploading'),
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.heroGradientWarm,
+                      borderRadius: BorderRadius.circular(AppRadii.sm),
+                      boxShadow: AppShadows.warm,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            AnimatedBuilder(
+                              animation: _pulseController,
+                              builder: (context, child) => Transform.scale(
+                                scale: 0.85 + (_pulseController.value * 0.3),
+                                child: child,
+                              ),
+                              child: const Icon(Icons.cloud_upload_rounded, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text('در حال آپلود و پردازش کتاب...',
+                                  style: TextStyle(
+                                      color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                            ),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Text(
+                                _elapsedLabel,
+                                key: ValueKey(_elapsedLabel),
+                                style: const TextStyle(
+                                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                          child: LinearProgressIndicator(
+                            minHeight: 5,
+                            backgroundColor: Colors.white.withValues(alpha: 0.28),
+                            valueColor: const AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('idle')),
+          ),
+
           if (_extractError != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(_extractError!, style: TextStyle(color: scheme.error, fontSize: 11.5)),
             ),
+
+          // ── پیام موفقیت آپلود — بلافاصله بعد از اتمام آپلود نمایان می‌شود و
+          // پس از چند ثانیه خودش محو می‌شود ──
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, anim) => SizeTransition(
+              sizeFactor: anim,
+              axisAlignment: -1,
+              child: FadeTransition(opacity: anim, child: child),
+            ),
+            child: _showSuccess
+                ? Container(
+                    key: const ValueKey('success'),
+                    margin: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.successGradient,
+                      borderRadius: BorderRadius.circular(AppRadii.sm),
+                      boxShadow: AppShadows.green,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'کتاب صنف ${widget.grade} با موفقیت آپلود شد ✓  '
+                            '(${(_lastUploadDuration.inMilliseconds / 1000).toStringAsFixed(1)} ثانیه)',
+                            style: const TextStyle(
+                                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('no-success')),
+          ),
+
           if (_chapterInfo != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),

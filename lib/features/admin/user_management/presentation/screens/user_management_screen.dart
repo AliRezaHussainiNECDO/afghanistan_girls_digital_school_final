@@ -161,4 +161,49 @@ class UserManagementScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: scheme.surfaceContainerLowest,
-                      bo
+                      borderRadius: BorderRadius.circular(AppRadii.lg),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: Row(
+                      children: [
+                        // عکس پروفایل کاربر (اگر آپلود کرده باشد)، وگرنه حرف اول.
+                        UserAvatar(
+                          radius: 21,
+                          name: u.name.isNotEmpty ? u.name : '?',
+                          avatarUrl: u.avatarUrl,
+                          backgroundColor: u.suspended
+                              ? scheme.surfaceContainerHigh
+                              : scheme.primary,
+                          foregroundColor:
+                              u.suspended ? scheme.onSurfaceVariant : Colors.white,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(u.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text('${u.email} · ${u.role}',
+                                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: !u.suspended,
+                          onChanged: (_) async {
+                            await ref.read(toggleSuspendUseCaseProvider).call(u.id);
+                            ref.invalidate(adminUsersProvider);
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

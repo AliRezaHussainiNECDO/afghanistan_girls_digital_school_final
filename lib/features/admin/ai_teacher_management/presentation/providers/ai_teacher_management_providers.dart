@@ -14,4 +14,21 @@ import '../../domain/usecases/ai_teacher_management_usecases.dart';
 /// این بخش هرگز به سرور/دیتابیس وصل نبود. اکنون مانند بقیهٔ ماژول‌ها با
 /// سوییچ `kUseLiveBackend` بین محلی (فاز ۱ / آفلاین) و Backend واقعی جابه‌جا
 /// می‌شود.
-final aiTeacherMgmtDataSourceProvider = Provider<AiTeacherManagementDataSou
+final aiTeacherMgmtDataSourceProvider = Provider<AiTeacherManagementDataSource>((ref) {
+  if (kUseLiveBackend) {
+    return AiTeacherManagementRemoteDataSource(ref.watch(apiClientProvider));
+  }
+  return const AiTeacherManagementLocalDataSource();
+});
+final aiTeacherMgmtRepositoryProvider = Provider<AiTeacherManagementRepository>(
+  (ref) => AiTeacherManagementRepositoryImpl(ref.watch(aiTeacherMgmtDataSourceProvider)),
+);
+final getAiTeacherConfigsUseCaseProvider =
+    Provider((ref) => GetAiTeacherConfigsUseCase(ref.watch(aiTeacherMgmtRepositoryProvider)));
+final updatePersonaUseCaseProvider =
+    Provider((ref) => UpdatePersonaUseCase(ref.watch(aiTeacherMgmtRepositoryProvider)));
+
+final aiTeacherConfigsProvider = FutureProvider<List<AiTeacherConfig>>((ref) async {
+  final result = await ref.read(getAiTeacherConfigsUseCaseProvider).call(const NoParams());
+  return result.fold((f) => throw f, (v) => v);
+});

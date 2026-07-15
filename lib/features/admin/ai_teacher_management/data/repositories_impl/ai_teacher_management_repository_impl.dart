@@ -32,4 +32,7 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
     try {
       return Right(await dataSource.personaFor(subjectId));
     } catch (e) {
-      return Left(ServerFailure(e.to
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+}
