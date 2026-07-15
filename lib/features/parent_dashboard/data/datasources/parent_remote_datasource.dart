@@ -36,6 +36,7 @@ class ParentRemoteDataSource implements ParentDataSource {
               subjectNameFa: s['subjectNameFa'] as String? ?? '',
               statusLabel: s['statusLabel'] as String? ?? 'locked',
               finalScore: (s['finalScore'] as num?)?.toDouble(),
+              progressPercent: (s['progressPercent'] as num?)?.toDouble(),
             ))
         .toList();
     return ChildSummary(
@@ -49,6 +50,9 @@ class ParentRemoteDataSource implements ParentDataSource {
       certificates: (m['certificates'] as List? ?? []).map((x) => x.toString()).toList(),
       upcomingSeminarTitles:
           (m['upcomingSeminarTitles'] as List? ?? []).map((x) => x.toString()).toList(),
+      pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,
+      pointsLevel: (m['pointsLevel'] as num?)?.toInt() ?? 1,
+      pointsLevelTitleFa: m['pointsLevelTitleFa'] as String? ?? 'نوآموز',
     );
   }
 
