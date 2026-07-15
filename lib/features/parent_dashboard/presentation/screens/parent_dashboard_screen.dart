@@ -11,6 +11,8 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../certificates/presentation/screens/my_certificates_screen.dart';
+import '../../../curriculum/presentation/widgets/points_badge.dart';
+import '../../../curriculum/presentation/widgets/subject_progress_bar.dart';
 import '../../domain/entities/parent_entities.dart';
 import '../../domain/repositories/parent_repository.dart';
 import '../providers/parent_providers.dart';
@@ -431,6 +433,15 @@ class _ChildSummaryView extends ConsumerWidget {
                       const SizedBox(height: 10),
                       Text('${context.tr('parent.attendance')}: ${s.attendanceRatePercent.toStringAsFixed(1)}%',
                           style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 10),
+                      // ── امتیاز فعالیت (Gamification) — همان منبع داشبورد شاگرد ──
+                      PointsBadge(
+                        pointsTotal: s.pointsTotal,
+                        pointsLevel: s.pointsLevel,
+                        pointsLevelTitleFa: s.pointsLevelTitleFa,
+                        light: true,
+                        compact: true,
+                      ),
                     ],
                   ),
                 ),
@@ -538,18 +549,32 @@ class _SubjectRow extends StatelessWidget {
       ),
       title: Text(subject.subjectNameFa,
           style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Row(
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: status.$2, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(status.$1,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-        ],
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: status.$2, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(status.$1,
+                    style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+              ],
+            ),
+            // ── نوار پیشرفت درسی — همان منطق واحد بخش فصل‌های شاگرد ──
+            if (!locked && subject.progressPercent != null) ...[
+              const SizedBox(height: 6),
+              SubjectProgressBar(percent: subject.progressPercent!, compact: true),
+            ],
+          ],
+        ),
       ),
+      isThreeLine: !locked && subject.progressPercent != null,
       trailing: Text(
         subject.finalScore != null
             ? '${subject.finalScore!.toStringAsFixed(0)}%'
