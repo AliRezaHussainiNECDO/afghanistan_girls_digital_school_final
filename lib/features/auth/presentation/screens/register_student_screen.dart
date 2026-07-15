@@ -7,6 +7,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/country_phone_field.dart';
+import '../../../../core/widgets/date_of_birth_field.dart';
 import '../../domain/usecases/auth_usecases.dart';
 import '../providers/auth_providers.dart';
 import '../widgets/terms_gate.dart';
@@ -141,14 +142,7 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                             ),
                           ]),
                           const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _dob,
-                            decoration: InputDecoration(
-                              labelText: context.tr('auth.dateOfBirth'),
-                              hintText: 'YYYY-MM-DD',
-                            ),
-                            validator: (v) => (v == null || v.isEmpty) ? context.tr('common.required') : null,
-                          ),
+                          DateOfBirthField(controller: _dob),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _email,
