@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/router/app_routes.dart';
@@ -6,8 +7,15 @@ import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
+import '../../domain/entities/curriculum_entities.dart';
 import '../providers/curriculum_providers.dart';
+import '../widgets/subject_progress_bar.dart';
 
+/// نمایش فصل‌های یک مضمون با قفل‌گشایی ترتیبی — طبق درخواست کاربر: «هر
+/// فصل را تکمیل نکرده، فصل بعدی باز نشود». وضعیت هر فصل (قفل/در حال
+/// انجام/تکمیل‌شده) و درصد پیشرفت مستقیماً از همان منطق سرور
+/// (`backend/src/lib/progress.ts` → `getChapterList`) می‌آید تا این صفحه
+/// منبع واحد پیشرفت درسی برای بقیهٔ داشبوردها (والدین/مدیر) باشد.
 class ChaptersScreen extends ConsumerWidget {
   final String subjectId;
   const ChaptersScreen({super.key, required this.subjectId});
@@ -22,53 +30,158 @@ class ChaptersScreen extends ConsumerWidget {
       body: chaptersAsync.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(message: e.toString()),
-        data: (chapters) => ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: chapters.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) {
-            final chapter = chapters[i];
-            return Material(
-              color: scheme.surfaceContainerLowest,
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppRadii.lg),
-                onTap: () => context.push(AppRoutes.curriculumLessons(subjectId, chapter.id)),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadii.lg),
-                    border: Border.all(color: scheme.outlineVariant),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: const BoxDecoration(gradient: AppColors.heroGradient, shape: BoxShape.circle),
-                        child: Center(
-                          child: Text('${chapter.orderIndex}',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(chapter.titleFa, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            Text('${chapter.lessonCount} ${context.tr('curriculum.lessons')}',
-                                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                          ],
-                        ),
-                      ),
-                      Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
-                    ],
-                  ),
+        data: (chapters) {
+          if (chapters.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'هنوز فصلی برای این مضمون منتشر نشده است.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
               ),
             );
-          },
+          }
+          final overall =
+              chapters.map((c) => c.progressPercent).reduce((a, b) => a + b) / chapters.length;
+          final completedCount = chapters.where((c) => c.completed).length;
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: AppColors.heroGradient,
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  boxShadow: AppShadows.warm,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SubjectProgressBar(
+                      label: 'پیشرفت کلی این مضمون',
+                      percent: overall,
+                      light: true,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '$completedCount از ${chapters.length} فصل تکمیل شده',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ).animate().fadeIn(duration: 320.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOutCubic),
+              const SizedBox(height: 16),
+              for (var i = 0; i < chapters.length; i++) ...[
+                _ChapterCard(subjectId: subjectId, chapter: chapters[i])
+                    .animate()
+                    .fadeIn(delay: (60 * i).ms, duration: 260.ms)
+                    .slideY(begin: 0.12, end: 0, curve: Curves.easeOutCubic),
+                const SizedBox(height: 10),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ChapterCard extends StatelessWidget {
+  final String subjectId;
+  final Chapter chapter;
+  const _ChapterCard({required this.subjectId, required this.chapter});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final locked = !chapter.unlocked;
+    final completed = chapter.completed;
+
+    Color iconBg;
+    Widget iconChild;
+    if (locked) {
+      iconBg = scheme.surfaceContainerHighest;
+      iconChild = Icon(Icons.lock_rounded, color: scheme.onSurfaceVariant, size: 18);
+    } else if (completed) {
+      iconBg = AppColors.green600;
+      iconChild = const Icon(Icons.check_rounded, color: Colors.white, size: 22);
+    } else {
+      iconBg = scheme.primary;
+      iconChild = Text('${chapter.orderIndex}',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800));
+    }
+
+    return Material(
+      color: locked ? scheme.surfaceContainerLowest.withValues(alpha: 0.55) : scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: () {
+          if (locked) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('برای باز شدن این فصل، ابتدا فصل قبلی را تکمیل کنید.'),
+              ),
+            );
+            return;
+          }
+          context.push(AppRoutes.curriculumLessons(subjectId, chapter.id));
+        },
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(
+              color: completed ? AppColors.green600.withValues(alpha: 0.4) : scheme.outlineVariant,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+                child: Center(child: iconChild),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      chapter.titleFa,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: locked ? scheme.onSurfaceVariant : scheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      locked
+                          ? 'قفل — با تکمیل فصل قبلی باز می‌شود'
+                          : (completed
+                              ? 'تکمیل شد ✓ (${chapter.lessonCount} درس)'
+                              : '${chapter.viewedCount}/${chapter.lessonCount} درس دیده‌شده'),
+                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                    ),
+                    if (!locked && !completed) ...[
+                      const SizedBox(height: 8),
+                      SubjectProgressBar(percent: chapter.progressPercent, compact: true),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              if (completed)
+                const Icon(Icons.emoji_events_rounded, color: AppColors.green600, size: 20)
+              else if (!locked)
+                Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );
