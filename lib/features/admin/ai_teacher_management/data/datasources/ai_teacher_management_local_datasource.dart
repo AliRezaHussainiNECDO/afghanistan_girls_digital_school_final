@@ -67,5 +67,4 @@ class AiTeacherManagementLocalDataSource implements AiTeacherManagementDataSourc
   /// شخصیتی برای این مضمون تنظیم نکرده، `null` برمی‌گرداند تا موتور از
   /// شخصیت پیش‌فرض گرم و تشویق‌کننده استفاده کند.
   Future<String?> personaFor(String subjectId) async {
-    final all = await _readAll();
-    return all[subjectId]?.personaDescr
+    

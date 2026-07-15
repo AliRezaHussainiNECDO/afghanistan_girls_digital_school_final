@@ -14,5 +14,4 @@ import '../../domain/usecases/ai_teacher_management_usecases.dart';
 /// این بخش هرگز به سرور/دیتابیس وصل نبود. اکنون مانند بقیهٔ ماژول‌ها با
 /// سوییچ `kUseLiveBackend` بین محلی (فاز ۱ / آفلاین) و Backend واقعی جابه‌جا
 /// می‌شود.
-final aiTeacherMgmtDataSourceProvider = Provider<AiTeacherManagementDataSource>((ref) {
-  i
+final aiTeacherMgmtDataSourceProvider = Provider<AiTeacherManagementDataSou

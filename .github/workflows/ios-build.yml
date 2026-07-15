@@ -31,6 +31,14 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # ۳.۵. غیرفعال‌کردن Swift Package Manager فلاتر — بعضی پکیج‌ها (مثل
+      # image_picker) از طریق SPM وابستگی‌هایی می‌آورند که برای بیلد روی
+      # دستگاه واقعی (نه شبیه‌ساز) نیاز به تیم توسعه‌دهنده دارند، حتی با
+      # --no-codesign. با غیرفعال‌کردن SPM، همه‌چیز از طریق CocoaPods می‌آید
+      # که می‌توانیم امضایش را کامل خاموش کنیم.
+      - name: Disable Swift Package Manager (force CocoaPods only)
+        run: flutter config --no-enable-swift-package-manager
+
       # ۴. دریافت پکیج‌های پروژه
       - name: Install dependencies
         run: flutter pub get
@@ -39,22 +47,6 @@ jobs:
       - name: Update CocoaPods repo
         run: pod repo update
 
-      # ۵. ساخت نسخه iOS بدون نیاز به گواهی امضا (Code Signing)
-      # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند
-      - name: Build iOS
-        run: flutter build ios --release --no-codesign
-
-      # ۶. تبدیل خروجی به فایل .ipa قابل نصب
-      # از آنجا که بدون ساین بیلد گرفتیم، پوشه خروجی را برای راحتی کار زیپ یا آماده می‌کنیم
-      - name: Prepare Payload for IPA
-        run: |
-          mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/
-          zip -r GitHub_Build.ipa Payload
-
-      # ۷. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-ipa
-          path: GitHub_Build.ipa
+      # ۴.۷۵. غیرفعال‌کردن کامل امضای کد در فایل پروژه Xcode (project.pbxproj)
+      # چون فقط تنظیم CODE_SIGNING_ALLOWED=NO در Release.xcconfig کافی نیست —
+      # Xcode مقدار ProvisioningStyle=Automatic را مستقیماً از

@@ -723,20 +723,4 @@ class _PromotionSection extends StatelessWidget {
                           final target = p.currentGrade + 1;
                           store.promote(studentId);
                           _snack(context, 'به صنف $target ارتقا یافت');
-                        }
-                      : null,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                  label: Text(canPromote ? 'ارتقا به صنف ${p.currentGrade + 1}' : 'بالاترین صنف'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppPalette.red,
-                    side: BorderSide(color: AppPalette.red.withValues(alpha: .5)),
-                  ),
-                  onPressed: canDemote
-                      ? () {
-                          final target = p.currentGrade - 1;
-        
+               

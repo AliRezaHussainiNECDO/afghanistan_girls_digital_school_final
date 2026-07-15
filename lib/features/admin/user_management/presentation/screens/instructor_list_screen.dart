@@ -245,9 +245,4 @@ class _SuspendPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = suspended ? AppPalette.red : AppPalette.green;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRad
+    fin

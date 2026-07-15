@@ -513,23 +513,4 @@ class _InfoRow extends StatelessWidget {
               style: TextStyle(
                   fontSize: 12.5,
                   color: Colors.grey.shade600,
-                  fontWeight: FontWeight.w600)),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 12.5, fontWeight: FontWeight.w700)),
-          ),
-        ]),
-      );
-}
-
-class _StatBox extends StatelessWidget {
-  final String value;
-  final String label;
-  final Color color;
-  const _StatBox(
-      {required this.value, required this.label, this.color = AppPalette.green});
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-        child: Container(
+                  fontW

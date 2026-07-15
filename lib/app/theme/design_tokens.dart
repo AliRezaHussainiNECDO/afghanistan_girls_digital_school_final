@@ -102,7 +102,4 @@ class AppSpacing {
 class AppShadows {
   AppShadows._();
 
-  static List<BoxShadow> soft = [
-    BoxShadow(
-      color: AppColors.ink900.withValues(alpha: 0.06),
-      blurRad
+  static List

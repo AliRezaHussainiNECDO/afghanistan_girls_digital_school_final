@@ -161,7 +161,4 @@ class UserManagementScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: scheme.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(AppRadii.lg),
-                      border: Border.all(color: scheme.outlineVariant),
-                    ),
-                    
+                      bo
