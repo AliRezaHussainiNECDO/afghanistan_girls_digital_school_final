@@ -30,7 +30,22 @@ class StudentDetailScreen extends ConsumerWidget {
           backgroundColor: AppPalette.surface,
           body: detail.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text(e.toString())),
+            error: (e, _) => Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(e.toString(), textAlign: TextAlign.center),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => ref.invalidate(studentDetailProvider(studentId)),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('تلاش دوباره'),
+                ),
+              ]),
+            ),
             data: (d) => NestedScrollView(
               headerSliverBuilder: (_, __) => [
                 _Header(detail: d, studentId: studentId),
@@ -724,21 +739,4 @@ class _PromotionSection extends StatelessWidget {
                   onPressed: canDemote
                       ? () {
                           final target = p.currentGrade - 1;
-                          store.demote(studentId);
-                          _snack(context, 'به صنف $target کاهش یافت');
-                        }
-                      : null,
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 18),
-                  label: const Text('کاهش صنف'),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Text('ارتقای دستی یک تصمیم مدیریتی است و مستقل از تکمیل خودکار انجام می‌شود.',
-                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
-          ]),
-        );
-      },
-    );
-  }
-}
+        

@@ -128,20 +128,45 @@ class StudentDashboardScreen extends ConsumerWidget {
                     curve: Curves.easeOutCubic),
             const SizedBox(height: 16),
 
-            _ActionCard(
-              icon: Icons.play_circle_fill_rounded,
-              iconColor: scheme.primary,
-              title: context.tr('dashboard.continueLesson'),
-              subtitle: '${summary.currentSubjectNameFa} — ${summary.currentLessonTitle}',
-              onTap: () => context.push(AppRoutes.curriculum),
-            ).animate().fadeIn(delay: 120.ms, duration: 380.ms).slideY(
-                begin: 0.15, end: 0, delay: 120.ms, duration: 380.ms, curve: Curves.easeOutCubic),
-            const SizedBox(height: 12),
+            // ── ادامهٔ یادگیری: چند مضمون «در حال انجام» (نه فقط یکی) ──
+            // رفع اشکال قبلی: همیشه فقط اولین مضمون برنامهٔ درسی نشان داده
+            // می‌شد؛ اکنون سرور تا ۳ مضمونی که شاگرد واقعاً در آن‌ها فعالیت
+            // داشته (به ترتیب آخرین بازدید) برمی‌گرداند.
+            if (summary.continueLearning.isNotEmpty) ...[
+              Text(context.tr('dashboard.continueLesson'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 10),
+              for (var i = 0; i < summary.continueLearning.length; i++) ...[
+                _ActionCard(
+                  icon: Icons.play_circle_fill_rounded,
+                  iconColor: scheme.primary,
+                  title: summary.continueLearning[i].subjectNameFa,
+                  subtitle: summary.continueLearning[i].lessonTitle,
+                  trailingPercent: summary.continueLearning[i].progressPercent,
+                  onTap: () => context.push(AppRoutes.curriculum),
+                ).animate().fadeIn(delay: (120 + i * 40).ms, duration: 380.ms).slideY(
+                    begin: 0.15, end: 0, delay: (120 + i * 40).ms, duration: 380.ms, curve: Curves.easeOutCubic),
+                const SizedBox(height: 10),
+              ],
+            ] else ...[
+              _ActionCard(
+                icon: Icons.play_circle_fill_rounded,
+                iconColor: scheme.primary,
+                title: context.tr('dashboard.continueLesson'),
+                subtitle: '${summary.currentSubjectNameFa} — ${summary.currentLessonTitle}',
+                onTap: () => context.push(AppRoutes.curriculum),
+              ).animate().fadeIn(delay: 120.ms, duration: 380.ms).slideY(
+                  begin: 0.15, end: 0, delay: 120.ms, duration: 380.ms, curve: Curves.easeOutCubic),
+              const SizedBox(height: 12),
+            ],
+            // ── گواهی‌نامه‌ها: زیرنویس اکنون واقعی است، نه یک متن ثابت ──
             _ActionCard(
               icon: Icons.workspace_premium_rounded,
               iconColor: const Color(0xFFB8860B),
               title: 'گواهی‌نامه‌های من',
-              subtitle: 'مشاهده و دانلود گواهی‌نامه‌های اتمام صنف',
+              subtitle: summary.certificatesCount > 0
+                  ? '${summary.certificatesCount} گواهی‌نامه صادرشده — مشاهده و دانلود'
+                  : 'هنوز گواهی‌نامه‌ای صادر نشده — با تکمیل صنف صادر می‌شود',
               onTap: () => context.push(AppRoutes.certificates),
             ).animate().fadeIn(delay: 160.ms, duration: 380.ms).slideY(
                 begin: 0.15, end: 0, delay: 160.ms, duration: 380.ms, curve: Curves.easeOutCubic),
@@ -234,6 +259,7 @@ class _ActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final double? trailingPercent;
 
   const _ActionCard({
     required this.icon,
@@ -241,6 +267,7 @@ class _ActionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.trailingPercent,
   });
 
   @override
@@ -282,6 +309,18 @@ class _ActionCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (trailingPercent != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('٪${trailingPercent!.toStringAsFixed(0)}',
+                      style: TextStyle(color: iconColor, fontSize: 11, fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(width: 6),
+              ],
               Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
             ],
           ),

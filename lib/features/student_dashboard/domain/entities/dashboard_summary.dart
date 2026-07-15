@@ -1,5 +1,24 @@
 import 'package:equatable/equatable.dart';
 
+/// یک مضمونِ «در حال انجام» که شاگرد می‌تواند از همان‌جا که رها کرده ادامه
+/// دهد — چند مورد از این در خانهٔ شاگرد نمایش داده می‌شود (نه فقط یک مضمون).
+class ContinueLearningItem extends Equatable {
+  final String subjectId;
+  final String subjectNameFa;
+  final String lessonTitle;
+  final double progressPercent;
+
+  const ContinueLearningItem({
+    required this.subjectId,
+    required this.subjectNameFa,
+    required this.lessonTitle,
+    required this.progressPercent,
+  });
+
+  @override
+  List<Object?> get props => [subjectId, lessonTitle, progressPercent];
+}
+
 /// خلاصهٔ داشبورد دانش‌آموز — تجمیع چند سیگنال برای نمایش سریع در خانه
 /// (بخش ۵.۵ توصیه‌ها + بخش ۶ پیشرفت + بخش ۷ امتحان + بخش ۱۲ سمینار).
 class DashboardSummary extends Equatable {
@@ -7,6 +26,12 @@ class DashboardSummary extends Equatable {
   final double overallProgressPercent;
   final String currentLessonTitle;
   final String currentSubjectNameFa;
+
+  /// فهرست چندمضمونی «ادامهٔ یادگیری» (منبع: `dashboard-summary` سرور) —
+  /// به‌جای نمایش فقط یک مضمون ثابت، تا ۳ موردی که شاگرد واقعاً در آن‌ها
+  /// فعالیت داشته و هنوز تکمیل نشده، به ترتیب آخرین بازدید.
+  final List<ContinueLearningItem> continueLearning;
+
   final String? upcomingExamTitle;
   final DateTime? upcomingExamDate;
   final String? upcomingSeminarTitle;
@@ -20,11 +45,16 @@ class DashboardSummary extends Equatable {
   final int pointsLevel;
   final String pointsLevelTitleFa;
 
+  /// تعداد گواهی‌نامه‌های صادرشده — تا کارت «گواهی‌نامه‌های من» در خانهٔ
+  /// شاگرد وضعیت واقعی را نشان دهد نه یک متن ثابت.
+  final int certificatesCount;
+
   const DashboardSummary({
     required this.studentDisplayName,
     required this.overallProgressPercent,
     required this.currentLessonTitle,
     required this.currentSubjectNameFa,
+    this.continueLearning = const [],
     this.upcomingExamTitle,
     this.upcomingExamDate,
     this.upcomingSeminarTitle,
@@ -33,6 +63,7 @@ class DashboardSummary extends Equatable {
     this.pointsTotal = 0,
     this.pointsLevel = 1,
     this.pointsLevelTitleFa = 'نوآموز',
+    this.certificatesCount = 0,
   });
 
   @override

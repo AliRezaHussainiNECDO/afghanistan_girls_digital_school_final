@@ -77,6 +77,13 @@ class InstructorDirectory extends ChangeNotifier {
   bool loadedFromBackend = false;
   bool loading = false;
 
+  /// رفع اشکال: قبلاً خطای شبکه/سرور کاملاً بی‌صدا بلعیده می‌شد و اگر اولین
+  /// بارگذاری شکست می‌خورد، صفحهٔ لیست/جزئیات استاد برای همیشه چرخ‌وفلک
+  /// نمایش می‌داد (چون `loadedFromBackend` هرگز true نمی‌شد) — بدون هیچ پیام
+  /// خطا یا دکمهٔ «تلاش دوباره» برای مدیر. اکنون آخرین خطا نگه داشته می‌شود
+  /// تا UI بتواند آن را نشان دهد و امکان تلاش دوباره بدهد.
+  String? lastError;
+
   /// همهٔ استادان — جدیدترین اول (برای لیست مدیر).
   List<InstructorProfile> get all {
     final list = [..._instructors]..sort((a, b) => b.joinedAt.compareTo(a.joinedAt));
@@ -141,8 +148,12 @@ class InstructorDirectory extends ChangeNotifier {
         ..clear()
         ..addAll(list.map((e) => _fromJson(Map<String, dynamic>.from(e as Map))));
       loadedFromBackend = true;
-    } catch (_) {
-      // خطای شبکه/سرور — فهرست فعلی (Seed یا آخرین بارگذاری موفق) دست‌نخورده می‌ماند.
+      lastError = null;
+    } catch (e) {
+      // خطای شبکه/سرور — فهرست فعلی (Seed یا آخرین بارگذاری موفق) دست‌نخورده
+      // می‌ماند، اما خطا را ذخیره می‌کنیم تا UI به‌جای چرخ‌وفلک بی‌پایان،
+      // پیام خطا + دکمهٔ «تلاش دوباره» نشان دهد.
+      lastError = e.toString();
     } finally {
       loading = false;
       notifyListeners();

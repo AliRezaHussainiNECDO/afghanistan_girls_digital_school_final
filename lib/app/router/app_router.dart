@@ -18,6 +18,8 @@ import '../../features/admin/seminars/presentation/screens/admin_seminars_screen
 import '../../features/admin/user_management/presentation/screens/instructor_detail_screen.dart';
 import '../../features/admin/user_management/presentation/screens/instructor_list_screen.dart';
 import '../../features/admin/user_management/presentation/screens/student_detail_screen.dart';
+import '../../features/admin/parent_management/presentation/screens/parent_detail_screen.dart';
+import '../../features/admin/parent_management/presentation/screens/parent_list_screen.dart';
 import '../../features/certificates/presentation/screens/my_certificates_screen.dart';
 import '../../features/curriculum_library/presentation/screens/bulk_import_screen.dart';
 import '../../features/study_plan/presentation/screens/weekly_plan_screen.dart';
@@ -261,6 +263,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/admin/instructors/:instructorId',
         pageBuilder: (c, s) => fadeSlidePage(s,
             InstructorDetailScreen(instructorId: s.pathParameters['instructorId']!)),
+      ),
+      GoRoute(
+          path: AppRoutes.adminParents,
+          pageBuilder: (c, s) => fadeSlidePage(s, const ParentListScreen())),
+      GoRoute(
+        path: '/admin/parents/:parentId',
+        pageBuilder: (c, s) =>
+            fadeSlidePage(s, ParentDetailScreen(parentId: s.pathParameters['parentId']!)),
       ),
       GoRoute(path: AppRoutes.adminCms, pageBuilder: (c, s) => fadeSlidePage(s, const CmsScreen())),
       GoRoute(

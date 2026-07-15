@@ -838,6 +838,122 @@ admin.post('/students/:id/password-reset-link', async (c) => {
   return c.json({ success: true, message_fa: 'کد بازیابی به ایمیل شاگرد ارسال شد' });
 });
 
+// ═══════════════════════════ مدیریت تفصیلی والدین ══════════════════════════
+// بخش جدید — مشابه «مدیریت تفصیلی شاگرد» بالا: لیست صفحه‌بندی‌شدهٔ والدین +
+// جزئیات کامل هر والد شامل فرزندان لینک‌شده و خلاصهٔ زندهٔ پیشرفت هرکدام
+// (از همان منبع واحد lib/progress.ts — دقیقاً همان عددی که خودِ شاگرد و
+// والد در داشبورد خودشان می‌بینند).
+
+admin.get('/parents', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const q = (c.req.query('q') ?? '').trim();
+  const status = c.req.query('status');
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
+
+  const clauses: string[] = ["role = 'parent'", "status != 'deleted'"];
+  const binds: any[] = [];
+  if (q) {
+    clauses.push('(first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)');
+    binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (status && ['active', 'suspended', 'pending_verification'].includes(status)) {
+    clauses.push('status = ?');
+    binds.push(status);
+  }
+  const where = clauses.join(' AND ');
+
+  const totalRow = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM users WHERE ${where}`)
+    .bind(...binds)
+    .first<{ n: number }>();
+  const total = totalRow?.n ?? 0;
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, first_name, last_name, email, phone, avatar_url, status, created_at FROM users
+       WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+  )
+    .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE)
+    .all<any>();
+
+  const items = await Promise.all(
+    results.map(async (u: any) => {
+      const { results: links } = await c.env.DB.prepare(
+        'SELECT status FROM parent_student_links WHERE parent_user_id = ?',
+      )
+        .bind(u.id)
+        .all<{ status: string }>();
+      return {
+        id: u.id,
+        full_name: `${u.first_name} ${u.last_name}`.trim(),
+        email: u.email,
+        phone: u.phone ?? '',
+        avatar_url: u.avatar_url ?? null,
+        status: u.status,
+        linked_children_count: links.filter((l) => l.status === 'approved').length,
+        pending_children_count: links.filter((l) => l.status === 'pending_student_approval').length,
+        created_at: u.created_at,
+      };
+    }),
+  );
+  return c.json({ items, total, page, page_size: PAGE_SIZE });
+});
+
+admin.get('/parents/:id', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const id = c.req.param('id');
+  const u = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
+  if (!u || u.role !== 'parent') {
+    return c.json(fail('NOT_FOUND', 'والد یافت نشد', 'Parent not found'), 404);
+  }
+
+  const { results: links } = await c.env.DB.prepare(
+    `SELECT l.id AS link_id, l.student_user_id, l.status, l.created_at, l.approved_at,
+       su.first_name, su.last_name, su.current_grade
+     FROM parent_student_links l JOIN users su ON su.id = l.student_user_id
+     WHERE l.parent_user_id = ? ORDER BY l.created_at DESC`,
+  )
+    .bind(id)
+    .all<any>();
+
+  const children = await Promise.all(
+    links.map(async (l: any) => {
+      const grade = l.current_grade ?? 7;
+      let progressPercent = 0;
+      let points = { totalPoints: 0, level: 1, levelTitleFa: 'نوآموز' };
+      // پیشرفت/امتیاز فقط برای پیوندهای تأییدشده محاسبه می‌شود (پیوند در
+      // انتظار/ردشده هنوز اجازهٔ دسترسی به دادهٔ شاگرد را نمی‌دهد).
+      if (l.status === 'approved') {
+        const sp = await getSubjectProgressList(c.env.DB, l.student_user_id, grade);
+        progressPercent = averagePercent(sp);
+        points = await getPointsSummary(c.env.DB, l.student_user_id);
+      }
+      return {
+        link_id: l.link_id,
+        student_id: l.student_user_id,
+        student_name: `${l.first_name} ${l.last_name}`.trim(),
+        grade,
+        link_status: l.status,
+        linked_at: l.created_at,
+        approved_at: l.approved_at,
+        progress_percent: progressPercent,
+        points_total: points.totalPoints,
+        points_level: points.level,
+        points_level_title_fa: points.levelTitleFa,
+      };
+    }),
+  );
+
+  return c.json({
+    id: u.id,
+    full_name: `${u.first_name} ${u.last_name}`.trim(),
+    email: u.email,
+    phone: u.phone ?? '',
+    avatar_url: u.avatar_url ?? null,
+    status: u.status,
+    registered_at: u.created_at,
+    children,
+  });
+});
+
 // ═══════════════ نصاب هوشمند: انتشار فصل‌های شناسایی‌شده از یک کتاب ═══════════
 // کلاینت (هنگام آپلود کتاب توسط مدیر) عناوین فصل را با شناسایی هوشمند
 // (اندازهٔ فونت/الگوی «فصل N» در PDF) استخراج می‌کند و اینجا هر فصل را به یک

@@ -208,4 +208,96 @@ ai.post('/ai-teacher/stt', async (c) => {
   }
 });
 
+// ═══════════════ شخصیت معلم هوشمند هر مضمون (مهاجرت ۰۰۱۹) ═══════════════════
+// رفع اشکال بخش «مدیریت معلم هوشمند» پنل مدیر: قبلاً این تنظیمات فقط در
+// SharedPreferences هر دستگاه ذخیره می‌شد (نه با سرور/دیتابیس متصل)، پس
+// تنظیم مدیر روی یک دستگاه هرگز روی موتور واقعی معلم هوشمند (که سمت سرور
+// اجرا می‌شود) اثر نمی‌کرد. اکنون روی جدول `ai_teacher_personas` مشترک است.
+
+const SUBJECT_SEED: { id: string; nameFa: string }[] = [
+  { id: 'math', nameFa: 'ریاضی' },
+  { id: 'physics', nameFa: 'فزیک' },
+  { id: 'chemistry', nameFa: 'کیمیا' },
+  { id: 'biology', nameFa: 'بیولوژی' },
+  { id: 'dari', nameFa: 'دری' },
+  { id: 'pashto', nameFa: 'پشتو' },
+  { id: 'english', nameFa: 'انگلیسی' },
+  { id: 'history', nameFa: 'تاریخ' },
+  { id: 'geography', nameFa: 'جغرافیه' },
+  { id: 'islamic_studies', nameFa: 'مضامین اسلامی' },
+];
+const DEFAULT_PERSONA = 'دقیق و قدم‌به‌قدم، با مثال‌های بومی افغانستان.';
+
+async function requireAdminAi(c: any): Promise<boolean> {
+  const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  return p?.['role'] === 'super_admin';
+}
+
+function personaJson(r: any) {
+  return {
+    subjectId: r.subject_id,
+    subjectNameFa: r.subject_name_fa,
+    personaDescription: r.persona_description,
+    promptVersion: r.prompt_version,
+  };
+}
+
+// لیست همهٔ مضامین با شخصیت فعلی‌شان — اگر مضمونی هنوز سفارشی‌سازی نشده،
+// شخصیت پیش‌فرض گرم و تشویق‌کننده برگردانده می‌شود (بدون درج در دیتابیس تا
+// وقتی مدیر واقعاً آن را تغییر دهد).
+ai.get('/ai-teacher/personas', async (c) => {
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const { results } = await c.env.DB.prepare('SELECT * FROM ai_teacher_personas').all<any>();
+  const bySubject = new Map(results.map((r) => [r.subject_id, r]));
+  const list = SUBJECT_SEED.map((s) => {
+    const row = bySubject.get(s.id);
+    return row
+      ? personaJson(row)
+      : { subjectId: s.id, subjectNameFa: s.nameFa, personaDescription: DEFAULT_PERSONA, promptVersion: 1 };
+  });
+  return c.json({ personas: list });
+});
+
+// شخصیتِ یک مضمون — بدون تأخیر مصنوعی، چون در هر پیام چت با معلم هوشمند صدا
+// زده می‌شود (مصرف‌کنندهٔ این Endpoint خودِ موتور AI است، نه فقط پنل مدیر).
+ai.get('/ai-teacher/personas/:subjectId', async (c) => {
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const row = await c.env.DB.prepare('SELECT * FROM ai_teacher_personas WHERE subject_id = ?')
+    .bind(c.req.param('subjectId'))
+    .first<any>();
+  return c.json({ personaDescription: row?.persona_description ?? null });
+});
+
+ai.patch('/admin/ai-teacher/personas/:subjectId', async (c) => {
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const subjectId = c.req.param('subjectId');
+  const seed = SUBJECT_SEED.find((s) => s.id === subjectId);
+  const b = await c.req.json<{ personaDescription?: string }>().catch(() => null);
+  const description = String(b?.personaDescription ?? '').trim();
+  if (!description) {
+    return c.json(fail('BAD_REQUEST', 'توضیح شخصیت نمی‌تواند خالی باشد', 'Persona description required'), 400);
+  }
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const adminId = (payload?.['sub'] as string | undefined) ?? null;
+  const existing = await c.env.DB.prepare('SELECT prompt_version FROM ai_teacher_personas WHERE subject_id = ?')
+    .bind(subjectId)
+    .first<{ prompt_version: number }>();
+  const nextVersion = (existing?.prompt_version ?? 0) + 1;
+  await c.env.DB.prepare(
+    `INSERT INTO ai_teacher_personas (subject_id, subject_name_fa, persona_description, prompt_version, updated_at, updated_by_admin_id)
+       VALUES (?, ?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(subject_id) DO UPDATE SET
+       persona_description=excluded.persona_description,
+       prompt_version=excluded.prompt_version,
+       updated_at=datetime('now'),
+       updated_by_admin_id=excluded.updated_by_admin_id`,
+  )
+    .bind(subjectId, seed?.nameFa ?? subjectId, description, nextVersion, adminId)
+    .run();
+  const row = await c.env.DB.prepare('SELECT * FROM ai_teacher_personas WHERE subject_id = ?')
+    .bind(subjectId)
+    .first<any>();
+  return c.json({ persona: personaJson(row) });
+});
+
 export default ai;

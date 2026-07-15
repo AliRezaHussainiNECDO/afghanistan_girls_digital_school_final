@@ -2,10 +2,16 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../../shared_models/subject.dart';
 import '../../domain/entities/ai_teacher_config.dart';
+import 'ai_teacher_management_data_source.dart';
 
 /// تنظیمات شخصیت معلم هوشمند هر مضمون — به‌صورت محلی و پایدار ذخیره
 /// می‌شود (قبلاً فقط در حافظهٔ موقت بود و با هر بارگذاری مجدد پاک می‌شد).
-class AiTeacherManagementLocalDataSource {
+///
+/// **توجه**: این نسخهٔ محلی/آفلاین است (فاز ۱ — بدون سرور). در حالت
+/// Backend واقعی (`kUseLiveBackend`)، `AiTeacherManagementRemoteDataSource`
+/// استفاده می‌شود تا تنظیمات مدیر روی همهٔ دستگاه‌ها و برای موتور واقعی معلم
+/// هوشمند (که سمت سرور اجرا می‌شود) مشترک باشد.
+class AiTeacherManagementLocalDataSource implements AiTeacherManagementDataSource {
   static const _storageKey = 'ai_teacher_personas_v1';
 
   const AiTeacherManagementLocalDataSource();
@@ -62,21 +68,4 @@ class AiTeacherManagementLocalDataSource {
   /// شخصیت پیش‌فرض گرم و تشویق‌کننده استفاده کند.
   Future<String?> personaFor(String subjectId) async {
     final all = await _readAll();
-    return all[subjectId]?.personaDescription;
-  }
-
-  Future<void> updatePersona(String subjectId, String newDescription) async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    final all = await _readAll();
-    final current = all[subjectId];
-    if (current != null) {
-      all[subjectId] = AiTeacherConfig(
-        subjectId: current.subjectId,
-        subjectNameFa: current.subjectNameFa,
-        personaDescription: newDescription,
-        promptVersion: current.promptVersion + 1,
-      );
-      await _writeAll(all);
-    }
-  }
-}
+    return all[subjectId]?.personaDescr

@@ -348,19 +348,27 @@ const Map<String, String> enStrings = {
 
 // welcome / onboarding
 'welcome.skip': 'Skip',
-'welcome.getStarted': 'Get Started',
-'welcome.slide1Title': 'Welcome to Afghanistan Girls Digital School',
+'welcome.getStarted': "Let's go! 🚀",
+'welcome.slide1Eyebrow': '🌸 Welcome',
+'welcome.slide1Title': 'Your dreams, your lessons, your future',
 'welcome.slide1Body':
-'A free, safe platform for Afghan girls to keep learning — anytime, anywhere, in Dari, Pashto or English.',
+'This is the Afghanistan Girls Digital School — where every Afghan girl, in every home and every city, can learn, ask questions, and grow. Free, safe, and always within reach.',
+'welcome.slide2Eyebrow': '📚 Learning',
 'welcome.slide2Title': 'Everything you need to learn, in one place',
 'welcome.slide2Body':
-'Full curriculum, an AI teacher for your questions, exams, a library and live seminars.',
-'welcome.slide3Title': 'How to use the app',
+"Your grade's full curriculum, an AI teacher always ready to answer your questions, a library, exams, and even live seminars — all in one app, in your pocket.",
+'welcome.slide3Eyebrow': '🏆 Your progress',
+'welcome.slide3Title': 'Every lesson is a step forward, every step earns a point',
 'welcome.slide3Body':
-'1) Log in or register 2) Pick your grade from the grade map 3) Follow the lessons and get help from the AI teacher.',
-'welcome.slide4Title': 'Creating an account',
+"Earn points with every lesson, level up as you go, and receive your own certificate of honor at the end of the grade. Learning here is serious — and full of motivation and joy.",
+'welcome.slide4Eyebrow': '🧭 Guide',
+'welcome.slide4Title': 'Getting started is easy',
 'welcome.slide4Body':
-'Tap "Register", choose your role (student or parent), fill in your details and enter your invite code if you have one. Then log in.',
+'1) Log in or register 2) Pick your grade from the grade map 3) Follow the lessons and get help from the AI teacher whenever you need it.',
+'welcome.slide5Eyebrow': '🚀 Ready to begin?',
+'welcome.slide5Title': 'Create your account and take the first step',
+'welcome.slide5Body':
+'Tap "Register", choose your role (student or parent), fill in your details, and enter your invite code if you have one. Your future starts with one click.',
 'welcome.howToUse': 'How do I use this app?',
 
 // profile (extra)

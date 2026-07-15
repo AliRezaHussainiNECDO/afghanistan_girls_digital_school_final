@@ -69,6 +69,14 @@ class AppColors {
     colors: [orange500, gold500, green500],
     stops: [0.0, 0.55, 1.0],
   );
+
+  /// گرادیان طلایی جشن/دستاورد — برای نشان‌ها، سطح‌ها و گواهی‌نامه (بخش
+  /// آموزهٔ خوش‌آمدگویی مربوط به امتیاز فعالیت شاگرد).
+  static const LinearGradient goldCelebrationGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [gold300, gold500, gold600],
+  );
 }
 
 class AppRadii {
@@ -97,24 +105,4 @@ class AppShadows {
   static List<BoxShadow> soft = [
     BoxShadow(
       color: AppColors.ink900.withValues(alpha: 0.06),
-      blurRadius: 20,
-      offset: const Offset(0, 8),
-    ),
-  ];
-
-  static List<BoxShadow> warm = [
-    BoxShadow(
-      color: AppColors.orange600.withValues(alpha: 0.22),
-      blurRadius: 24,
-      offset: const Offset(0, 10),
-    ),
-  ];
-
-  static List<BoxShadow> green = [
-    BoxShadow(
-      color: AppColors.green700.withValues(alpha: 0.20),
-      blurRadius: 24,
-      offset: const Offset(0, 10),
-    ),
-  ];
-}
+      blurRad

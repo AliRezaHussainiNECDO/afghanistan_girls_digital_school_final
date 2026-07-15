@@ -46,6 +46,43 @@ app.use('*', async (c, next) => {
 
 app.get('/', (c) => c.json({ ok: true, service: 'afghan-girls-school-api' }));
 
+// ─────────────────── نگهبان سراسری خطا (Global Error Guard) ───────────────────
+// چرا لازم است؟ اگر یک Endpoint به هر دلیلی (مثلاً جدولی که هنوز مهاجرت
+// نشده، یا یک استثنای پیش‌بینی‌نشده) استثنا پرتاب کند، بدون این نگهبان
+// Cloudflare Workers یک پاسخ ۵۰۰ خامِ غیر-JSON برمی‌گرداند؛ کلاینت (ApiClient)
+// نمی‌تواند آن را پارس کند و کاربر فقط «خطای ناشناخته» می‌بیند بدون جزئیات
+// قابل پیگیری در لاگ. این نگهبان همیشه یک JSON با قرارداد خطای استاندارد
+// برمی‌گرداند و خطای واقعی را در لاگ سرور (wrangler tail) ثبت می‌کند تا
+// مشکلات مثل «جدول/ستون مهاجرت‌نشده» سریع قابل تشخیص باشند.
+app.onError((err, c) => {
+  console.error(`[unhandled] ${c.req.method} ${c.req.path} →`, err);
+  return c.json(
+    {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message_fa: 'خطای داخلی سرور رخ داد. لطفاً کمی بعد دوباره تلاش کنید.',
+        message_en: 'An internal server error occurred. Please try again shortly.',
+      },
+    },
+    500,
+  );
+});
+
+app.notFound((c) =>
+  c.json(
+    {
+      success: false,
+      error: {
+        code: 'NOT_FOUND',
+        message_fa: 'این مسیر روی سرور یافت نشد.',
+        message_en: 'This endpoint was not found on the server.',
+      },
+    },
+    404,
+  ),
+);
+
 // ───────────────────────────── احراز هویت ─────────────────────────────
 app.route('/api/v1/auth', authRouter);
 

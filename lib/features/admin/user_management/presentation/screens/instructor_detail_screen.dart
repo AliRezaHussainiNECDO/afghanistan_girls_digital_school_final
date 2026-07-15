@@ -62,7 +62,30 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
       child: ListenableBuilder(
         listenable: InstructorDirectory.instance,
         builder: (context, _) {
-          if (kUseLiveBackend && !InstructorDirectory.instance.loadedFromBackend) {
+          final dir = InstructorDirectory.instance;
+          if (kUseLiveBackend && !dir.loadedFromBackend) {
+            if (dir.lastError != null && !dir.loading) {
+              return Scaffold(
+                body: Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('اتصال به سرور برقرار نشد: ${dir.lastError}',
+                          textAlign: TextAlign.center),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          dir.loadFromBackend(ref.read(apiClientProvider)),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('تلاش دوباره'),
+                    ),
+                  ]),
+                ),
+              );
+            }
             return const Scaffold(body: Center(child: CircularProgressIndicator()));
           }
           final instructor =
@@ -510,36 +533,3 @@ class _StatBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Expanded(
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(children: [
-            Text(value,
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: color)),
-            const SizedBox(height: 2),
-            Text(label,
-                style:
-                    TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-          ]),
-        ),
-      );
-}
-
-class _Meta extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _Meta({required this.icon, required this.text});
-
-  @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: Colors.grey.shade600),
-        const SizedBox(width: 4),
-        Text(text,
-            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
-      ]);
-}

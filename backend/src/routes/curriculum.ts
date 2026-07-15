@@ -163,6 +163,69 @@ c11m.get('/students/:studentId/grade-map', async (c) => {
 });
 
 // ───────────── خلاصهٔ داشبورد خانهٔ شاگرد (بخش ۵.۵/۶/۷/۱۲) ─────────────
+
+// «ادامهٔ یادگیری» — به‌جای فقط یک درس/مضمون ثابت (که قبلاً همیشه اولین
+// مضمونِ برنامهٔ درسی را نشان می‌داد)، اینجا تا ۳ مضمونی که شاگرد واقعاً در
+// آن‌ها فعالیت کرده (viewed > 0) و هنوز تکمیل نشده را برمی‌گردانیم، به
+// ترتیب «آخرین بار که در آن درس دیده»، تا شاگرد دقیقاً از همان‌جایی که رها
+// کرده ادامه دهد. اگر شاگرد هنوز هیچ درسی ندیده (روز اول)، اولین درسِ
+// برنامهٔ درسی به‌عنوان نقطهٔ شروع پیشنهاد می‌شود.
+async function buildContinueLearning(
+  db: D1Database,
+  studentId: string,
+  grade: number,
+  subjectsProgress: Awaited<ReturnType<typeof getSubjectProgressList>>,
+): Promise<{ subjectId: string; subjectNameFa: string; lessonTitle: string; progressPercent: number }[]> {
+  const inProgressIds = new Set(subjectsProgress.filter((s) => s.status === 'inProgress').map((s) => s.subjectId));
+
+  const { results: recency } = await db
+    .prepare(
+      `SELECT ch.subject_id AS subject_id, MAX(v.viewed_at) AS last_viewed
+         FROM student_lesson_views v
+         JOIN lessons l ON l.id = v.lesson_id
+         JOIN chapters ch ON ch.id = l.chapter_id
+        WHERE v.user_id = ? AND ch.grade_number = ?
+        GROUP BY ch.subject_id
+        ORDER BY last_viewed DESC`,
+    )
+    .bind(studentId, grade)
+    .all<{ subject_id: string; last_viewed: string }>();
+
+  const orderedSubjectIds = recency.map((r) => r.subject_id).filter((id) => inProgressIds.has(id)).slice(0, 3);
+
+  // اگر هیچ مضمونی «در حال انجام» نیست (روز اول شاگرد)، اولین مضمون با محتوا
+  // در این صنف را به‌عنوان نقطهٔ شروع پیشنهاد بده.
+  if (orderedSubjectIds.length === 0) {
+    const first = subjectsProgress.find((s) => s.totalLessons > 0);
+    if (first) orderedSubjectIds.push(first.subjectId);
+  }
+
+  const items: { subjectId: string; subjectNameFa: string; lessonTitle: string; progressPercent: number }[] = [];
+  for (const subjectId of orderedSubjectIds) {
+    const sp = subjectsProgress.find((s) => s.subjectId === subjectId);
+    if (!sp) continue;
+    const lesson = await db
+      .prepare(
+        `SELECT l.title_fa FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
+          WHERE ch.subject_id=? AND ch.grade_number=? AND l.status='published' AND ch.status='published'
+            AND l.id NOT IN (SELECT lesson_id FROM student_lesson_views WHERE user_id=?)
+          ORDER BY ch.order_index, l.order_index LIMIT 1`,
+      )
+      .bind(subjectId, grade, studentId)
+      .first<{ title_fa: string }>();
+    // اگر درس دیده‌نشده‌ای باقی نمانده (مثلاً همهٔ درس‌ها دیده شده ولی نمرهٔ
+    // نهایی هنوز کامل نشده)، این مضمون را رد کن — چیزی برای «ادامه» ندارد.
+    if (!lesson) continue;
+    items.push({
+      subjectId,
+      subjectNameFa: sp.nameFa,
+      lessonTitle: lesson.title_fa,
+      progressPercent: sp.percent,
+    });
+  }
+  return items;
+}
+
 c11m.get('/students/me/dashboard-summary', async (c) => {
   const uid = await userId(c);
   if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
@@ -179,23 +242,21 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     .map((r) => r.nameFa);
   const overall = averagePercent(subjectsProgress);
 
-  // درس فعلی: اولین درس منتشرشدهٔ دیده‌نشده در این صنف.
-  const nextLesson = await c.env.DB.prepare(
-    `SELECT l.title_fa, s.name_fa AS subject_name FROM lessons l
-       JOIN chapters ch ON ch.id=l.chapter_id
-       JOIN subjects s ON s.id=ch.subject_id
-     WHERE ch.grade_number=? AND l.status='published' AND ch.status='published'
-       AND l.id NOT IN (SELECT lesson_id FROM student_lesson_views WHERE user_id=?)
-     ORDER BY s.order_index, ch.order_index, l.order_index LIMIT 1`,
+  // «ادامهٔ یادگیری» — فهرست چندمضمونی به‌جای یک درسِ ثابت (رفع اشکال:
+  // قبلاً همیشه فقط اولین مضمون برنامهٔ درسی نشان داده می‌شد).
+  const continueLearning = await buildContinueLearning(c.env.DB, uid, grade, subjectsProgress);
+  const first = continueLearning[0];
+
+  // امتحان پیش رو: اولین امتحان منتشرشدهٔ این صنف که شاگرد هنوز آن را نداده
+  // است (رفع اشکال: قبلاً «آخرین امتحانِ ساخته‌شده» را نشان می‌داد، حتی اگر
+  // شاگرد قبلاً همان را داده باشد — یعنی هیچ‌وقت واقعاً «پیش رو» نبود).
+  const exam = await c.env.DB.prepare(
+    `SELECT title FROM exams
+      WHERE grade_number=? AND status='published'
+        AND id NOT IN (SELECT exam_id FROM exam_attempts WHERE user_id=?)
+      ORDER BY created_at ASC LIMIT 1`,
   )
     .bind(grade, uid)
-    .first<{ title_fa: string; subject_name: string }>();
-
-  // امتحان پیش رو (عنوان) و سمینار پیش رو (عنوان + تاریخ).
-  const exam = await c.env.DB.prepare(
-    "SELECT title FROM exams WHERE grade_number=? AND status='published' ORDER BY created_at DESC LIMIT 1",
-  )
-    .bind(grade)
     .first<{ title: string }>();
   const seminar = await c.env.DB.prepare(
     "SELECT title, scheduled_start FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 1",
@@ -204,11 +265,18 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
   // خلاصهٔ امتیاز فعالیت (Gamification) — برای نشان دادن نشان/سطح در خانهٔ شاگرد.
   const points = await getPointsSummary(c.env.DB, uid);
 
+  // تعداد گواهی‌نامه‌های صادرشده — تا کارت «گواهی‌نامه‌های من» در خانهٔ شاگرد
+  // به‌جای متن ثابت، وضعیت واقعی را نشان دهد.
+  const certCount = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM certificates WHERE student_id=?')
+    .bind(uid)
+    .first<{ n: number }>();
+
   return c.json({
     studentDisplayName: u?.first_name ?? '',
     overallProgressPercent: overall,
-    currentLessonTitle: nextLesson?.title_fa ?? 'درسی برای شروع موجود نیست',
-    currentSubjectNameFa: nextLesson?.subject_name ?? '',
+    currentLessonTitle: first?.lessonTitle ?? 'درسی برای شروع موجود نیست',
+    currentSubjectNameFa: first?.subjectNameFa ?? '',
+    continueLearning,
     upcomingExamTitle: exam?.title ?? null,
     upcomingExamDate: null,
     upcomingSeminarTitle: seminar?.title ?? null,
@@ -217,6 +285,7 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     pointsTotal: points.totalPoints,
     pointsLevel: points.level,
     pointsLevelTitleFa: points.levelTitleFa,
+    certificatesCount: certCount?.n ?? 0,
   });
 });
 

@@ -99,6 +99,44 @@ class UserManagementScreen extends ConsumerWidget {
               ),
             ),
           ),
+          // ── مدیریت والدین (بخش جدید — هم‌الگو با شاگردان/استادان) ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Material(
+              color: scheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => context.push(AppRoutes.adminParents),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.family_restroom_rounded, color: scheme.onTertiaryContainer),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(context.tr('admin.parents'),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: scheme.onTertiaryContainer)),
+                            Text(context.tr('admin.parentsSubtitle'),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.onTertiaryContainer)),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_left_rounded,
+                          color: scheme.onTertiaryContainer),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
@@ -126,46 +164,4 @@ class UserManagementScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(AppRadii.lg),
                       border: Border.all(color: scheme.outlineVariant),
                     ),
-                    child: Row(
-                      children: [
-                        // عکس پروفایل کاربر (اگر آپلود کرده باشد)، وگرنه حرف اول.
-                        UserAvatar(
-                          radius: 21,
-                          name: u.name.isNotEmpty ? u.name : '?',
-                          avatarUrl: u.avatarUrl,
-                          backgroundColor: u.suspended
-                              ? scheme.surfaceContainerHigh
-                              : scheme.primary,
-                          foregroundColor:
-                              u.suspended ? scheme.onSurfaceVariant : Colors.white,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(u.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                              Text('${u.email} · ${u.role}',
-                                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: !u.suspended,
-                          onChanged: (_) async {
-                            await ref.read(toggleSuspendUseCaseProvider).call(u.id);
-                            ref.invalidate(adminUsersProvider);
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+                    

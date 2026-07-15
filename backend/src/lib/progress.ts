@@ -152,44 +152,66 @@ export type PointsSummary = {
   recent: { points: number; reason: string; refId: string; createdAt: string }[];
 };
 
+const ZERO_POINTS_SUMMARY: PointsSummary = {
+  totalPoints: 0,
+  level: 1,
+  levelTitleFa: 'نوآموز',
+  nextLevelAt: 100,
+  nextLevelTitleFa: 'کوشا',
+  progressToNextPercent: 0,
+  recent: [],
+};
+
+/**
+ * محاسبهٔ امتیاز فعالیت — این تابع هرگز استثنا پرتاب نمی‌کند. اگر جدول‌های
+ * امتیازدهی (مهاجرت ۰۰۱۸) هنوز روی این دیتابیس اجرا نشده باشند (یا هر خطای
+ * دیگری رخ دهد)، به‌جای کرش‌دادن کل Endpoint (مثلاً جزئیات شاگرد در پنل مدیر،
+ * خانهٔ شاگرد یا کارنامهٔ والد)، یک خلاصهٔ صفر امن برمی‌گرداند و فقط در لاگ
+ * سرور ثبت می‌کند — یک بخش فرعی (نشان/سطح) نباید کل صفحه را از کار بیندازد.
+ */
 export async function getPointsSummary(db: D1Database, studentId: string): Promise<PointsSummary> {
-  const totalRow = await db
-    .prepare('SELECT COALESCE(SUM(points),0) AS total FROM student_points_ledger WHERE student_id=?')
-    .bind(studentId)
-    .first<{ total: number }>();
-  const total = totalRow?.total ?? 0;
+  try {
+    const totalRow = await db
+      .prepare('SELECT COALESCE(SUM(points),0) AS total FROM student_points_ledger WHERE student_id=?')
+      .bind(studentId)
+      .first<{ total: number }>();
+    const total = totalRow?.total ?? 0;
 
-  const { results: levels } = await db
-    .prepare('SELECT level, min_points, title_fa FROM points_levels ORDER BY min_points')
-    .all<{ level: number; min_points: number; title_fa: string }>();
+    const { results: levels } = await db
+      .prepare('SELECT level, min_points, title_fa FROM points_levels ORDER BY min_points')
+      .all<{ level: number; min_points: number; title_fa: string }>();
 
-  let current = levels[0] ?? { level: 1, min_points: 0, title_fa: 'نوآموز' };
-  let next: { level: number; min_points: number; title_fa: string } | null = null;
-  for (const lvl of levels) {
-    if (lvl.min_points <= total) current = lvl;
-    else {
-      next = lvl;
-      break;
+    let current = levels[0] ?? { level: 1, min_points: 0, title_fa: 'نوآموز' };
+    let next: { level: number; min_points: number; title_fa: string } | null = null;
+    for (const lvl of levels) {
+      if (lvl.min_points <= total) current = lvl;
+      else {
+        next = lvl;
+        break;
+      }
     }
+    const progressToNextPercent = next
+      ? Math.round(((total - current.min_points) / (next.min_points - current.min_points)) * 1000) / 10
+      : 100;
+
+    const { results: recentRows } = await db
+      .prepare('SELECT points, reason, ref_id, created_at FROM student_points_ledger WHERE student_id=? ORDER BY created_at DESC LIMIT 20')
+      .bind(studentId)
+      .all<{ points: number; reason: string; ref_id: string; created_at: string }>();
+
+    return {
+      totalPoints: total,
+      level: current.level,
+      levelTitleFa: current.title_fa,
+      nextLevelAt: next?.min_points ?? null,
+      nextLevelTitleFa: next?.title_fa ?? null,
+      progressToNextPercent,
+      recent: recentRows.map((r) => ({ points: r.points, reason: r.reason, refId: r.ref_id, createdAt: r.created_at })),
+    };
+  } catch (err) {
+    console.error('[getPointsSummary] fallback to zero summary —', err);
+    return ZERO_POINTS_SUMMARY;
   }
-  const progressToNextPercent = next
-    ? Math.round(((total - current.min_points) / (next.min_points - current.min_points)) * 1000) / 10
-    : 100;
-
-  const { results: recentRows } = await db
-    .prepare('SELECT points, reason, ref_id, created_at FROM student_points_ledger WHERE student_id=? ORDER BY created_at DESC LIMIT 20')
-    .bind(studentId)
-    .all<{ points: number; reason: string; ref_id: string; created_at: string }>();
-
-  return {
-    totalPoints: total,
-    level: current.level,
-    levelTitleFa: current.title_fa,
-    nextLevelAt: next?.min_points ?? null,
-    nextLevelTitleFa: next?.title_fa ?? null,
-    progressToNextPercent,
-    recent: recentRows.map((r) => ({ points: r.points, reason: r.reason, refId: r.ref_id, createdAt: r.created_at })),
-  };
 }
 
 /**

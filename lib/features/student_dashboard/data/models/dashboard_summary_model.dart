@@ -6,6 +6,7 @@ class DashboardSummaryModel extends DashboardSummary {
     required super.overallProgressPercent,
     required super.currentLessonTitle,
     required super.currentSubjectNameFa,
+    super.continueLearning,
     super.upcomingExamTitle,
     super.upcomingExamDate,
     super.upcomingSeminarTitle,
@@ -14,5 +15,6 @@ class DashboardSummaryModel extends DashboardSummary {
     super.pointsTotal,
     super.pointsLevel,
     super.pointsLevelTitleFa,
+    super.certificatesCount,
   });
 }

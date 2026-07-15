@@ -1,4 +1,5 @@
 import '../../../../core/network/api_client.dart';
+import '../../domain/entities/dashboard_summary.dart';
 import '../models/dashboard_summary_model.dart';
 
 /// قرارداد مشترک DataSource خلاصهٔ داشبورد — Mock و Remote هر دو آن را
@@ -21,6 +22,17 @@ class DashboardRemoteDataSource implements DashboardDataSource {
       overallProgressPercent: (m['overallProgressPercent'] as num?)?.toDouble() ?? 0,
       currentLessonTitle: m['currentLessonTitle'] as String? ?? '',
       currentSubjectNameFa: m['currentSubjectNameFa'] as String? ?? '',
+      continueLearning: (m['continueLearning'] as List? ?? [])
+          .map((e) {
+            final j = Map<String, dynamic>.from(e as Map);
+            return ContinueLearningItem(
+              subjectId: j['subjectId'] as String? ?? '',
+              subjectNameFa: j['subjectNameFa'] as String? ?? '',
+              lessonTitle: j['lessonTitle'] as String? ?? '',
+              progressPercent: (j['progressPercent'] as num?)?.toDouble() ?? 0,
+            );
+          })
+          .toList(),
       upcomingExamTitle: m['upcomingExamTitle'] as String?,
       upcomingExamDate: DateTime.tryParse(m['upcomingExamDate'] as String? ?? ''),
       upcomingSeminarTitle: m['upcomingSeminarTitle'] as String?,
@@ -30,6 +42,7 @@ class DashboardRemoteDataSource implements DashboardDataSource {
       pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,
       pointsLevel: (m['pointsLevel'] as num?)?.toInt() ?? 1,
       pointsLevelTitleFa: m['pointsLevelTitleFa'] as String? ?? 'نوآموز',
+      certificatesCount: (m['certificatesCount'] as num?)?.toInt() ?? 0,
     );
   }
 }

@@ -63,6 +63,8 @@ class AppRoutes {
   static String adminStudentDetail(String studentId) => '/admin/students/$studentId';
   static const adminInstructors = '/admin/instructors';
   static String adminInstructorDetail(String instructorId) => '/admin/instructors/$instructorId';
+  static const adminParents = '/admin/parents';
+  static String adminParentDetail(String parentId) => '/admin/parents/$parentId';
   static const adminCms = '/admin/cms';
   static const adminAiTeacher = '/admin/ai-teacher';
   static const adminBulkImport = '/admin/ai-teacher/bulk-import';

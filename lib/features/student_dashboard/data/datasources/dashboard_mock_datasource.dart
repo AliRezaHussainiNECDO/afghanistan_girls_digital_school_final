@@ -1,3 +1,4 @@
+import '../../domain/entities/dashboard_summary.dart';
 import '../models/dashboard_summary_model.dart';
 import 'dashboard_remote_datasource.dart' show DashboardDataSource;
 
@@ -10,6 +11,20 @@ class DashboardMockDataSource implements DashboardDataSource {
       overallProgressPercent: 68.4,
       currentLessonTitle: 'معادلات درجهٔ دوم',
       currentSubjectNameFa: 'ریاضی',
+      continueLearning: const [
+        ContinueLearningItem(
+          subjectId: 'math',
+          subjectNameFa: 'ریاضی',
+          lessonTitle: 'معادلات درجهٔ دوم',
+          progressPercent: 62,
+        ),
+        ContinueLearningItem(
+          subjectId: 'physics',
+          subjectNameFa: 'فزیک',
+          lessonTitle: 'قوانین نیوتن',
+          progressPercent: 40,
+        ),
+      ],
       upcomingExamTitle: 'امتحان ماهانهٔ فزیک',
       upcomingExamDate: DateTime.now().add(const Duration(days: 3)),
       upcomingSeminarTitle: 'مهارت‌های مطالعهٔ مؤثر',
@@ -18,6 +33,7 @@ class DashboardMockDataSource implements DashboardDataSource {
       pointsTotal: 240,
       pointsLevel: 3,
       pointsLevelTitleFa: 'کوشا',
+      certificatesCount: 1,
     );
   }
 }
