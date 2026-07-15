@@ -25,9 +25,9 @@ class GetLessonUseCase implements UseCase<Lesson, String> {
   Future<Either<Failure, Lesson>> call(String lessonId) => repository.getLesson(lessonId);
 }
 
-class MarkLessonViewedUseCase implements UseCase<Unit, String> {
+class MarkLessonViewedUseCase implements UseCase<LessonViewResult, String> {
   final CurriculumRepository repository;
   MarkLessonViewedUseCase(this.repository);
   @override
-  Future<Either<Failure, Unit>> call(String lessonId) => repository.markLessonViewed(lessonId);
+  Future<Either<Failure, LessonViewResult>> call(String lessonId) => repository.markLessonViewed(lessonId);
 }
