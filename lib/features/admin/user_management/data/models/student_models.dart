@@ -18,6 +18,15 @@ String accountStatusToApi(AccountStatus s) => switch (s) {
       AccountStatus.deleted => 'deleted',
     };
 
+/// پارس مقاوم تاریخ — برخی مقادیر قدیمی date_of_birth با اسلش ('/') به‌جای
+/// خط‌تیره ثبت شده‌اند (فرم ثبت‌نام قبلاً فرمت را اجبار نمی‌کرد) که باعث
+/// کرش DateTime.parse سخت‌گیرانه و نمایش اشتباه «خطای سرور» می‌شد.
+DateTime _lenientDate(String? raw, {DateTime? fallback}) {
+  if (raw == null || raw.isEmpty) return fallback ?? DateTime(2010, 1, 1);
+  final normalized = raw.replaceAll('/', '-');
+  return DateTime.tryParse(normalized) ?? (fallback ?? DateTime(2010, 1, 1));
+}
+
 RiskLevel _riskFrom(String? s) => switch (s) {
       'high' => RiskLevel.high,
       'medium' => RiskLevel.medium,
@@ -138,8 +147,8 @@ class AttendanceSummaryModel extends AttendanceSummary {
         belowThreshold: json['below_threshold'] as bool? ?? false,
         last30Days: (json['last_30_days'] as List? ?? [])
             .map((e) => AttendanceDay(
-                  date: DateTime.parse(e['date'] as String),
-                  present: e['present'] as bool,
+                  date: _lenientDate(e['date'] as String?),
+                  present: e['present'] as bool? ?? false,
                 ))
             .toList(),
       );
@@ -168,8 +177,9 @@ class StudentDetailModel extends StudentDetail {
             StudentSummaryModel.fromJson(json['summary'] as Map<String, dynamic>),
         email: json['email'] as String,
         phone: json['phone'] as String,
-        birthDate: DateTime.parse(json['birth_date'] as String),
-        registeredAt: DateTime.parse(json['registered_at'] as String),
+        birthDate: _lenientDate(json['birth_date'] as String?),
+        registeredAt: _lenientDate(json['registered_at'] as String?,
+            fallback: DateTime.now()),
         subjects: (json['subjects'] as List? ?? [])
             .map((e) =>
                 SubjectProgressModel.fromJson(e as Map<String, dynamic>))
@@ -208,18 +218,4 @@ class AiTeacherReportModel extends AiTeacherReport {
       AiTeacherReportModel(
         generatedAt: DateTime.parse(json['generated_at'] as String),
         overallProgress: (json['overall_progress'] as num).toDouble(),
-        trend: _trendFrom(json['trend'] as String?),
-        stressLevel: _stressFrom(json['stress_level'] as String?),
-        engagementScore: (json['engagement_score'] as num).toDouble(),
-        strengths: List<String>.from(json['strengths'] as List? ?? []),
-        concerns: List<String>.from(json['concerns'] as List? ?? []),
-        recommendations:
-            List<String>.from(json['recommendations'] as List? ?? []),
-        subjectNotes: (json['subject_notes'] as List? ?? [])
-            .map((e) => SubjectNote(
-                  subjectName: e['subject_name'] as String,
-                  note: e['note'] as String,
-                ))
-            .toList(),
-      );
-}
+        trend:
