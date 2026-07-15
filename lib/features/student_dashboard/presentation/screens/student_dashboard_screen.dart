@@ -13,6 +13,7 @@ import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../curriculum/presentation/widgets/points_badge.dart';
 import '../../../study_plan/presentation/widgets/today_schedule_card.dart';
 import '../providers/dashboard_providers.dart';
 
@@ -74,6 +75,15 @@ class StudentDashboardScreen extends ConsumerWidget {
                         Text(
                           context.tr('dashboard.overallProgress'),
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
+                        ),
+                        const SizedBox(height: 10),
+                        // ── امتیاز فعالیت (Gamification) — طبق `getPointsSummary` سرور ──
+                        PointsBadge(
+                          pointsTotal: summary.pointsTotal,
+                          pointsLevel: summary.pointsLevel,
+                          pointsLevelTitleFa: summary.pointsLevelTitleFa,
+                          light: true,
+                          compact: true,
                         ),
                       ],
                     ),
