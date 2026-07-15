@@ -11,5 +11,8 @@ class DashboardSummaryModel extends DashboardSummary {
     super.upcomingSeminarTitle,
     super.upcomingSeminarDate,
     super.recommendedTopics,
+    super.pointsTotal,
+    super.pointsLevel,
+    super.pointsLevelTitleFa,
   });
 }
