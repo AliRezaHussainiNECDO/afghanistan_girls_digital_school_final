@@ -12,7 +12,18 @@ class ChildSubjectSummary extends Equatable {
   final String subjectNameFa;
   final String statusLabel; // completed/in_progress/locked — نمایش آماده از Backend
   final double? finalScore;
-  const ChildSubjectSummary({required this.subjectNameFa, required this.statusLabel, this.finalScore});
+
+  /// درصد پیشرفت درسیِ همین مضمون — همان منطق واحد پیشرفت که در بخش فصل‌های
+  /// شاگرد (`getChapterList`/`getSubjectProgressList`) محاسبه می‌شود؛ طبق
+  /// درخواست کاربر باید در داشبورد والدین هم مطابق همان‌جا نمایش یابد.
+  final double? progressPercent;
+
+  const ChildSubjectSummary({
+    required this.subjectNameFa,
+    required this.statusLabel,
+    this.finalScore,
+    this.progressPercent,
+  });
   @override
   List<Object?> get props => [subjectNameFa];
 }
@@ -30,6 +41,12 @@ class ChildSummary extends Equatable {
   final List<String> certificates;
   final List<String> upcomingSeminarTitles;
 
+  /// امتیاز فعالیت (Gamification) — همان منبع `getPointsSummary` سرور که در
+  /// داشبورد شاگرد هم استفاده می‌شود، تا والدین همان تشویق/سطح را ببینند.
+  final int pointsTotal;
+  final int pointsLevel;
+  final String pointsLevelTitleFa;
+
   const ChildSummary({
     required this.studentId,
     required this.displayName,
@@ -40,6 +57,9 @@ class ChildSummary extends Equatable {
     required this.achievements,
     required this.certificates,
     required this.upcomingSeminarTitles,
+    this.pointsTotal = 0,
+    this.pointsLevel = 1,
+    this.pointsLevelTitleFa = 'نوآموز',
   });
 
   @override
