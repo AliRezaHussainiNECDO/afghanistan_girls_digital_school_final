@@ -272,7 +272,14 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     border: Border.all(color: scheme.outlineVariant),
                   ),
                   child: SingleChildScrollView(
-                    child: Text(lesson.contentBody, style: Theme.of(context).textTheme.bodyLarge),
+                    child: Text(
+                      lesson.contentBody,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            height: 2.0,
+                            letterSpacing: 0.1,
+                            fontSize: 16.5,
+                          ),
+                    ),
                   ),
                 ),
               ),

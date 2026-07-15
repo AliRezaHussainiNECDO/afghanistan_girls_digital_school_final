@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -128,6 +129,23 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
     await _player.play(DeviceFileSource(path));
   }
 
+  /// دکمهٔ میکروفون — هنگام ضبط، با ضربان آرام و مدرن بزرگ/کوچک می‌شود تا
+  /// وضعیت «در حال شنیدن» کاملاً واضح باشد.
+  Widget _buildMicButton() {
+    final button = IconButton(
+      tooltip: _isRecording ? 'توقف و ارسال' : 'صحبت با معلم',
+      icon: Icon(
+        _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
+        color: _isRecording ? Colors.red : null,
+      ),
+      onPressed: _sending ? null : _toggleRecord,
+    );
+    if (!_isRecording) return button;
+    return button
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .scaleXY(end: 1.18, duration: 550.ms, curve: Curves.easeInOut);
+  }
+
   Future<void> _sendCommand(String command) async {
     if (_sending) return;
     setState(() => _sending = true);
@@ -160,19 +178,63 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
               itemCount: messages.length + (_sending ? 1 : 0),
               itemBuilder: (context, i) {
                 if (i >= messages.length) {
-                  return Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(context.tr('aiTeacher.thinking'),
-                          style: Theme.of(context).textTheme.bodySmall),
+                  final scheme = Theme.of(context).colorScheme;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          margin: const EdgeInsets.only(left: 6),
+                          decoration: const BoxDecoration(
+                            gradient: AppColors.sunriseGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.smart_toy_rounded, size: 16, color: Colors.white),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainer,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(AppRadii.md),
+                              topRight: Radius.circular(AppRadii.md),
+                              bottomLeft: Radius.circular(4),
+                              bottomRight: Radius.circular(AppRadii.md),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (var d = 0; d < 3; d++)
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  margin: EdgeInsets.only(left: d == 2 ? 0 : 5),
+                                  decoration: BoxDecoration(
+                                    color: scheme.onSurfaceVariant,
+                                    shape: BoxShape.circle,
+                                  ),
+                                )
+                                    .animate(onPlay: (c) => c.repeat())
+                                    .fadeIn(delay: (150 * d).ms, duration: 400.ms)
+                                    .then()
+                                    .fadeOut(delay: 200.ms, duration: 400.ms),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  );
+                  ).animate().fadeIn(duration: 200.ms);
                 }
                 final msg = messages[i];
                 final isAi = msg.sender == ChatSender.ai;
                 final scheme = Theme.of(context).colorScheme;
-                return Padding(
+                final isLast = i == messages.length - 1;
+                final bubble = Padding(
                   padding: const EdgeInsets.symmetric(vertical: 5),
                   child: Row(
                     mainAxisAlignment: isAi ? MainAxisAlignment.start : MainAxisAlignment.end,
@@ -251,6 +313,11 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
                     ],
                   ),
                 );
+                if (!isLast) return bubble;
+                return bubble
+                    .animate()
+                    .fadeIn(duration: 240.ms, curve: Curves.easeOut)
+                    .slideY(begin: 0.15, end: 0, curve: Curves.easeOutCubic);
               },
             ),
           ),
@@ -309,14 +376,7 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
                             child: SizedBox(
                                 width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
                           )
-                        : IconButton(
-                            tooltip: _isRecording ? 'توقف و ارسال' : 'صحبت با معلم',
-                            icon: Icon(
-                              _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
-                              color: _isRecording ? Colors.red : null,
-                            ),
-                            onPressed: _sending ? null : _toggleRecord,
-                          ),
+                        : _buildMicButton(),
                   const SizedBox(width: 4),
                   IconButton.filled(
                     icon: const Icon(Icons.send),

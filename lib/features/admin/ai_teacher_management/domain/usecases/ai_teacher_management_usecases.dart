@@ -3,6 +3,7 @@ import '../../../../../core/errors/failures.dart';
 import '../../../../../core/usecase/usecase.dart';
 import 'package:equatable/equatable.dart';
 import '../entities/ai_teacher_config.dart';
+import '../entities/ai_teacher_stats.dart';
 import '../repositories/ai_teacher_management_repository.dart';
 
 class GetAiTeacherConfigsUseCase implements UseCase<List<AiTeacherConfig>, NoParams> {
@@ -10,6 +11,13 @@ class GetAiTeacherConfigsUseCase implements UseCase<List<AiTeacherConfig>, NoPar
   GetAiTeacherConfigsUseCase(this.repository);
   @override
   Future<Either<Failure, List<AiTeacherConfig>>> call(NoParams params) => repository.getConfigs();
+}
+
+class GetAiTeacherStatsUseCase implements UseCase<AiTeacherStats, NoParams> {
+  final AiTeacherManagementRepository repository;
+  GetAiTeacherStatsUseCase(this.repository);
+  @override
+  Future<Either<Failure, AiTeacherStats>> call(NoParams params) => repository.getStats();
 }
 
 class UpdatePersonaParams extends Equatable {

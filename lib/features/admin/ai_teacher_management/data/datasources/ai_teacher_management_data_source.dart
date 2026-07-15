@@ -1,4 +1,5 @@
 import '../../domain/entities/ai_teacher_config.dart';
+import '../../domain/entities/ai_teacher_stats.dart';
 
 /// قرارداد مشترک DataSource «مدیریت معلم هوشمند» — نسخهٔ محلی (فاز ۱،
 /// SharedPreferences) و ریموت (فاز ۲، سرور واقعی) هر دو آن را پیاده می‌کنند
@@ -7,4 +8,8 @@ abstract class AiTeacherManagementDataSource {
   Future<List<AiTeacherConfig>> getConfigs();
   Future<String?> personaFor(String subjectId);
   Future<void> updatePersona(String subjectId, String newDescription);
+
+  /// آمار حقیقی استفاده از معلم هوشمند (تعداد پیام‌ها، شاگردان فعال،
+  /// پرکاربردترین مضمون‌ها) — طبق درخواست مدیر برای پنل «مدیریت معلم هوشمند».
+  Future<AiTeacherStats> getStats();
 }

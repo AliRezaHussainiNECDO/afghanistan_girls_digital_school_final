@@ -105,6 +105,7 @@ class LocalCurriculumAiEngine implements AiEngine {
         sourceReference: r.currentSection != null
             ? '${r.currentSection!.bookTitle} — بخش ${r.currentSection!.index + 1}'
             : null,
+        wasCorrectAttempt: true,
       );
     }
     return AiEngineResponse(
@@ -113,6 +114,7 @@ class LocalCurriculumAiEngine implements AiEngine {
       sourceReference: r.currentSection != null
           ? '${r.currentSection!.bookTitle} — بخش ${r.currentSection!.index + 1}'
           : null,
+      wasCorrectAttempt: false,
     );
   }
 

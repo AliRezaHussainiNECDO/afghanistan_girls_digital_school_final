@@ -113,10 +113,25 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
   Timer? _successHideTimer;
 
   /// انیمیشن ضربان‌دار برای آیکن آپلود در حین پردازش — جلوه‌ای زنده و مدرن.
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  )..repeat(reverse: true);
+  ///
+  /// نکته: عمداً در [initState] (نه به‌صورت lazy `late final` با مقداردهی در
+  /// محل تعریف فیلد) ساخته می‌شود. اگر این ردیف هرگز وارد حالت `_extracting`
+  /// نشود، فیلد lazy تا لحظهٔ اجرای `dispose()` هرگز خوانده نمی‌شد؛ در آن
+  /// لحظه سازندهٔ `AnimationController(vsync: this, ...)` بار اول اجرا
+  /// می‌شد و چون ویجت already deactivated است، جست‌وجوی TickerMode از
+  /// درخت والد با خطای «Looking up a deactivated widget's ancestor is
+  /// unsafe» کرش می‌کرد. ساخت زودهنگام در initState این مشکل را ریشه‌ای
+  /// حل می‌کند.
+  late final AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
 
   @override
   void dispose() {
@@ -206,9 +221,10 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
           ));
       ref.invalidate(booksForSubjectProvider(widget.subjectId));
 
-      // ── انتشار فصل‌های شناسایی‌شده (فقط روی Backend واقعی و با اطمینان کافی) ──
+      // ── انتشار فصل‌ها و درس‌های شناسایی‌شده (فقط روی Backend واقعی و با اطمینان کافی) ──
       await addResult.fold((_) async {}, (book) async {
         if (!kUseLiveBackend || detectedChapters.length < 2) return;
+        final lessonCount = detectedChapters.fold<int>(0, (sum, c) => sum + c.lessons.length);
         try {
           await ref.read(apiClientProvider).post(
             '/admin/curriculum/subjects/${widget.subjectId}/publish-chapters',
@@ -216,12 +232,18 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
               'bookId': book.id,
               'gradeId': widget.grade,
               'chapters': detectedChapters
-                  .map((c) => {'title': c.title, 'content': c.content})
+                  .map((c) => {
+                        'title': c.title,
+                        'lessons': c.lessons
+                            .map((l) => {'title': l.title, 'content': l.content})
+                            .toList(),
+                      })
                   .toList(),
             },
           );
           if (mounted) {
-            setState(() => _chapterInfo = '${detectedChapters.length} فصل شناسایی و منتشر شد ✓');
+            setState(() => _chapterInfo =
+                '${detectedChapters.length} فصل و $lessonCount درس شناسایی و منتشر شد ✓');
           }
         } catch (e) {
           if (mounted) {

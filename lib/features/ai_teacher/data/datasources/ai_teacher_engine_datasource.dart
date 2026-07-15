@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../curriculum_library/data/datasources/curriculum_library_local_datasource.dart';
@@ -29,15 +30,50 @@ class _ConversationState {
   int sectionIndex;
   bool awaitingAnswer;
   String? hintSentence;
-  _ConversationState({this.sectionIndex = 0, this.awaitingAnswer = false, this.hintSentence});
 
-  Map<String, dynamic> toJson() =>
-      {'sectionIndex': sectionIndex, 'awaitingAnswer': awaitingAnswer, 'hintSentence': hintSentence};
+  /// «حلقهٔ یادگیری تطبیقی»: مثبت = چند پاسخ درست پیاپی، منفی = چند پاسخ
+  /// غلط پیاپی (بین -۳ و +۳). برای تطبیق سطح سختی توضیح در پیام بعدی
+  /// استفاده می‌شود.
+  int correctStreak;
+
+  _ConversationState({
+    this.sectionIndex = 0,
+    this.awaitingAnswer = false,
+    this.hintSentence,
+    this.correctStreak = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'sectionIndex': sectionIndex,
+        'awaitingAnswer': awaitingAnswer,
+        'hintSentence': hintSentence,
+        'correctStreak': correctStreak,
+      };
   factory _ConversationState.fromJson(Map<String, dynamic> j) => _ConversationState(
         sectionIndex: j['sectionIndex'] as int? ?? 0,
         awaitingAnswer: j['awaitingAnswer'] as bool? ?? false,
         hintSentence: j['hintSentence'] as String?,
+        correctStreak: j['correctStreak'] as int? ?? 0,
       );
+
+  /// راهنمای متنی تطبیق سختی برای پرامپت سیستم — `null` یعنی روند عادی.
+  String? get difficultyHint {
+    if (correctStreak <= -2) {
+      return 'شاگرد چند بار پیاپی در پاسخ‌ها اشتباه کرده — توضیح را خیلی ساده‌تر، با مثال بیشتر و مرحله‌به‌مرحله بده؛ فعلاً سؤال سخت نپرس، فقط دلگرمی بده.';
+    }
+    if (correctStreak >= 2) {
+      return 'شاگرد چند بار پیاپی سریع و درست پاسخ داده — کمی چالش‌برانگیزتر برو، توضیح را کوتاه‌تر کن و سؤال کمی عمیق‌تر بپرس.';
+    }
+    return null;
+  }
+
+  void registerAttempt(bool wasCorrect) {
+    if (wasCorrect) {
+      correctStreak = correctStreak < 0 ? 1 : (correctStreak + 1).clamp(0, 3);
+    } else {
+      correctStreak = correctStreak > 0 ? -1 : (correctStreak - 1).clamp(-3, 0);
+    }
+  }
 }
 
 /// جایگزین واقعی Mock DataSource قدیمی — واقعاً از روی کتاب‌های آپلودشدهٔ
@@ -60,13 +96,26 @@ class AiTeacherEngineDataSource {
   /// اگر تنظیم نشده — آنگاه [kDefaultAiTeacherPersona] استفاده می‌شود.
   final Future<String?> Function(String subjectId)? _personaLookup;
 
+  /// معماری ۱ — بازیابی معنایی (RAG واقعی) برای سؤال‌های آزاد شاگرد؛ اگر
+  /// `null` یا هر خطایی بدهد، به بازیابی کلمه‌ای محلی برمی‌گردیم.
+  final Future<List<BookSection>> Function(String subjectId, int grade, String query)?
+      _semanticSearch;
+
+  /// معماری ۲ — لاگ سرور برای «درست/غلط بودن» هر پاسخ ارزیابی‌شده (آمار
+  /// دقت پنل مدیر + امتیاز مشترک). Fire-and-forget؛ هرگز گفتگو را کند نمی‌کند.
+  final Future<void> Function(String subjectId, int grade, bool wasCorrect)? _logAttempt;
+
   AiTeacherEngineDataSource({
     required CurriculumLibraryLocalDataSource library,
     required AiEngine Function() engineProvider,
     Future<String?> Function(String subjectId)? personaLookup,
+    Future<List<BookSection>> Function(String subjectId, int grade, String query)? semanticSearch,
+    Future<void> Function(String subjectId, int grade, bool wasCorrect)? logAttempt,
   })  : _library = library,
         _engineProvider = engineProvider,
-        _personaLookup = personaLookup;
+        _personaLookup = personaLookup,
+        _semanticSearch = semanticSearch,
+        _logAttempt = logAttempt;
 
   String _convKey(String subjectId, int grade) =>
       LearningProgressDataSource.conversationKey(subjectId, grade);
@@ -204,8 +253,26 @@ class AiTeacherEngineDataSource {
         intent = state.awaitingAnswer ? AiIntent.answerAttempt : AiIntent.freeQuestion;
     }
 
-    final currentSection =
+    var currentSection =
         state.sectionIndex < sections.length ? sections[state.sectionIndex] : null;
+    var effectiveSections = sections;
+
+    // ── معماری ۱: برای سؤال آزاد، به‌جای محدود ماندن به «بخش فعلی»، ابتدا
+    // بازیابی معنایی سرور را امتحان می‌کن — شاگرد ممکن است دربارهٔ هر جای
+    // کتاب بپرسد، نه فقط بخشی که الان روی آن است. اگر نتیجه‌ای نداد (سرور
+    // در دسترس نیست/هنوز نمایه نشده)، بی‌صدا به همان رفتار قبلی (بخش فعلی
+    // یا بازیابی کلمه‌ای محلی روی کل کتاب) برمی‌گردیم.
+    if (intent == AiIntent.freeQuestion && _semanticSearch != null && text.trim().isNotEmpty) {
+      try {
+        final retrieved = await _semanticSearch(subjectId, grade, text);
+        if (retrieved.isNotEmpty) {
+          effectiveSections = retrieved;
+          currentSection = null; // موتورها روی effectiveSections (از قبل رتبه‌بندی‌شده) کار می‌کنند.
+        }
+      } catch (_) {
+        // بی‌صدا به رفتار قبلی برمی‌گردیم.
+      }
+    }
 
     // پیام دانش‌آموز را فقط برای دستورهای واقعی (نه دکمه‌های سیستمی) ثبت می‌کنیم.
     final isSystemCommand = text == AiCommands.start ||
@@ -225,15 +292,18 @@ class AiTeacherEngineDataSource {
     final engine = _engineProvider();
     final response = await engine.respond(AiEngineRequest(
       intent: intent,
+      subjectId: subjectId,
       subjectNameFa: _subjectNameFa(subjectId),
       personaDescription: personaDescription,
       currentSection: currentSection,
-      allSections: sections,
+      allSections: effectiveSections,
       pendingHintSentence: state.hintSentence,
       history: updatedHistory,
       // دستورهای داخلی (`__cmd_*__`) هرگز عیناً به موتور فرستاده نمی‌شوند —
       // ترجمهٔ طبیعی و گرم آن‌ها اینجا ساخته می‌شود (رفع اشکال نشتِ دستور).
       studentMessage: _naturalInstructionFor(intent, text),
+      // ── معماری ۲: حلقهٔ یادگیری تطبیقی — سطح توضیح را بر اساس چند پاسخ اخیر تنظیم می‌کند.
+      difficultyHint: state.difficultyHint,
     ));
 
     // ── ثبت پیشرفت یادگیری (ذخیرهٔ دروس خوانده/یادگرفته‌شده)، به‌ازای صنف ──
@@ -245,6 +315,17 @@ class AiTeacherEngineDataSource {
       final masteredKey = LearningProgressDataSource.masteredKey(subjectId, grade);
       final mastered = prefs.getInt(masteredKey) ?? 0;
       await prefs.setInt(masteredKey, mastered + 1);
+
+      // ── معماری ۲: سیگنال درست/غلط از موتور → تطبیق سختی + لاگ سرور برای
+      // آمار دقت و امتیاز مشترک. کاملاً Fire-and-forget؛ منتظرش نمی‌مانیم
+      // تا نمایش پاسخ به شاگرد کند نشود.
+      final wasCorrect = response.wasCorrectAttempt;
+      if (wasCorrect != null) {
+        state.registerAttempt(wasCorrect);
+        if (_logAttempt != null) {
+          unawaited(_logAttempt(subjectId, grade, wasCorrect).catchError((_) {}));
+        }
+      }
     }
 
     state.awaitingAnswer = response.posedNewQuestion;

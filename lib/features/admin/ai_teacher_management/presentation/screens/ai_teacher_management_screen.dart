@@ -13,6 +13,7 @@ import '../../../../curriculum_library/presentation/widgets/book_upload_section.
 import '../../domain/entities/ai_teacher_config.dart';
 import '../../domain/usecases/ai_teacher_management_usecases.dart';
 import '../providers/ai_teacher_management_providers.dart';
+import '../widgets/ai_teacher_stats_section.dart';
 
 class AiTeacherManagementScreen extends ConsumerWidget {
   const AiTeacherManagementScreen({super.key});
@@ -37,6 +38,8 @@ class AiTeacherManagementScreen extends ConsumerWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const AiTeacherStatsSection(),
+                  const SizedBox(height: 16),
                   const AiEngineSettingsCard(),
                   const SizedBox(height: 10),
                   // ── ورود دسته‌ای کتاب‌های نصاب (صنف ۷ الی ۱۲ یک‌جا) ──

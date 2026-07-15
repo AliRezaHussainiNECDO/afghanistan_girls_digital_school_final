@@ -117,6 +117,7 @@ class AiAssessmentService {
 
     final res = await engine.respond(AiEngineRequest(
       intent: AiIntent.freeQuestion,
+      subjectId: 'exam_question_gen',
       subjectNameFa: subject,
       personaDescription: 'دستیار سازندهٔ سؤال امتحانی، دقیق و مطابق نصاب',
       currentSection: null,
@@ -145,6 +146,7 @@ class AiAssessmentService {
     try {
       final res = await engine.respond(AiEngineRequest(
         intent: AiIntent.answerAttempt,
+        subjectId: 'essay_grading',
         subjectNameFa: 'نمره‌دهی',
         personaDescription: 'ممتحن منصف و مهربان',
         currentSection: null,

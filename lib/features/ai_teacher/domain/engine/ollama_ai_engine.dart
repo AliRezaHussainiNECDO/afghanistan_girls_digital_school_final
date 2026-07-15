@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../../curriculum_library/domain/entities/curriculum_book.dart';
 import 'ai_engine.dart';
+import 'ai_prompt_adaptation.dart';
 import 'book_section_utils.dart';
 
 /// موتور هوش مصنوعی واقعی — به یک سرور Ollama که **روی کامپیوتر خود کاربر
@@ -85,7 +86,9 @@ class OllamaAiEngine implements AiEngine {
 
 متن کتاب:
 $contextText
-''';
+'''
+            '${difficultyHintSuffix(r.difficultyHint)}'
+            '${r.intent == AiIntent.answerAttempt ? kAnswerCorrectnessInstruction : ''}';
 
     final messages = [
       {'role': 'system', 'content': systemPrompt},
@@ -105,18 +108,23 @@ $contextText
           'stream': false,
         },
       );
-      final content = response.data is Map
+      final rawContent = response.data is Map
           ? (response.data['message']?['content'] as String?)?.trim()
           : null;
-      if (content == null || content.isEmpty) {
+      if (rawContent == null || rawContent.isEmpty) {
         throw OllamaUnavailableException('پاسخ خالی از Ollama دریافت شد.');
       }
+      final parsed = r.intent == AiIntent.answerAttempt
+          ? parseCorrectnessMarker(rawContent)
+          : CorrectnessParseResult(rawContent, null);
+      final content = parsed.body;
       return AiEngineResponse(
         body: content,
         sourceReference: contextSections.isNotEmpty
             ? '${contextSections.first.bookTitle} — بخش ${contextSections.first.index + 1}'
             : null,
         posedNewQuestion: content.contains('؟') || content.contains('?'),
+        wasCorrectAttempt: parsed.wasCorrect,
       );
     } on DioException catch (e) {
       throw OllamaUnavailableException('اتصال به Ollama ناموفق بود: ${e.message}');

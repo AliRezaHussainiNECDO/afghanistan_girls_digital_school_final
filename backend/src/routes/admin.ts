@@ -28,6 +28,7 @@ import {
   randomSixDigitCode,
 } from '../lib/email';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
+import { embedText } from '../lib/embeddings';
 
 type Bindings = {
   DB: D1Database;
@@ -36,6 +37,7 @@ type Bindings = {
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   AI_PROVIDER_KEY?: string;
+  AI_PROVIDER_URL?: string;
   CF_ACCOUNT_ID?: string;
   CF_STREAM_CUSTOMER?: string;
 };
@@ -954,17 +956,25 @@ admin.get('/parents/:id', async (c) => {
   });
 });
 
-// ═══════════════ نصاب هوشمند: انتشار فصل‌های شناسایی‌شده از یک کتاب ═══════════
-// کلاینت (هنگام آپلود کتاب توسط مدیر) عناوین فصل را با شناسایی هوشمند
-// (اندازهٔ فونت/الگوی «فصل N» در PDF) استخراج می‌کند و اینجا هر فصل را به یک
-// رکورد `chapters` + دقیقاً یک `lessons` (با کل متن همان فصل) تبدیل می‌کند.
-// تکمیل آن یک درس = تکمیل فصل → پایهٔ قفل‌گشایی ترتیبی فصل بعدی (lib/progress.ts).
-// درخواست دوباره برای همان bookId، فصل‌های قبلیِ همان کتاب را جایگزین می‌کند.
+// ═══════════════ نصاب هوشمند: انتشار فصل‌ها و درس‌های شناسایی‌شده از یک کتاب ═══
+// کلاینت (هنگام آپلود کتاب توسط مدیر) عناوین فصل و درس را با شناسایی هوشمند
+// (اندازهٔ فونت/الگوی «فصل N»/«درس N» در PDF) استخراج می‌کند و اینجا هر فصل را
+// به یک رکورد `chapters` + چند رکورد `lessons` (هر درس با متن کوتاه و مجزای
+// خودش — هرگز کل متن فصل در یک درس تک‌پارچه) تبدیل می‌کند. اگر کلاینت قدیمی
+// به‌جای `lessons` فقط `content` بفرستد، همان به‌صورت یک درس تکی پذیرفته
+// می‌شود (سازگاری با نسخه‌های قبلی).
+// تکمیل همهٔ درس‌های یک فصل = تکمیل فصل → پایهٔ قفل‌گشایی ترتیبی فصل بعدی
+// (lib/progress.ts). درخواست دوباره برای همان bookId، فصل‌های قبلیِ همان
+// کتاب را جایگزین می‌کند.
 admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
   if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   const subjectId = c.req.param('subjectId');
   const b = await c.req
-    .json<{ bookId?: string; gradeId?: number; chapters?: { title?: string; content?: string }[] }>()
+    .json<{
+      bookId?: string;
+      gradeId?: number;
+      chapters?: { title?: string; content?: string; lessons?: { title?: string; content?: string }[] }[];
+    }>()
     .catch(() => null);
   const bookId = String(b?.bookId ?? '').trim();
   const gradeId = Number(b?.gradeId ?? 0);
@@ -995,31 +1005,145 @@ admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
     await c.env.DB.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
   }
 
-  // درج فصل‌های تازه — هر فصل = یک chapter + دقیقاً یک lesson با کل متن فصل.
+  // درج فصل‌های تازه — هر فصل = یک chapter + چند lesson (هر درس متن کوتاه و
+  // مجزای خودش را دارد؛ هیچ‌وقت کل متن فصل در یک درس تک‌پارچه دپو نمی‌شود).
   const stmts: any[] = [];
   const createdChapterIds: string[] = [];
+  // برای نمایه‌سازی معنایی پس‌زمینه (بازیابی معنایی معلم هوشمند) — بعد از
+  // درج، هر یک از این درس‌ها به‌صورت غیرمسدودکننده Embedding می‌گیرد.
+  const lessonsForEmbedding: { id: string; chapterId: string; content: string }[] = [];
+  let lessonsCreated = 0;
   chapters.forEach((ch, i) => {
     const title = String(ch?.title ?? `فصل ${i + 1}`).trim().slice(0, 200) || `فصل ${i + 1}`;
-    const content = String(ch?.content ?? '');
     const chapterId = `ch_${bookId}_${i}`;
-    const lessonId = `ls_${bookId}_${i}`;
-    // برآورد زمان مطالعه از طول متن (هر ~۵۰۰ نویسه ≈ ۱ دقیقه)، بین ۵ تا ۶۰ دقیقه.
-    const minutes = Math.min(60, Math.max(5, Math.round(content.length / 500)));
+
+    // سازگاری با کلاینت قدیمی: اگر `lessons` نیامده ولی `content` آمده، همان
+    // به‌صورت یک درس تکی پذیرفته می‌شود.
+    const rawLessons =
+      Array.isArray(ch?.lessons) && ch!.lessons!.length
+        ? ch!.lessons!
+        : [{ title, content: String(ch?.content ?? '') }];
+
     createdChapterIds.push(chapterId);
     stmts.push(
       c.env.DB.prepare(
         'INSERT INTO chapters (id, grade_number, subject_id, title_fa, order_index, status, source_book_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       ).bind(chapterId, gradeId, subjectId, title, i + 1, 'published', bookId),
     );
-    stmts.push(
-      c.env.DB.prepare(
-        'INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).bind(lessonId, chapterId, title, minutes, 1, content, 'published'),
-    );
+
+    rawLessons.forEach((ls, j) => {
+      const lessonTitle = String(ls?.title ?? `درس ${j + 1}`).trim().slice(0, 200) || `درس ${j + 1}`;
+      const content = String(ls?.content ?? '');
+      if (!content.trim()) return;
+      const lessonId = `ls_${bookId}_${i}_${j}`;
+      // برآورد زمان مطالعه از طول متن (هر ~۵۰۰ نویسه ≈ ۱ دقیقه)، بین ۳ تا ۳۰ دقیقه.
+      const minutes = Math.min(30, Math.max(3, Math.round(content.length / 500)));
+      lessonsCreated += 1;
+      stmts.push(
+        c.env.DB.prepare(
+          'INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        ).bind(lessonId, chapterId, lessonTitle, minutes, j + 1, content, 'published'),
+      );
+      lessonsForEmbedding.push({ id: lessonId, chapterId, content: `${lessonTitle}\n${content}` });
+    });
   });
   await c.env.DB.batch(stmts);
 
-  return c.json({ success: true, chaptersCreated: createdChapterIds.length, chapterIds: createdChapterIds }, 201);
+  // ── نمایه‌سازی معنایی در پس‌زمینه — پاسخ به مدیر معطل این کار نمی‌ماند.
+  // اگر کلید هوش مصنوعی تنظیم نشده یا هر خطایی رخ دهد، بی‌صدا رد می‌شود؛
+  // بازیابی کلمه‌ای قدیمی هم‌چنان به‌عنوان جایگزین کار می‌کند (Fail-safe).
+  c.executionCtx.waitUntil(
+    embedLessonsBatch(c.env.DB, c.env.AI_PROVIDER_KEY, c.env.AI_PROVIDER_URL, subjectId, gradeId, lessonsForEmbedding),
+  );
+
+  return c.json(
+    { success: true, chaptersCreated: createdChapterIds.length, lessonsCreated, chapterIds: createdChapterIds },
+    201,
+  );
+});
+
+/** Embedding چند درس پشت‌سرهم و ذخیرهٔ آن‌ها در `lesson_embeddings` — کاملاً بی‌صدا در برابر خطا. */
+async function embedLessonsBatch(
+  db: D1Database,
+  apiKey: string | undefined,
+  apiUrl: string | undefined,
+  subjectId: string,
+  gradeNumber: number,
+  lessons: { id: string; chapterId: string; content: string }[],
+): Promise<void> {
+  if (!apiKey || lessons.length === 0) return;
+  for (const lesson of lessons) {
+    try {
+      const vector = await embedText(apiKey, lesson.content, apiUrl);
+      if (!vector) continue;
+      await db
+        .prepare(
+          `INSERT INTO lesson_embeddings (lesson_id, chapter_id, subject_id, grade_number, model, embedding, updated_at)
+           VALUES (?, ?, ?, ?, 'text-embedding-3-small', ?, datetime('now'))
+           ON CONFLICT(lesson_id) DO UPDATE SET
+             embedding=excluded.embedding, updated_at=datetime('now'), model=excluded.model`,
+        )
+        .bind(lesson.id, lesson.chapterId, subjectId, gradeNumber, JSON.stringify(vector))
+        .run();
+    } catch (_) {
+      // یک درس ناموفق نباید بقیه را متوقف کند.
+    }
+  }
+}
+
+// ═══════════════ نمایه‌سازی معنایی — پوشش و بازسازی دستی (همهٔ صنوف/مضامین) ══
+// وقتی کتابی قبل از این قابلیت آپلود/منتشر شده، یا Embedding یک درس به هر
+// دلیلی ناموفق مانده، مدیر می‌تواند از این‌جا برای *همهٔ* صنوف و مضامین یک‌جا
+// نمایه‌سازی را کامل کند.
+admin.get('/ai-teacher/embeddings/status', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  try {
+    const total = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM lessons WHERE status='published'").first<{
+      n: number;
+    }>();
+    const embedded = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM lesson_embeddings').first<{ n: number }>();
+    return c.json({ totalLessons: total?.n ?? 0, embeddedLessons: embedded?.n ?? 0 });
+  } catch (_) {
+    return c.json({ totalLessons: 0, embeddedLessons: 0 });
+  }
+});
+
+admin.post('/ai-teacher/embeddings/backfill', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!c.env.AI_PROVIDER_KEY) {
+    return c.json(fail('AI_NOT_CONFIGURED', 'کلید هوش مصنوعی تنظیم نشده است', 'AI provider not configured'), 503);
+  }
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.id, l.chapter_id, l.title_fa, l.content_body, ch.subject_id, ch.grade_number
+       FROM lessons l
+       JOIN chapters ch ON ch.id = l.chapter_id
+      WHERE l.status='published' AND l.id NOT IN (SELECT lesson_id FROM lesson_embeddings)
+      LIMIT 500`,
+  ).all<{
+    id: string;
+    chapter_id: string;
+    title_fa: string;
+    content_body: string;
+    subject_id: string;
+    grade_number: number;
+  }>();
+
+  // گروه‌بندی بر اساس (مضمون، صنف) تا هر گروه با شناسهٔ خودش نمایه شود —
+  // این یعنی پوشش کامل «تمام صنف‌ها و تمام مضامین» با یک کلیک مدیر.
+  const groups = new Map<string, { subjectId: string; gradeNumber: number; lessons: { id: string; chapterId: string; content: string }[] }>();
+  for (const r of results) {
+    const key = `${r.subject_id}::${r.grade_number}`;
+    if (!groups.has(key)) groups.set(key, { subjectId: r.subject_id, gradeNumber: r.grade_number, lessons: [] });
+    groups.get(key)!.lessons.push({ id: r.id, chapterId: r.chapter_id, content: `${r.title_fa}\n${r.content_body}` });
+  }
+
+  for (const g of groups.values()) {
+    c.executionCtx.waitUntil(
+      embedLessonsBatch(c.env.DB, c.env.AI_PROVIDER_KEY, c.env.AI_PROVIDER_URL, g.subjectId, g.gradeNumber, g.lessons),
+    );
+  }
+
+  return c.json({ queued: results.length, groups: groups.size });
 });
 
 export default admin;

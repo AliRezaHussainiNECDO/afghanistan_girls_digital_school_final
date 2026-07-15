@@ -1,20 +1,30 @@
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
-/// یک فصل شناسایی‌شده از یک کتاب PDF — عنوان دقیق فصل + کل متن آن فصل
-/// (تا شروع عنوان فصل بعدی) + شمارهٔ صفحهٔ شروع (برای اشکال‌زدایی/نمایش).
-class DetectedChapter {
+/// یک «درس» شناسایی‌شده درون یک فصل — عنوان کوتاه + متن همان بخش.
+class DetectedLesson {
   final String title;
   final String content;
+
+  const DetectedLesson({required this.title, required this.content});
+}
+
+/// یک فصل شناسایی‌شده از یک کتاب PDF — عنوان دقیق فصل + فهرست درس‌های آن
+/// (هرگز یک بلوکِ غول‌آسای تک‌درسی؛ همیشه به چند درسِ کوتاه‌تر و قابل‌مطالعه
+/// تقسیم می‌شود) + شمارهٔ صفحهٔ شروع (برای اشکال‌زدایی/نمایش).
+class DetectedChapter {
+  final String title;
+  final List<DetectedLesson> lessons;
   final int pageStart;
 
   const DetectedChapter({
     required this.title,
-    required this.content,
+    required this.lessons,
     required this.pageStart,
   });
 }
 
-/// شناسایی هوشمند عناوین فصل در یک کتاب درسی PDF (بدون نیاز به قالب ثابت).
+/// شناسایی هوشمند عناوین فصل (و درس‌های داخل هر فصل) در یک کتاب درسی PDF
+/// (بدون نیاز به قالب ثابت).
 ///
 /// دو سرنخ مستقل با هم ترکیب می‌شوند تا خط «عنوان فصل واقعی» از متن عادی
 /// جدا شود:
@@ -30,6 +40,12 @@ class DetectedChapter {
 /// خط از هم فاصله دارند در یک خوشه ادغام می‌شوند و فقط اولین‌شان نگه
 /// داشته می‌شود.
 ///
+/// **گام دوم (تازه):** متن هر فصل خودش دوباره برای عنوان‌های «درس» بررسی
+/// می‌شود (کلمهٔ «درس»/«Lesson» + همان سرنخ فونت). اگر عنوان درسِ قابل‌اعتماد
+/// یافت نشود، متن فصل بر اساس طول به چند قطعهٔ خوانا (نه یک دیوار متن)
+/// تقسیم می‌شود — طبق درخواست صریح کاربر که محتوای آپلودشده باید همیشه به
+/// شکل «درس‌های» جداگانه و زیبا نمایش داده شود، نه یک بلوک خام و زشت.
+///
 /// اگر با اطمینان کافی («حداقل ۲ فصل واقعی») چیزی یافت نشود، لیست خالی
 /// برمی‌گردد — در این حالت سمت فراخوان باید به رفتار قبلی (بدون فصل‌بندی
 /// خودکار، فقط کتابخانهٔ معلم هوشمند) برگردد.
@@ -37,9 +53,17 @@ class ChapterDetector {
   ChapterDetector._();
 
   static final RegExp _chapterWordPattern = RegExp(
-    r'^\s*(فصل|بخش|باب|چپتر|درس|Chapter|Unit)\s*[:\-–—]?\s*[\d۰-۹IVXLCM]*\s*[:\-–—]?\s*',
+    r'^\s*(فصل|بخش|باب|چپتر|Chapter|Unit)\s*[:\-–—]?\s*[\d۰-۹IVXLCM]*\s*[:\-–—]?\s*',
     caseSensitive: false,
   );
+
+  static final RegExp _lessonWordPattern = RegExp(
+    r'^\s*(درس|مبحث|گفتار|Lesson)\s*[:\-–—]?\s*[\d۰-۹]*\s*[:\-–—]?\s*',
+    caseSensitive: false,
+  );
+
+  /// خطوطی که فقط شمارهٔ صفحه/جداکنندهٔ تزئینی‌اند — از متن نهایی درس حذف می‌شوند.
+  static final RegExp _pageNoiseLine = RegExp(r'^[\d۰-۹\s\-–—._]{1,4}$');
 
   /// نسبت حداقلی فونت خط نسبت به میانهٔ فونت سند تا «بزرگ» شمرده شود.
   static const double _fontSizeRatioThreshold = 1.18;
@@ -50,8 +74,16 @@ class ChapterDetector {
   /// حداقل فاصلهٔ خطی بین دو عنوان فصل متوالی — برای رد کردن فهرست مطالب.
   static const int _minLinesBetween = 12;
 
-  /// حداقل تعداد فصل شناسایی‌شده تا نتیجه «قابل‌اعتماد» شمرده شود.
+  /// حداقل فاصلهٔ خطی بین دو عنوان درس متوالی داخل یک فصل.
+  static const int _minLessonLinesBetween = 4;
+
+  /// حداقل تعداد فصل/درس شناسایی‌شده تا نتیجه «قابل‌اعتماد» شمرده شود.
   static const int _minChaptersToTrust = 2;
+  static const int _minLessonsToTrust = 2;
+
+  /// حداکثر طول هر «درسِ» بدون‌عنوان هنگام تقسیم بر اساس طول (نویسه) —
+  /// تضمین می‌کند هیچ‌وقت یک درس بیش‌ازحد بلند/زشت نمایش داده نشود.
+  static const int _maxChunkChars = 1200;
 
   static List<DetectedChapter> detect(PdfDocument document) {
     List<TextLine> lines;
@@ -107,17 +139,105 @@ class ChapterDetector {
       final startIdx = deduped[k];
       final endIdx = k + 1 < deduped.length ? deduped[k + 1] : lines.length;
       final title = lines[startIdx].text.trim();
-      final content = lines
-          .sublist(startIdx, endIdx)
-          .map((l) => l.text.trim())
-          .where((t) => t.isNotEmpty)
-          .join('\n');
+      final bodyLines = lines.sublist(startIdx + 1, endIdx);
+      final lessons = _splitIntoLessons(bodyLines, medianFont);
+      if (lessons.isEmpty) continue; // فصل بدون هیچ محتوای واقعی — نادیده گرفته می‌شود
       chapters.add(DetectedChapter(
         title: title.isEmpty ? 'فصل ${k + 1}' : title,
-        content: content,
+        lessons: lessons,
         pageStart: lines[startIdx].pageIndex,
       ));
     }
     return chapters;
+  }
+
+  /// متن یک فصل را به «درس»‌های واقعی (اگر عنوان درس در متن باشد) یا در غیر
+  /// این صورت به قطعه‌های کوتاه و خواناتقسیم می‌کند — خروجی هرگز یک بلوک
+  /// خامِ تک‌پارچه نیست.
+  static List<DetectedLesson> _splitIntoLessons(List<TextLine> bodyLines, double medianFont) {
+    if (bodyLines.isEmpty) return const [];
+
+    bool isShort(String t) => t.isNotEmpty && t.length <= _maxTitleLength;
+    bool byWord(int i) => _lessonWordPattern.hasMatch(bodyLines[i].text.trim());
+    bool byFont(int i) =>
+        medianFont > 0 && bodyLines[i].fontSize >= medianFont * _fontSizeRatioThreshold;
+
+    var candidates = <int>[
+      for (var i = 0; i < bodyLines.length; i++)
+        if (isShort(bodyLines[i].text.trim()) && byWord(i)) i,
+    ];
+    if (candidates.length < _minLessonsToTrust) {
+      // سرنخ دوم: زیرعنوان با فونت به‌وضوح بزرگ‌تر از متن معمولی (حتی بدون کلمهٔ «درس»).
+      candidates = [
+        for (var i = 0; i < bodyLines.length; i++)
+          if (isShort(bodyLines[i].text.trim()) && byFont(i)) i,
+      ];
+    }
+
+    final deduped = <int>[];
+    for (final idx in candidates) {
+      if (deduped.isEmpty || idx - deduped.last >= _minLessonLinesBetween) {
+        deduped.add(idx);
+      }
+    }
+
+    if (deduped.length >= _minLessonsToTrust) {
+      final lessons = <DetectedLesson>[];
+      for (var k = 0; k < deduped.length; k++) {
+        final start = deduped[k];
+        final end = k + 1 < deduped.length ? deduped[k + 1] : bodyLines.length;
+        final title = bodyLines[start].text.trim();
+        final content = _cleanJoin(bodyLines.sublist(start, end));
+        if (content.trim().isEmpty) continue;
+        lessons.add(DetectedLesson(title: title.isEmpty ? 'درس ${k + 1}' : title, content: content));
+      }
+      if (lessons.length >= _minLessonsToTrust) return lessons;
+    }
+
+    // بدون عنوان درسِ قابل‌اعتماد → تقسیم بر اساس طول، همیشه چند قطعهٔ کوتاه.
+    return _chunkByLength(bodyLines);
+  }
+
+  static String _cleanJoin(List<TextLine> ls) {
+    final buf = <String>[];
+    for (final l in ls) {
+      final t = l.text.trim();
+      if (t.isEmpty || _pageNoiseLine.hasMatch(t)) continue;
+      buf.add(t);
+    }
+    return buf.join('\n');
+  }
+
+  static List<DetectedLesson> _chunkByLength(List<TextLine> bodyLines) {
+    final cleanedLines = <String>[
+      for (final l in bodyLines)
+        if (l.text.trim().isNotEmpty && !_pageNoiseLine.hasMatch(l.text.trim())) l.text.trim(),
+    ];
+    if (cleanedLines.isEmpty) return const [];
+
+    final lessons = <DetectedLesson>[];
+    final buf = StringBuffer();
+    var count = 0;
+    for (final line in cleanedLines) {
+      if (buf.length + line.length > _maxChunkChars && buf.isNotEmpty) {
+        count += 1;
+        lessons.add(DetectedLesson(title: 'درس $count', content: buf.toString().trim()));
+        buf.clear();
+      }
+      buf.writeln(line);
+    }
+    if (buf.isNotEmpty) {
+      count += 1;
+      lessons.add(DetectedLesson(title: 'درس $count', content: buf.toString().trim()));
+    }
+
+    // اگر آخرین قطعه خیلی کوتاه ماند (مثلاً چند سطر آخر فصل)، به قطعهٔ قبلی می‌چسبد
+    // تا «درسِ» بی‌محتوا/خیلی کوتاه نداشته باشیم.
+    if (lessons.length >= 2 && lessons.last.content.length < 150) {
+      final last = lessons.removeLast();
+      final prev = lessons.removeLast();
+      lessons.add(DetectedLesson(title: prev.title, content: '${prev.content}\n${last.content}'));
+    }
+    return lessons;
   }
 }

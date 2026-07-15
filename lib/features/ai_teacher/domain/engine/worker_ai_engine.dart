@@ -1,6 +1,7 @@
 import '../../../../core/network/api_client.dart';
 import '../../../curriculum_library/domain/entities/curriculum_book.dart';
 import 'ai_engine.dart';
+import 'ai_prompt_adaptation.dart';
 import 'book_section_utils.dart';
 
 /// خطای در دسترس نبودن موتور ابری — تا FallbackAiEngine بی‌صدا به موتور
@@ -74,7 +75,9 @@ class WorkerAiEngine implements AiEngine {
 
 متن کتاب:
 $contextText
-''';
+'''
+            '${difficultyHintSuffix(r.difficultyHint)}'
+            '${r.intent == AiIntent.answerAttempt ? kAnswerCorrectnessInstruction : ''}';
 
     final messages = [
       {'role': 'system', 'content': systemPrompt},
@@ -86,17 +89,23 @@ $contextText
     ];
 
     try {
-      final data = await _api.post('/ai-teacher/chat', data: {'messages': messages});
-      final reply = (data is Map ? data['reply'] as String? : null)?.trim();
-      if (reply == null || reply.isEmpty) {
+      final data = await _api.post('/ai-teacher/chat',
+          data: {'messages': messages, 'subjectId': r.subjectId});
+      final rawReply = (data is Map ? data['reply'] as String? : null)?.trim();
+      if (rawReply == null || rawReply.isEmpty) {
         throw WorkerAiUnavailableException('پاسخ خالی از سرور دریافت شد.');
       }
+      final parsed = r.intent == AiIntent.answerAttempt
+          ? parseCorrectnessMarker(rawReply)
+          : CorrectnessParseResult(rawReply, null);
+      final reply = parsed.body;
       return AiEngineResponse(
         body: reply,
         sourceReference: contextSections.isNotEmpty
             ? '${contextSections.first.bookTitle} — بخش ${contextSections.first.index + 1}'
             : null,
         posedNewQuestion: reply.contains('؟') || reply.contains('?'),
+        wasCorrectAttempt: parsed.wasCorrect,
       );
     } on ApiException catch (e) {
       // به FallbackAiEngine سیگنال بده تا به موتور محلی برگردد.

@@ -1,5 +1,6 @@
 import '../../../../../core/network/api_client.dart';
 import '../../domain/entities/ai_teacher_config.dart';
+import '../../domain/entities/ai_teacher_stats.dart';
 import 'ai_teacher_management_data_source.dart';
 
 /// پیاده‌سازی واقعی — `GET/PATCH /api/v1/ai-teacher/personas` (مهاجرت ۰۰۱۹).
@@ -38,4 +39,28 @@ class AiTeacherManagementRemoteDataSource implements AiTeacherManagementDataSour
         personaDescription: j['personaDescription'] as String? ?? '',
         promptVersion: (j['promptVersion'] as num?)?.toInt() ?? 1,
       );
+
+  @override
+  Future<AiTeacherStats> getStats() async {
+    final data = await _api.get('/admin/ai-teacher/stats');
+    if (data is! Map) return AiTeacherStats.empty;
+    final bySubjectRaw = (data['bySubject'] as List?) ?? const [];
+    return AiTeacherStats(
+      totalMessages: (data['totalMessages'] as num?)?.toInt() ?? 0,
+      messagesToday: (data['messagesToday'] as num?)?.toInt() ?? 0,
+      activeStudentsToday: (data['activeStudentsToday'] as num?)?.toInt() ?? 0,
+      activeStudentsWeek: (data['activeStudentsWeek'] as num?)?.toInt() ?? 0,
+      accuracyPercent: (data['accuracyPercent'] as num?)?.toDouble(),
+      totalAnsweredAttempts: (data['totalAnsweredAttempts'] as num?)?.toInt() ?? 0,
+      embeddingCoveragePercent: (data['embeddingCoveragePercent'] as num?)?.toDouble(),
+      bySubject: bySubjectRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .map((j) => AiTeacherSubjectUsage(
+                subjectId: j['subjectId'] as String? ?? '',
+                subjectNameFa: j['subjectNameFa'] as String? ?? (j['subjectId'] as String? ?? ''),
+                messageCount: (j['messageCount'] as num?)?.toInt() ?? 0,
+              ))
+          .toList(),
+    );
+  }
 }

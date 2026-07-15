@@ -16,6 +16,7 @@ enum AiIntent {
 /// پیروی کنند و در هر لحظه قابل جابه‌جایی باشند.
 class AiEngineRequest {
   final AiIntent intent;
+  final String subjectId;
   final String subjectNameFa;
   final String personaDescription;
   final BookSection? currentSection;
@@ -29,8 +30,15 @@ class AiEngineRequest {
   /// نصاب. موتورها در این حالت نباید دربارهٔ «کتاب» حرف بزنند.
   final bool openDomain;
 
+  /// راهنمای «حلقهٔ یادگیری تطبیقی» — بر اساس چند پاسخ اخیر شاگرد (درست/غلط
+  /// پیاپی) ساخته می‌شود تا موتورهای مبتنی‌بر LLM سطح توضیح را همان لحظه
+  /// تطبیق دهند (ساده‌تر/کندتر یا چالش‌برانگیزتر/سریع‌تر). اگر `null`، یعنی
+  /// روند عادی است و نیازی به تغییر سبک نیست.
+  final String? difficultyHint;
+
   const AiEngineRequest({
     required this.intent,
+    required this.subjectId,
     required this.subjectNameFa,
     required this.personaDescription,
     required this.currentSection,
@@ -39,6 +47,7 @@ class AiEngineRequest {
     required this.history,
     required this.studentMessage,
     this.openDomain = false,
+    this.difficultyHint,
   });
 }
 
@@ -51,11 +60,18 @@ class AiEngineResponse {
   final bool posedNewQuestion;
   final String? newHintSentence;
 
+  /// فقط برای پاسخ به نیت [AiIntent.answerAttempt] پر می‌شود — سیگنال
+  /// ساختاریافتهٔ «درست بود یا نه» برای حلقهٔ یادگیری تطبیقی (لاگ سرور +
+  /// امتیاز + تطبیق سطح سختی در ادامهٔ گفتگو). `null` یعنی این پاسخ
+  /// ارزیابی پاسخ نبوده یا موتور نتوانست سیگنال بدهد.
+  final bool? wasCorrectAttempt;
+
   const AiEngineResponse({
     required this.body,
     this.sourceReference,
     this.posedNewQuestion = false,
     this.newHintSentence,
+    this.wasCorrectAttempt,
   });
 }
 

@@ -60,6 +60,7 @@ ${ctx.isEmpty ? '' : 'خلاصهٔ گفتگوی قبلی:\n$ctx\n\n'}پیام ت
 
       final res = await engine.respond(AiEngineRequest(
         intent: AiIntent.freeQuestion,
+        subjectId: 'advisor',
         subjectNameFa: 'مشاور دلسوز',
         personaDescription: _persona,
         currentSection: null,

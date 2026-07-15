@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../../shared_models/subject.dart';
 import '../../domain/entities/ai_teacher_config.dart';
+import '../../domain/entities/ai_teacher_stats.dart';
 import 'ai_teacher_management_data_source.dart';
 
 /// تنظیمات شخصیت معلم هوشمند هر مضمون — به‌صورت محلی و پایدار ذخیره
@@ -84,5 +85,16 @@ class AiTeacherManagementLocalDataSource implements AiTeacherManagementDataSourc
       );
       await _writeAll(all);
     }
+  }
+
+  /// حالت محلی/آفلاین هیچ گفتگویی را روی سرور لاگ نمی‌کند (هر دستگاه فقط
+  /// حافظهٔ خودش را دارد)، پس آماری برای «نمایش سراسری» وجود ندارد. طبق اصل
+  /// «آمار حقیقی، هرگز ساختگی» این متد به‌جای عدد فرضی، صفرِ صادقانه
+  /// برمی‌گرداند — دقیقاً مثل رفتار Mock DataSourceهای بقیهٔ ماژول‌ها که
+  /// وقتی چیزی برای نمایش نیست، صفر نشان می‌دهند، نه دادهٔ جعلی.
+  @override
+  Future<AiTeacherStats> getStats() async {
+    await Future.delayed(const Duration(milliseconds: 150));
+    return AiTeacherStats.empty;
   }
 }

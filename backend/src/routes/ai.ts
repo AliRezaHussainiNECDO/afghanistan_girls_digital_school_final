@@ -15,6 +15,8 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { embedText, cosineSimilarity } from '../lib/embeddings';
+import { awardPoints } from '../lib/progress';
 
 type Bindings = {
   DB: D1Database;
@@ -66,11 +68,14 @@ ai.post('/ai-teacher/chat', async (c) => {
     );
   }
 
-  const body = await c.req.json<{ messages?: Array<{ role: string; content: string }> }>().catch(() => null);
+  const body = await c.req
+    .json<{ messages?: Array<{ role: string; content: string }>; subjectId?: string }>()
+    .catch(() => null);
   const messages = body?.messages;
   if (!messages || messages.length === 0) {
     return c.json(fail('BAD_REQUEST', 'پیام نامعتبر', 'Invalid messages'), 400);
   }
+  const subjectId = String(body?.subjectId ?? 'unknown').trim() || 'unknown';
 
   const url = c.env.AI_PROVIDER_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = c.env.AI_MODEL ?? 'gpt-4o-mini';
@@ -101,6 +106,19 @@ ai.post('/ai-teacher/chat', async (c) => {
     if (!reply) {
       return c.json(fail('AI_EMPTY', 'پاسخ خالی از سرویس هوش مصنوعی', 'Empty AI reply'), 502);
     }
+
+    // ── لاگ سبک برای آمار حقیقی پنل «مدیریت معلم هوشمند» — هرگز نباید پاسخ
+    // شاگرد را کند یا مختل کند، پس خطای لاگ کاملاً بی‌صدا بلعیده می‌شود.
+    try {
+      await c.env.DB.prepare(
+        'INSERT INTO ai_teacher_chat_logs (id, student_id, subject_id) VALUES (?, ?, ?)',
+      )
+        .bind(`log_${crypto.randomUUID()}`, payload['sub'], subjectId)
+        .run();
+    } catch (_) {
+      // جدول ممکن است هنوز روی این دیتابیس مهاجرت نشده باشد — نادیده گرفته می‌شود.
+    }
+
     return c.json({ reply });
   } catch (e: any) {
     return c.json(fail('AI_NETWORK', 'اتصال به سرویس هوش مصنوعی ناموفق بود', 'AI network error'), 502);
@@ -208,6 +226,101 @@ ai.post('/ai-teacher/stt', async (c) => {
   }
 });
 
+// ═══════════════════ بازیابی معنایی (RAG) — معماری ۱ ═══════════════════════
+// به‌جای تطابق کلمه‌ای ساده، پرسش شاگرد را Embed می‌کنیم و با شباهت کسینوسی
+// نزدیک‌ترین درس‌های همان مضمون/صنف را از جدول `lesson_embeddings` پیدا
+// می‌کنیم — مستقل از کلمات دقیق، بر اساس معنا. اگر Embedding در دسترس نباشد
+// (کلید تنظیم‌نشده یا هنوز نمایه نشده)، لیست خالی برمی‌گردد تا کلاینت بی‌صدا
+// به روش قبلی (تطابق کلمه‌ای محلی) برگردد — هرگز خطا نمی‌دهد.
+ai.post('/ai-teacher/semantic-search', async (c) => {
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const body = await c.req
+    .json<{ subjectId?: string; gradeId?: number; query?: string; topN?: number }>()
+    .catch(() => null);
+  const subjectId = String(body?.subjectId ?? '').trim();
+  const gradeId = Number(body?.gradeId ?? 0);
+  const query = String(body?.query ?? '').trim();
+  const topN = Math.min(5, Math.max(1, Number(body?.topN ?? 3)));
+  if (!subjectId || !gradeId || !query) return c.json({ results: [] });
+  if (!c.env.AI_PROVIDER_KEY) return c.json({ results: [] });
+
+  try {
+    const queryVector = await embedText(c.env.AI_PROVIDER_KEY, query, c.env.AI_PROVIDER_URL);
+    if (!queryVector) return c.json({ results: [] });
+
+    const { results: rows } = await c.env.DB.prepare(
+      `SELECT e.lesson_id, e.embedding, l.title_fa, l.content_body, ch.title_fa AS chapter_title_fa
+         FROM lesson_embeddings e
+         JOIN lessons l ON l.id = e.lesson_id AND l.status='published'
+         JOIN chapters ch ON ch.id = e.chapter_id
+        WHERE e.subject_id = ? AND e.grade_number = ?`,
+    )
+      .bind(subjectId, gradeId)
+      .all<{ lesson_id: string; embedding: string; title_fa: string; content_body: string; chapter_title_fa: string }>();
+
+    const scored = rows
+      .map((r) => {
+        let vec: number[];
+        try {
+          vec = JSON.parse(r.embedding);
+        } catch {
+          return null;
+        }
+        return { row: r, score: cosineSimilarity(queryVector, vec) };
+      })
+      .filter((x): x is { row: (typeof rows)[number]; score: number } => x !== null && x.score > 0.2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topN);
+
+    return c.json({
+      results: scored.map((s) => ({
+        lessonId: s.row.lesson_id,
+        heading: s.row.title_fa,
+        bookTitle: s.row.chapter_title_fa,
+        content: s.row.content_body,
+        score: Math.round(s.score * 1000) / 1000,
+      })),
+    });
+  } catch (_) {
+    return c.json({ results: [] });
+  }
+});
+
+// ═══════════════════ حلقهٔ یادگیری تطبیقی — معماری ۲ ═══════════════════════
+// وقتی معلم هوشمند پاسخ شاگرد را به یک سؤال ارزیابی می‌کند، کلاینت نتیجه
+// (درست/غلط) را این‌جا لاگ می‌کند: هم برای آمار دقت واقعی پنل مدیر، هم برای
+// جایزهٔ امتیاز (همان دفتر امتیاز مشترکِ داشبورد شاگرد/والد — بدون سیستم
+// جداگانه). این تماس هرگز نباید گفت‌وگو را کند یا مسدود کند، پس کاملاً
+// Fail-safe است.
+const POINTS_PER_AI_CORRECT_ANSWER = 5;
+
+ai.post('/ai-teacher/log-attempt', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const studentId = payload?.['sub'] as string | undefined;
+  if (!studentId) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+
+  const body = await c.req
+    .json<{ subjectId?: string; gradeId?: number; wasCorrect?: boolean }>()
+    .catch(() => null);
+  const subjectId = String(body?.subjectId ?? '').trim() || 'unknown';
+  const gradeId = Number(body?.gradeId ?? 0);
+  const wasCorrect = Boolean(body?.wasCorrect);
+
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO ai_teacher_answer_logs (id, student_id, subject_id, grade_number, was_correct) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(`aal_${crypto.randomUUID()}`, studentId, subjectId, gradeId, wasCorrect ? 1 : 0)
+      .run();
+    if (wasCorrect) {
+      await awardPoints(c.env.DB, studentId, POINTS_PER_AI_CORRECT_ANSWER, 'ai_teacher_correct_answer', subjectId);
+    }
+  } catch (_) {
+    // جدول لاگ ممکن است هنوز مهاجرت نشده باشد — بی‌صدا نادیده گرفته می‌شود.
+  }
+  return c.json({ success: true });
+});
+
 // ═══════════════ شخصیت معلم هوشمند هر مضمون (مهاجرت ۰۰۱۹) ═══════════════════
 // رفع اشکال بخش «مدیریت معلم هوشمند» پنل مدیر: قبلاً این تنظیمات فقط در
 // SharedPreferences هر دستگاه ذخیره می‌شد (نه با سرور/دیتابیس متصل)، پس
@@ -298,6 +411,107 @@ ai.patch('/admin/ai-teacher/personas/:subjectId', async (c) => {
     .bind(subjectId)
     .first<any>();
   return c.json({ persona: personaJson(row) });
+});
+
+// ═══════════════ آمار حقیقی معلم هوشمند (برای پنل «مدیریت معلم هوشمند») ═══════
+// از همان جدول لاگ سبکِ بالا محاسبه می‌شود — هیچ عدد ساختگی/ثابتی اینجا
+// نیست: اگر هنوز هیچ گفتگویی رخ نداده، همه چیز صفر برمی‌گردد (نه یک عدد
+// نمایشیِ فرضی)، دقیقاً طبق همان اصل «آمار واقعی» که در بقیهٔ داشبوردهای
+// برنامه (مدیر/شاگرد/والد) رعایت شده است.
+ai.get('/admin/ai-teacher/stats', async (c) => {
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+
+  const zero = {
+    totalMessages: 0,
+    messagesToday: 0,
+    activeStudentsToday: 0,
+    activeStudentsWeek: 0,
+    accuracyPercent: null as number | null,
+    totalAnsweredAttempts: 0,
+    embeddingCoveragePercent: null as number | null,
+    bySubject: [] as { subjectId: string; subjectNameFa: string; messageCount: number }[],
+  };
+
+  try {
+    const totalRow = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM ai_teacher_chat_logs').first<{ n: number }>();
+    const todayRow = await c.env.DB
+      .prepare("SELECT COUNT(*) AS n FROM ai_teacher_chat_logs WHERE date(created_at) = date('now')")
+      .first<{ n: number }>();
+    const activeTodayRow = await c.env.DB
+      .prepare(
+        "SELECT COUNT(DISTINCT student_id) AS n FROM ai_teacher_chat_logs WHERE date(created_at) = date('now')",
+      )
+      .first<{ n: number }>();
+    const activeWeekRow = await c.env.DB
+      .prepare(
+        "SELECT COUNT(DISTINCT student_id) AS n FROM ai_teacher_chat_logs WHERE created_at >= datetime('now', '-7 days')",
+      )
+      .first<{ n: number }>();
+
+    const { results: subjectRows } = await c.env.DB
+      .prepare(
+        `SELECT l.subject_id AS subject_id, COUNT(*) AS message_count, s.name_fa AS subject_name_fa
+           FROM ai_teacher_chat_logs l
+           LEFT JOIN subjects s ON s.id = l.subject_id
+          GROUP BY l.subject_id
+          ORDER BY message_count DESC
+          LIMIT 10`,
+      )
+      .all<{ subject_id: string; message_count: number; subject_name_fa: string | null }>();
+
+    const bySubjectFallback = new Map(SUBJECT_SEED.map((s) => [s.id, s.nameFa]));
+
+    // ── دقت پاسخ‌ها (حلقهٔ یادگیری تطبیقی) — اگر جدول لاگ هنوز خالی/موجود
+    // نباشد، null برمی‌گردد (نه صفر گمراه‌کننده، چون صفر یعنی «همه غلط»).
+    let accuracyPercent: number | null = null;
+    let totalAnsweredAttempts = 0;
+    try {
+      const accRow = await c.env.DB
+        .prepare('SELECT COUNT(*) AS n, SUM(was_correct) AS correct FROM ai_teacher_answer_logs')
+        .first<{ n: number; correct: number | null }>();
+      totalAnsweredAttempts = accRow?.n ?? 0;
+      accuracyPercent =
+        totalAnsweredAttempts > 0
+          ? Math.round(((accRow?.correct ?? 0) / totalAnsweredAttempts) * 1000) / 10
+          : null;
+    } catch (_) {
+      // جدول هنوز مهاجرت نشده — accuracyPercent همان null باقی می‌ماند.
+    }
+
+    // ── پوشش نمایه‌سازی معنایی — چند درصد درس‌های منتشرشده Embedding دارند.
+    let embeddingCoveragePercent: number | null = null;
+    try {
+      const totalLessons = await c.env.DB
+        .prepare("SELECT COUNT(*) AS n FROM lessons WHERE status='published'")
+        .first<{ n: number }>();
+      const embedded = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM lesson_embeddings').first<{ n: number }>();
+      embeddingCoveragePercent =
+        (totalLessons?.n ?? 0) > 0
+          ? Math.round(((embedded?.n ?? 0) / (totalLessons?.n ?? 1)) * 1000) / 10
+          : null;
+    } catch (_) {
+      // بدون تأثیر روی بقیهٔ آمار.
+    }
+
+    return c.json({
+      totalMessages: totalRow?.n ?? 0,
+      messagesToday: todayRow?.n ?? 0,
+      activeStudentsToday: activeTodayRow?.n ?? 0,
+      activeStudentsWeek: activeWeekRow?.n ?? 0,
+      accuracyPercent,
+      totalAnsweredAttempts,
+      embeddingCoveragePercent,
+      bySubject: subjectRows.map((r) => ({
+        subjectId: r.subject_id,
+        subjectNameFa: r.subject_name_fa ?? bySubjectFallback.get(r.subject_id) ?? r.subject_id,
+        messageCount: r.message_count,
+      })),
+    });
+  } catch (_) {
+    // جدول لاگ هنوز روی این دیتابیس مهاجرت نشده — به‌جای خطا، صفرِ امن برمی‌گردد
+    // (طبق همان اصل Fail-safe که در بقیهٔ Endpointهای آماری برنامه رعایت شده).
+    return c.json(zero);
+  }
 });
 
 export default ai;

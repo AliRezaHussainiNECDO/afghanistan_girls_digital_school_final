@@ -4,6 +4,7 @@ import '../../../../core/student/selected_grade_provider.dart';
 import '../../../admin/ai_teacher_management/presentation/providers/ai_teacher_management_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../curriculum_library/data/datasources/curriculum_library_local_datasource.dart';
+import '../../data/datasources/ai_semantic_search_datasource.dart';
 import '../../data/datasources/ai_teacher_engine_datasource.dart';
 import '../../data/datasources/ai_voice_remote_datasource.dart';
 import '../../data/repositories_impl/ai_teacher_repository_impl.dart';
@@ -44,6 +45,12 @@ final activeAiEngineProvider = Provider<AiEngine>((ref) {
   );
 });
 
+/// معماری ۱ — بازیابی معنایی (RAG واقعی)، فقط روی Backend واقعی معنا دارد
+/// (نیازمند جدول Embedding سرور). Provider همیشه ساخته می‌شود، خودِ سرویس
+/// Fail-safe است.
+final aiSemanticSearchDataSourceProvider =
+    Provider((ref) => AiSemanticSearchDataSource(ref.watch(apiClientProvider)));
+
 /// معلم هوشمند از روی «شخصیت» تنظیم‌شدهٔ مدیر در «مدیریت معلم هوشمند» کار
 /// می‌کند — با این اتصال، تغییری که مدیر برای هر مضمون ذخیره می‌کند واقعاً
 /// روی گفت‌وگوی شاگرد اثر می‌گذارد (قبلاً این دو بخش کاملاً جدا بودند).
@@ -54,6 +61,29 @@ final aiTeacherDataSourceProvider = Provider((ref) => AiTeacherEngineDataSource(
         final result = await ref.read(aiTeacherMgmtRepositoryProvider).getPersonaFor(subjectId);
         return result.fold((_) => null, (persona) => persona);
       },
+      // ── معماری ۱: بازیابی معنایی — فقط روی Backend واقعی، در غیر این
+      // صورت `null` می‌ماند و DataSource بی‌صدا به بازیابی کلمه‌ای برمی‌گردد.
+      semanticSearch: kUseLiveBackend
+          ? (subjectId, grade, query) => ref.read(aiSemanticSearchDataSourceProvider).search(
+                subjectId: subjectId,
+                grade: grade,
+                query: query,
+              )
+          : null,
+      // ── معماری ۲: لاگ درست/غلط برای آمار دقت + امتیاز مشترک.
+      logAttempt: kUseLiveBackend
+          ? (subjectId, grade, wasCorrect) async {
+              try {
+                await ref.read(apiClientProvider).post('/ai-teacher/log-attempt', data: {
+                  'subjectId': subjectId,
+                  'gradeId': grade,
+                  'wasCorrect': wasCorrect,
+                });
+              } catch (_) {
+                // Fail-safe — هرگز گفتگو را مختل نمی‌کند.
+              }
+            }
+          : null,
     ));
 final aiTeacherRepositoryProvider =
     Provider<AiTeacherRepository>((ref) => AiTeacherRepositoryImpl(ref.watch(aiTeacherDataSourceProvider)));
