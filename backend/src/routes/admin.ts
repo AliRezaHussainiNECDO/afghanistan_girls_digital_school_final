@@ -12,10 +12,12 @@
  *   GET    /system-health                   پایش زندهٔ اتصال سرور/دیتابیس/ذخیره‌سازی
  *   ── مدیریت تفصیلی شاگرد (بخش ۱۵.۲) ──
  *   GET    /students?q=&grade=&province=&status=&at_risk=&page=   لیست صفحه‌بندی‌شده
- *   GET    /students/:id                    جزئیات کامل تحصیلی
+ *   GET    /students/:id                    جزئیات کامل تحصیلی (پیشرفت مطابق داشبورد شاگرد/والد)
  *   GET    /students/:id/ai-report          گزارش معلم هوشمند (محاسبه‌شده از داده واقعی)
  *   PATCH  /students/:id/status             body {status, reason}
  *   POST   /students/:id/password-reset-link ارسال کد بازیابی به ایمیل شاگرد
+ *   ── نصاب هوشمند (بخش شناسایی فصل از کتاب) ──
+ *   POST   /curriculum/subjects/:subjectId/publish-chapters   انتشار فصل‌های شناسایی‌شده از یک کتاب
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -25,6 +27,7 @@ import {
   sha256B64Url,
   randomSixDigitCode,
 } from '../lib/email';
+import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 
 type Bindings = {
   DB: D1Database;
@@ -581,6 +584,9 @@ admin.get('/students', async (c) => {
   return c.json({ items, total, page, page_size: PAGE_SIZE });
 });
 
+// جزئیات تحصیلی شاگرد — پیشرفت هر مضمون از lib/progress.ts (منبع واحد) می‌آید
+// تا با داشبورد خود شاگرد و داشبورد والد دقیقاً یکسان باشد؛ فقط میانگین
+// کوییز/امتحان و وضعیت تفصیلی (قبول/مردود) مختص این گزارش مدیریتی است.
 admin.get('/students/:id', async (c) => {
   if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   const id = c.req.param('id');
@@ -590,43 +596,40 @@ admin.get('/students/:id', async (c) => {
   }
   const grade = u.current_grade ?? 7;
 
-  // پیشرفت هر مضمون + میانگین کوییز/امتحان از داده واقعی.
-  const { results: subs } = await c.env.DB.prepare(
-    `SELECT s.id, s.name_fa,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS total,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS viewed,
+  // پیشرفت هر مضمون (منبع واحد) + میانگین کوییز/امتحان جداگانه از داده واقعی.
+  const subjectsProgress = await getSubjectProgressList(c.env.DB, id, grade);
+  const { results: quizExamRows } = await c.env.DB.prepare(
+    `SELECT s.id,
        (SELECT AVG(a.score_percent) FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
           WHERE a.user_id=? AND e.subject_id=s.id AND e.type IN ('daily_quiz','homework')) AS quiz_avg,
        (SELECT AVG(a.score_percent) FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
           WHERE a.user_id=? AND e.subject_id=s.id AND e.type IN ('monthly','final')) AS exam_avg
        FROM subjects s ORDER BY s.order_index`,
   )
-    .bind(grade, id, grade, id, id)
-    .all<any>();
+    .bind(id, id)
+    .all<{ id: string; quiz_avg: number | null; exam_avg: number | null }>();
+  const quizExamMap = new Map(quizExamRows.map((r) => [r.id, r]));
 
-  const subjects = subs.map((r) => {
-    const progress = r.total > 0 ? Math.round((r.viewed / r.total) * 1000) / 10 : 0;
-    const quiz = r.quiz_avg != null ? Math.round(r.quiz_avg * 10) / 10 : null;
-    const exam = r.exam_avg != null ? Math.round(r.exam_avg * 10) / 10 : null;
+  const subjects = subjectsProgress.map((sp) => {
+    const qe = quizExamMap.get(sp.subjectId);
+    const quiz = qe?.quiz_avg != null ? Math.round(qe.quiz_avg * 10) / 10 : null;
+    const exam = qe?.exam_avg != null ? Math.round(qe.exam_avg * 10) / 10 : null;
     const scores = [quiz, exam].filter((x): x is number => x != null);
     const finalScore = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
     let status = 'inProgress';
-    if (r.viewed === 0) status = 'locked';
-    else if (progress >= 100 && (finalScore ?? 0) >= 60) status = 'completed';
+    if (sp.viewedLessons === 0) status = 'locked';
+    else if (sp.percent >= 100 && (finalScore ?? 0) >= 60) status = 'completed';
     else if (finalScore != null && finalScore < 50) status = 'failed';
     return {
-      subject_id: r.id,
-      subject_name: r.name_fa,
+      subject_id: sp.subjectId,
+      subject_name: sp.nameFa,
       status,
-      progress_percent: progress,
+      progress_percent: sp.percent,
       final_score: finalScore,
       quiz_average: quiz,
       exam_average: exam,
-      completed_lessons: r.viewed,
-      total_lessons: r.total,
+      completed_lessons: sp.viewedLessons,
+      total_lessons: sp.totalLessons,
     };
   });
 
@@ -689,6 +692,9 @@ admin.get('/students/:id', async (c) => {
 
   const summary = await studentSummary(c.env.DB, u);
 
+  // امتیاز فعالیت (Gamification) — همان امتیازی که در خانهٔ شاگرد نمایش داده می‌شود.
+  const points = await getPointsSummary(c.env.DB, id);
+
   return c.json({
     summary,
     email: u.email,
@@ -709,6 +715,9 @@ admin.get('/students/:id', async (c) => {
     exams_taken: examCount?.n ?? 0,
     class_rank: (higherRow?.n ?? 0) + 1,
     class_size: classSizeRow?.n ?? 1,
+    points_total: points.totalPoints,
+    points_level: points.level,
+    points_level_title_fa: points.levelTitleFa,
   });
 });
 
@@ -719,18 +728,10 @@ admin.get('/students/:id/ai-report', async (c) => {
   if (!u) return c.json(fail('NOT_FOUND', 'شاگرد یافت نشد', 'Student not found'), 404);
   const grade = u.current_grade ?? 7;
 
-  // پیشرفت کلی از نسبت دروس دیده‌شده.
-  const prog = await c.env.DB.prepare(
-    `SELECT
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          WHERE ch.grade_number=? AND l.status='published' AND ch.status='published') AS total,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-          WHERE ch.grade_number=? AND l.status='published' AND ch.status='published') AS viewed`,
-  )
-    .bind(grade, id, grade)
-    .first<{ total: number; viewed: number }>();
-  const overall = prog && prog.total > 0 ? Math.round((prog.viewed / prog.total) * 1000) / 10 : 0;
+  // پیشرفت کلی از منبع واحد (lib/progress.ts) — همان عددی که در داشبورد
+  // شاگرد و والد به‌عنوان «پیشرفت کلی» نمایش داده می‌شود.
+  const subjectsProgress = await getSubjectProgressList(c.env.DB, id, grade);
+  const overall = averagePercent(subjectsProgress);
 
   // روند: میانگین ۵ تلاش اخیر در برابر ۵ تلاش قبل‌تر.
   const { results: recent } = await c.env.DB.prepare(
@@ -835,6 +836,74 @@ admin.post('/students/:id/password-reset-link', async (c) => {
     ),
   );
   return c.json({ success: true, message_fa: 'کد بازیابی به ایمیل شاگرد ارسال شد' });
+});
+
+// ═══════════════ نصاب هوشمند: انتشار فصل‌های شناسایی‌شده از یک کتاب ═══════════
+// کلاینت (هنگام آپلود کتاب توسط مدیر) عناوین فصل را با شناسایی هوشمند
+// (اندازهٔ فونت/الگوی «فصل N» در PDF) استخراج می‌کند و اینجا هر فصل را به یک
+// رکورد `chapters` + دقیقاً یک `lessons` (با کل متن همان فصل) تبدیل می‌کند.
+// تکمیل آن یک درس = تکمیل فصل → پایهٔ قفل‌گشایی ترتیبی فصل بعدی (lib/progress.ts).
+// درخواست دوباره برای همان bookId، فصل‌های قبلیِ همان کتاب را جایگزین می‌کند.
+admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const subjectId = c.req.param('subjectId');
+  const b = await c.req
+    .json<{ bookId?: string; gradeId?: number; chapters?: { title?: string; content?: string }[] }>()
+    .catch(() => null);
+  const bookId = String(b?.bookId ?? '').trim();
+  const gradeId = Number(b?.gradeId ?? 0);
+  const chapters = Array.isArray(b?.chapters) ? b!.chapters! : [];
+  if (!bookId || !gradeId || !chapters.length) {
+    return c.json(fail('BAD_REQUEST', 'شناسهٔ کتاب، صنف و فهرست فصل‌ها لازم است', 'Missing fields'), 400);
+  }
+  const subject = await c.env.DB.prepare('SELECT id FROM subjects WHERE id = ?').bind(subjectId).first();
+  if (!subject) return c.json(fail('NOT_FOUND', 'مضمون یافت نشد', 'Subject not found'), 404);
+
+  // جایگزینی کامل: فصل‌های قبلیِ همین کتاب (و درس‌ها/بازدیدها/تکمیل‌های وابسته) حذف می‌شوند.
+  const { results: oldChapters } = await c.env.DB.prepare('SELECT id FROM chapters WHERE source_book_id = ?')
+    .bind(bookId)
+    .all<{ id: string }>();
+  if (oldChapters.length) {
+    const chIds = oldChapters.map((r) => r.id);
+    const chPh = chIds.map(() => '?').join(',');
+    const { results: oldLessons } = await c.env.DB.prepare(`SELECT id FROM lessons WHERE chapter_id IN (${chPh})`)
+      .bind(...chIds)
+      .all<{ id: string }>();
+    if (oldLessons.length) {
+      const lsIds = oldLessons.map((r) => r.id);
+      const lsPh = lsIds.map(() => '?').join(',');
+      await c.env.DB.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+      await c.env.DB.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
+    }
+    await c.env.DB.prepare(`DELETE FROM student_chapter_completions WHERE chapter_id IN (${chPh})`).bind(...chIds).run();
+    await c.env.DB.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
+  }
+
+  // درج فصل‌های تازه — هر فصل = یک chapter + دقیقاً یک lesson با کل متن فصل.
+  const stmts: any[] = [];
+  const createdChapterIds: string[] = [];
+  chapters.forEach((ch, i) => {
+    const title = String(ch?.title ?? `فصل ${i + 1}`).trim().slice(0, 200) || `فصل ${i + 1}`;
+    const content = String(ch?.content ?? '');
+    const chapterId = `ch_${bookId}_${i}`;
+    const lessonId = `ls_${bookId}_${i}`;
+    // برآورد زمان مطالعه از طول متن (هر ~۵۰۰ نویسه ≈ ۱ دقیقه)، بین ۵ تا ۶۰ دقیقه.
+    const minutes = Math.min(60, Math.max(5, Math.round(content.length / 500)));
+    createdChapterIds.push(chapterId);
+    stmts.push(
+      c.env.DB.prepare(
+        'INSERT INTO chapters (id, grade_number, subject_id, title_fa, order_index, status, source_book_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(chapterId, gradeId, subjectId, title, i + 1, 'published', bookId),
+    );
+    stmts.push(
+      c.env.DB.prepare(
+        'INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ).bind(lessonId, chapterId, title, minutes, 1, content, 'published'),
+    );
+  });
+  await c.env.DB.batch(stmts);
+
+  return c.json({ success: true, chaptersCreated: createdChapterIds.length, chapterIds: createdChapterIds }, 201);
 });
 
 export default admin;

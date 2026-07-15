@@ -36,10 +36,9 @@ class CurriculumRepositoryImpl implements CurriculumRepository {
   }
 
   @override
-  Future<Either<Failure, Unit>> markLessonViewed(String lessonId) async {
+  Future<Either<Failure, LessonViewResult>> markLessonViewed(String lessonId) async {
     try {
-      await dataSource.markLessonViewed(lessonId);
-      return const Right(unit);
+      return Right(await dataSource.markLessonViewed(lessonId));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }

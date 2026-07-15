@@ -27,6 +27,9 @@ class DashboardRemoteDataSource implements DashboardDataSource {
       upcomingSeminarDate: DateTime.tryParse(m['upcomingSeminarDate'] as String? ?? ''),
       recommendedTopics:
           (m['recommendedTopics'] as List? ?? []).map((e) => e.toString()).toList(),
+      pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,
+      pointsLevel: (m['pointsLevel'] as num?)?.toInt() ?? 1,
+      pointsLevelTitleFa: m['pointsLevelTitleFa'] as String? ?? 'نوآموز',
     );
   }
 }

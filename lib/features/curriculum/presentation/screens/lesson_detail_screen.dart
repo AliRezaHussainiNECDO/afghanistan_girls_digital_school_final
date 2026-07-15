@@ -1,5 +1,6 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/router/app_routes.dart';
@@ -11,6 +12,7 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
 import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
 import '../../../ai_teacher/presentation/widgets/ai_voice_ask_sheet.dart';
+import '../../domain/entities/curriculum_entities.dart';
 import '../providers/curriculum_providers.dart';
 
 /// نمایش یک درس — طبق بخش ۶.۲ (C1: viewed=true) و بخش ۴.۲ (رویداد
@@ -20,6 +22,10 @@ import '../providers/curriculum_providers.dart';
 ///  • «شنیدن درس»: متن درس با صدای خانم دری (TTS) قطعه‌به‌قطعه پخش می‌شود.
 ///  • «پرسش از معلم»: شیت صوتی — میکروفون → STT → معلم AI همین مضمون → «شنیدن» پاسخ.
 /// اگر Backend واقعی فعال نباشد، دکمه‌های صوتی نمایش داده نمی‌شوند.
+///
+/// همچنین امتیاز فعالیت (Gamification) را بلافاصله بعد از دیدن درس نمایش
+/// می‌دهد — اگر همین درس آخرین درسِ فصل بود، جشن تکمیل فصل هم نشان داده
+/// می‌شود (پایهٔ باز شدن خودکار فصل بعدی، `backend/src/lib/progress.ts`).
 class LessonDetailScreen extends ConsumerStatefulWidget {
   final String subjectId;
   final String lessonId;
@@ -119,6 +125,59 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
   void _openAiTeacher() {
     ref.read(aiTeacherInitialSubjectProvider.notifier).state = widget.subjectId;
     context.push(AppRoutes.aiTeacher);
+  }
+
+  /// بازخورد فوری امتیاز فعالیت — بعد از دیدن درس نشان داده می‌شود؛ اگر همین
+  /// درس فصل را تکمیل کرده باشد، بنر جشنِ بزرگ‌تری (با گرادیان طلایی) دیده
+  /// می‌شود تا شاگرد را برای رفتن به فصل بعدی تشویق کند.
+  void _showPointsFeedback(LessonViewResult result) {
+    if (result.totalPointsThisAction <= 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        duration: Duration(seconds: result.chapterJustCompleted ? 4 : 2),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: result.chapterJustCompleted ? AppColors.sunriseGradient : AppColors.successGradient,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            boxShadow: AppShadows.green,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                result.chapterJustCompleted ? Icons.emoji_events_rounded : Icons.star_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      result.chapterJustCompleted ? '🎉 فصل تکمیل شد!' : 'آفرین!',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                    Text(
+                      result.chapterJustCompleted
+                          ? '+${result.pointsAwarded} امتیاز درس، +${result.chapterBonusAwarded} امتیاز پاداش تکمیل فصل — فصل بعدی باز شد!'
+                          : '+${result.pointsAwarded} امتیاز فعالیت گرفتید',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.25, end: 0, curve: Curves.easeOutCubic),
+      ),
+    );
   }
 
   @override
@@ -225,9 +284,14 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                   icon: Icons.check_circle_outline_rounded,
                   onPressed: () async {
                     setState(() => _marking = true);
-                    await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
+                    final result =
+                        await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
                     ref.invalidate(lessonProvider(widget.lessonId));
-                    if (mounted) setState(() => _marking = false);
+                    ref.invalidate(chaptersProvider(widget.subjectId));
+                    if (mounted) {
+                      setState(() => _marking = false);
+                      result.fold((_) {}, _showPointsFeedback);
+                    }
                   },
                 )
               else

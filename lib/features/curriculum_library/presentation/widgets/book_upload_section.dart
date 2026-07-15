@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/network/network_providers.dart';
+import '../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../domain/entities/curriculum_book.dart';
+import '../../domain/services/chapter_detector.dart';
 import '../../domain/usecases/curriculum_library_usecases.dart';
 import '../providers/curriculum_library_providers.dart';
 
@@ -13,6 +16,11 @@ import '../providers/curriculum_library_providers.dart';
 /// طبق نصاب رسمی هر صنف کتاب مستقل خودش را دارد، پس معلم هوشمند باید بتواند
 /// دقیقاً از روی کتاب همان صنف شاگرد تدریس کند (طبق درخواست صریح کاربر).
 /// متن هر کتاب به‌صورت محلی استخراج می‌شود و پایهٔ تدریس واقعی می‌گردد.
+///
+/// همچنین بلافاصله بعد از آپلود، عنوان‌های فصل کتاب با [ChapterDetector]
+/// به‌صورت هوشمند شناسایی و (در صورت اطمینان کافی) به Backend منتشر می‌شوند
+/// تا فصل‌بندی/قفل‌گشایی ترتیبی واقعی برای شاگردان همین مضمون فعال شود
+/// (طبق درخواست کاربر: «شناسایی هوشمندانه عناوین فصل کتاب»).
 class BookUploadSection extends ConsumerWidget {
   final String subjectId;
   final String subjectNameFa;
@@ -87,8 +95,16 @@ class _GradeBookRow extends ConsumerStatefulWidget {
 class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
   bool _extracting = false;
   String? _extractError;
+
+  /// پیام موفقیت شناسایی فصل — بعد از آپلود موفق نشان داده می‌شود، مثل
+  /// «۸ فصل شناسایی و منتشر شد» یا نمایش این‌که فصل‌بندی خودکار ممکن نشد.
+  String? _chapterInfo;
+
   Future<void> _pickAndUpload() async {
-    setState(() => _extractError = null);
+    setState(() {
+      _extractError = null;
+      _chapterInfo = null;
+    });
     FilePickerResult? result;
     try {
       // اصلاح متد برای سازگاری با نسخه‌های جدید و رفع خطای Member not found
@@ -114,6 +130,14 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
       final document = PdfDocument(inputBytes: bytes);
       final text = PdfTextExtractor(document).extractText();
       final pageCount = document.pages.count;
+
+      // ── شناسایی هوشمند عناوین فصل — پیش از dispose سند (به خطوط/فونت نیاز دارد) ──
+      List<DetectedChapter> detectedChapters = const [];
+      try {
+        detectedChapters = ChapterDetector.detect(document);
+      } catch (_) {
+        detectedChapters = const []; // Fail-safe: شکست تشخیص فصل نباید آپلود را متوقف کند
+      }
       document.dispose();
 
       if (text.trim().isEmpty) {
@@ -125,7 +149,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
       }
 
       final title = file.name.replaceAll('.pdf', '');
-      await ref.read(addBookUseCaseProvider).call(AddBookParams(
+      final addResult = await ref.read(addBookUseCaseProvider).call(AddBookParams(
             subjectId: widget.subjectId,
             title: title,
             pageCount: pageCount,
@@ -133,6 +157,31 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
             extractedText: text,
           ));
       ref.invalidate(booksForSubjectProvider(widget.subjectId));
+
+      // ── انتشار فصل‌های شناسایی‌شده (فقط روی Backend واقعی و با اطمینان کافی) ──
+      await addResult.fold((_) async {}, (book) async {
+        if (!kUseLiveBackend || detectedChapters.length < 2) return;
+        try {
+          await ref.read(apiClientProvider).post(
+            '/admin/curriculum/subjects/${widget.subjectId}/publish-chapters',
+            data: {
+              'bookId': book.id,
+              'gradeId': widget.grade,
+              'chapters': detectedChapters
+                  .map((c) => {'title': c.title, 'content': c.content})
+                  .toList(),
+            },
+          );
+          if (mounted) {
+            setState(() => _chapterInfo = '${detectedChapters.length} فصل شناسایی و منتشر شد ✓');
+          }
+        } catch (e) {
+          if (mounted) {
+            setState(() => _chapterInfo = 'آپلود موفق بود؛ فصل‌بندی خودکار ناموفق شد.');
+          }
+        }
+      });
+
       if (mounted) setState(() => _extracting = false);
     } catch (e) {
       if (!mounted) return;
@@ -214,6 +263,20 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(_extractError!, style: TextStyle(color: scheme.error, fontSize: 11.5)),
+            ),
+          if (_chapterInfo != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded, size: 13, color: scheme.primary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(_chapterInfo!,
+                        style: TextStyle(fontSize: 11.5, color: scheme.primary, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ),
         ],
       ),

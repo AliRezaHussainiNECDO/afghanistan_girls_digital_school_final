@@ -7,6 +7,7 @@ abstract class CurriculumRepository {
   Future<Either<Failure, List<Lesson>>> getLessons(String chapterId);
   Future<Either<Failure, Lesson>> getLesson(String lessonId);
 
-  /// طبق `POST /lessons/{id}/view` بخش ۱۹.۳ — ثبت بازدید، ورودی منطق C1.
-  Future<Either<Failure, Unit>> markLessonViewed(String lessonId);
+  /// طبق `POST /lessons/{id}/view` بخش ۱۹.۳ — ثبت بازدید، ورودی منطق C1،
+  /// و اهدای امتیاز فعالیت (Gamification).
+  Future<Either<Failure, LessonViewResult>> markLessonViewed(String lessonId);
 }

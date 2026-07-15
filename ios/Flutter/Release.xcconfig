@@ -1,1 +1,8 @@
 #include "Generated.xcconfig"
+
+// اجازهٔ ساخت بدون امضا (Code Signing) برای CI/CD روی GitHub Actions —
+// رفع خطای «Building a deployable iOS app requires a selected Development Team»
+// هنگام اجرای `flutter build ios --release --no-codesign` روی سرور بدون Apple ID.
+CODE_SIGNING_ALLOWED=NO
+CODE_SIGNING_REQUIRED=NO
+CODE_SIGN_IDENTITY=

@@ -4,31 +4,28 @@
  * Endpointها (زیر `/api/v1`):
  *   GET  /grades
  *   GET  /subjects?grade=7
- *   GET  /subjects/:subjectId/chapters?grade=7
+ *   GET  /subjects/:subjectId/chapters?grade=7   (Bearer اختیاری → قفل/پیشرفت هر فصل)
  *   GET  /chapters/:chapterId/lessons          (Bearer اختیاری → viewed)
  *   GET  /lessons/:lessonId                     (Bearer اختیاری → viewed)
- *   POST /lessons/:lessonId/view                (Bearer اجباری)
+ *   POST /lessons/:lessonId/view                (Bearer اجباری — امتیاز فعالیت هم می‌دهد)
  *   GET  /students/:studentId/grade-map         (Bearer اجباری — Server-Authoritative)
+ *   GET  /students/me/points                    (Bearer اجباری) خلاصهٔ امتیاز شاگرد
+ *   GET  /students/:studentId/points            (Bearer اجباری — خودش/مدیر/والدِ لینک‌شده)
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { getSubjectProgressList, averagePercent, getChapterList, getPointsSummary, recordLessonView } from '../lib/progress';
 
-type Bindings = {
-  DB: D1Database;
-  JWT_SECRET: string;
-};
-
+type Bindings = { DB: D1Database; JWT_SECRET: string; };
 const c11m = new Hono<{ Bindings: Bindings }>();
 
 function fail(code: string, fa: string, en: string) {
   return { success: false, error: { code, message_fa: fa, message_en: en } };
 }
-
 async function userId(c: any): Promise<string | null> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   return (payload?.['sub'] as string | undefined) ?? null;
 }
-
 async function isAdmin(c: any): Promise<boolean> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   return payload?.['role'] === 'super_admin';
@@ -60,20 +57,27 @@ c11m.get('/subjects', async (c) => {
 });
 
 // ────────────────────────────── Chapters ──────────────────────────────────
+// شناسایی هوشمند عناوین فصل (سمت کلاینت هنگام آپلود کتاب) + قفل‌گذاری ترتیبی:
+// فصل اول همیشه باز است؛ فصل بعدی فقط بعد از تکمیل فصل جاری باز می‌شود.
 
 c11m.get('/subjects/:subjectId/chapters', async (c) => {
   const subjectId = c.req.param('subjectId');
   const grade = Number(c.req.query('grade') ?? '0');
-  const { results } = await c.env.DB.prepare(
-    `SELECT ch.id, ch.title_fa, ch.order_index,
-       (SELECT COUNT(*) FROM lessons l WHERE l.chapter_id = ch.id AND l.status='published') AS lesson_count
-     FROM chapters ch
-     WHERE ch.subject_id = ? AND ch.grade_number = ? AND ch.status='published'
-     ORDER BY ch.order_index`,
-  )
-    .bind(subjectId, grade)
-    .all();
-  return c.json({ chapters: results });
+  const uid = await userId(c); // اختیاری — بدون ورود، فقط فصل اول باز نمایش داده می‌شود.
+  const chapters = await getChapterList(c.env.DB, subjectId, grade, uid);
+  return c.json({
+    chapters: chapters.map((ch) => ({
+      id: ch.id,
+      title_fa: ch.titleFa,
+      order_index: ch.orderIndex,
+      lesson_count: ch.lessonCount,
+      viewed_count: ch.viewedCount,
+      progress_percent: ch.percent,
+      completed: ch.completed,
+      unlocked: ch.unlocked,
+      source_book_id: ch.sourceBookId,
+    })),
+  });
 });
 
 // ─────────────────────────────── Lessons ──────────────────────────────────
@@ -110,25 +114,25 @@ c11m.get('/lessons/:lessonId', async (c) => {
   return c.json({ lesson: row });
 });
 
-// ثبت بازدید درس — ورودی منطق C1 (بخش ۶.۲). فقط دانش‌آموز واردشده.
+// ثبت بازدید درس — ورودی منطق C1 (بخش ۶.۲) + اهدای امتیاز فعالیت (Gamification)
+// + بررسی خودکار تکمیل فصل (پایهٔ قفل‌گشایی فصل بعدی). فقط دانش‌آموز واردشده.
 c11m.post('/lessons/:lessonId/view', async (c) => {
   const uid = await userId(c);
   if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
   const lessonId = c.req.param('lessonId');
-  const exists = await c.env.DB.prepare("SELECT id FROM lessons WHERE id = ? AND status='published'")
-    .bind(lessonId)
-    .first();
-  if (!exists) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
-  await c.env.DB.prepare(
-    'INSERT OR IGNORE INTO student_lesson_views (user_id, lesson_id) VALUES (?, ?)',
-  )
-    .bind(uid, lessonId)
-    .run();
-  return c.json({ success: true });
+  const result = await recordLessonView(c.env.DB, uid, lessonId);
+  if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+  return c.json({
+    success: true,
+    pointsAwarded: result.firstView ? 10 : 0,
+    chapterJustCompleted: result.chapterJustCompleted,
+    chapterBonusAwarded: result.chapterJustCompleted ? 25 : 0,
+  });
 });
 
 // ─────────────────────────────── Grade Map ────────────────────────────────
 // Server-Authoritative (بخش ۶.۷): وضعیت هر مضمون از روی درس‌های دیده‌شده.
+// از lib/progress.ts استفاده می‌کند تا عدد پیشرفت با سایر داشبوردها یکسان باشد.
 
 c11m.get('/students/:studentId/grade-map', async (c) => {
   const uid = await userId(c);
@@ -140,48 +144,19 @@ c11m.get('/students/:studentId/grade-map', async (c) => {
     .first<{ current_grade: number | null }>();
   const grade = student?.current_grade ?? 7;
 
-  // برای هر مضمون: مجموع درس‌های منتشرشده و تعداد دیده‌شده در این صنف.
-  const { results } = await c.env.DB.prepare(
-    `SELECT s.id AS subject_id, s.name_fa AS subject_name_fa,
-       (SELECT COUNT(*) FROM lessons l
-          JOIN chapters ch ON ch.id = l.chapter_id
-          WHERE ch.subject_id = s.id AND ch.grade_number = ?
-            AND l.status='published' AND ch.status='published') AS total_lessons,
-       (SELECT COUNT(*) FROM lessons l
-          JOIN chapters ch ON ch.id = l.chapter_id
-          JOIN student_lesson_views v ON v.lesson_id = l.id AND v.user_id = ?
-          WHERE ch.subject_id = s.id AND ch.grade_number = ?
-            AND l.status='published' AND ch.status='published') AS viewed_lessons
-     FROM subjects s ORDER BY s.order_index`,
-  )
-    .bind(grade, uid, grade)
-    .all<{ subject_id: string; subject_name_fa: string; total_lessons: number; viewed_lessons: number }>();
-
-  let sum = 0;
-  const subjects = results.map((r) => {
-    const completion = r.total_lessons > 0 ? (r.viewed_lessons / r.total_lessons) * 100 : 0;
-    sum += completion;
-    let status: string;
-    if (r.total_lessons > 0 && r.viewed_lessons >= r.total_lessons) {
-      status = 'completed';
-    } else if (r.viewed_lessons > 0) {
-      status = 'inProgress';
-    } else {
-      status = 'unlocked';
-    }
-    return {
-      subjectId: r.subject_id,
-      subjectNameFa: r.subject_name_fa,
-      status,
-      finalScore: null, // نمرات در ماژول ۲ (امتحانات) پر می‌شوند
-      completionPercent: Math.round(completion * 10) / 10,
-    };
-  });
+  const subjectsProgress = await getSubjectProgressList(c.env.DB, uid, grade);
+  const subjects = subjectsProgress.map((r) => ({
+    subjectId: r.subjectId,
+    subjectNameFa: r.nameFa,
+    status: r.status === 'completed' ? 'completed' : r.status === 'inProgress' ? 'inProgress' : 'unlocked',
+    finalScore: null, // نمرات در ماژول ۲ (امتحانات) پر می‌شوند
+    completionPercent: r.percent,
+  }));
 
   return c.json({
     gradeNumber: grade,
     gradeLocked: false,
-    gradeAveragePercent: subjects.length ? Math.round((sum / subjects.length) * 10) / 10 : 0,
+    gradeAveragePercent: averagePercent(subjectsProgress),
     attendanceRatePercent: 0, // در ماژول ۳ (حاضری) پر می‌شود
     subjects,
   });
@@ -196,27 +171,13 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     .first<{ first_name: string; current_grade: number | null }>();
   const grade = u?.current_grade ?? 7;
 
-  // پیشرفت هر مضمون + یافتن اولین درس دیده‌نشده (درس فعلی).
-  const { results: subs } = await c.env.DB.prepare(
-    `SELECT s.id, s.name_fa,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS total,
-       (SELECT COUNT(*) FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id
-          JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-          WHERE ch.subject_id=s.id AND ch.grade_number=? AND l.status='published' AND ch.status='published') AS viewed
-     FROM subjects s ORDER BY s.order_index`,
-  )
-    .bind(grade, uid, grade)
-    .all<{ id: string; name_fa: string; total: number; viewed: number }>();
-
-  let sum = 0;
-  const recommended: string[] = [];
-  for (const r of subs) {
-    const comp = r.total > 0 ? (r.viewed / r.total) * 100 : 0;
-    sum += comp;
-    if (r.viewed > 0 && r.viewed < r.total && recommended.length < 2) recommended.push(r.name_fa);
-  }
-  const overall = subs.length ? Math.round((sum / subs.length) * 10) / 10 : 0;
+  // پیشرفت هر مضمون (منبع واحد) — برای پیدا کردن مضامین «در حال انجام».
+  const subjectsProgress = await getSubjectProgressList(c.env.DB, uid, grade);
+  const recommended = subjectsProgress
+    .filter((r) => r.status === 'inProgress')
+    .slice(0, 2)
+    .map((r) => r.nameFa);
+  const overall = averagePercent(subjectsProgress);
 
   // درس فعلی: اولین درس منتشرشدهٔ دیده‌نشده در این صنف.
   const nextLesson = await c.env.DB.prepare(
@@ -240,6 +201,9 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     "SELECT title, scheduled_start FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 1",
   ).first<{ title: string; scheduled_start: string }>();
 
+  // خلاصهٔ امتیاز فعالیت (Gamification) — برای نشان دادن نشان/سطح در خانهٔ شاگرد.
+  const points = await getPointsSummary(c.env.DB, uid);
+
   return c.json({
     studentDisplayName: u?.first_name ?? '',
     overallProgressPercent: overall,
@@ -250,7 +214,47 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     upcomingSeminarTitle: seminar?.title ?? null,
     upcomingSeminarDate: seminar?.scheduled_start ?? null,
     recommendedTopics: recommended,
+    pointsTotal: points.totalPoints,
+    pointsLevel: points.level,
+    pointsLevelTitleFa: points.levelTitleFa,
   });
+});
+
+// ─────────────────────── امتیاز فعالیت شاگرد (Gamification) ───────────────
+// دسترسی: خود شاگرد، Super Admin، یا والدِ لینک‌شدهٔ تأییدشده به این شاگرد.
+
+async function canViewStudentPoints(c: any, uid: string, role: string, studentId: string): Promise<boolean> {
+  if (uid === studentId) return true;
+  if (role === 'super_admin') return true;
+  if (role === 'parent') {
+    const link = await c.env.DB.prepare(
+      "SELECT 1 FROM parent_student_links WHERE parent_user_id=? AND student_user_id=? AND status='approved'",
+    )
+      .bind(uid, studentId)
+      .first();
+    return !!link;
+  }
+  return false;
+}
+
+c11m.get('/students/me/points', async (c) => {
+  const uid = await userId(c);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const points = await getPointsSummary(c.env.DB, uid);
+  return c.json({ points });
+});
+
+c11m.get('/students/:studentId/points', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const uid = (payload?.['sub'] as string | undefined) ?? null;
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const role = (payload?.['role'] as string | undefined) ?? 'student';
+  const studentId = c.req.param('studentId');
+  if (!(await canViewStudentPoints(c, uid, role, studentId))) {
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  }
+  const points = await getPointsSummary(c.env.DB, studentId);
+  return c.json({ points });
 });
 
 // ═══════════════════ کتابخانهٔ نصاب (پایگاه دانش معلم هوشمند) ═════════════════

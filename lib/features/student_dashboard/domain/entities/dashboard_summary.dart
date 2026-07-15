@@ -13,6 +13,13 @@ class DashboardSummary extends Equatable {
   final DateTime? upcomingSeminarDate;
   final List<String> recommendedTopics; // طبق بخش ۵.۵ — نقاط ضعف فعال
 
+  /// امتیاز فعالیت (Gamification) — طبق `backend/src/lib/progress.ts`
+  /// `getPointsSummary`؛ همین سه فیلد در داشبورد والدین هم نمایش داده
+  /// می‌شود تا منطق امتیازدهی در همه‌جا یکسان باشد.
+  final int pointsTotal;
+  final int pointsLevel;
+  final String pointsLevelTitleFa;
+
   const DashboardSummary({
     required this.studentDisplayName,
     required this.overallProgressPercent,
@@ -23,6 +30,9 @@ class DashboardSummary extends Equatable {
     this.upcomingSeminarTitle,
     this.upcomingSeminarDate,
     this.recommendedTopics = const [],
+    this.pointsTotal = 0,
+    this.pointsLevel = 1,
+    this.pointsLevelTitleFa = 'نوآموز',
   });
 
   @override

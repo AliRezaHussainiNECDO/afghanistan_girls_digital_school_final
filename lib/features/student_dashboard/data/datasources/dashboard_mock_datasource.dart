@@ -15,6 +15,9 @@ class DashboardMockDataSource implements DashboardDataSource {
       upcomingSeminarTitle: 'مهارت‌های مطالعهٔ مؤثر',
       upcomingSeminarDate: DateTime.now().add(const Duration(days: 6)),
       recommendedTopics: const ['معادلات درجهٔ دوم', 'دستور زبان انگلیسی — Past Tense'],
+      pointsTotal: 240,
+      pointsLevel: 3,
+      pointsLevelTitleFa: 'کوشا',
     );
   }
 }
