@@ -49,4 +49,29 @@ jobs:
 
       # ۴.۷۵. غیرفعال‌کردن کامل امضای کد در فایل پروژه Xcode (project.pbxproj)
       # چون فقط تنظیم CODE_SIGNING_ALLOWED=NO در Release.xcconfig کافی نیست —
-      # Xcode مقدار ProvisioningStyle=Automatic را مستقیماً از
+      # Xcode مقدار ProvisioningStyle=Automatic را مستقیماً از project.pbxproj
+      # می‌خواند و پیش از رسیدن به xcconfig، خطای «Development Team لازم است»
+      # می‌دهد. اسکریپت جداگانه (ios/ci_disable_signing.rb) را اجرا می‌کنیم تا
+      # از پیچیدگی/شکنندگی نقل‌قول تودرتوی چندخطی داخل YAML جلوگیری شود.
+      - name: Force-disable code signing in project.pbxproj
+        run: ruby ios/ci_disable_signing.rb
+
+      # ۵. ساخت نسخه iOS بدون نیاز به گواهی امضا (Code Signing)
+      # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign
+
+      # ۶. تبدیل خروجی به فایل .ipa قابل نصب
+      # از آنجا که بدون ساین بیلد گرفتیم، پوشه خروجی را برای راحتی کار زیپ یا آماده می‌کنیم
+      - name: Prepare Payload for IPA
+        run: |
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r GitHub_Build.ipa Payload
+
+      # ۷. آپلود فایل نهایی در گیت‌هاب برای دانلود شما
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-ipa
+          path: GitHub_Build.ipa
