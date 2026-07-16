@@ -43,8 +43,17 @@ class ChaptersScreen extends ConsumerWidget {
               ),
             );
           }
-          final overall =
-              chapters.map((c) => c.progressPercent).reduce((a, b) => a + b) / chapters.length;
+          // ── رفع ناهماهنگی درصد پیشرفت: قبلاً اینجا میانگین سادهٔ درصد
+          // فصل‌ها گرفته می‌شد (هر فصل، صرف‌نظر از تعداد درس‌هایش، وزن
+          // یکسان) — اگر فصل‌ها تعداد درس متفاوت داشتند، این عدد با «درصد
+          // پیشرفت مضمون» در داشبورد شاگرد/والدین/مدیر (که همه از
+          // `getSubjectProgressList` سرور می‌آیند: مجموع درس‌های دیده‌شده ÷
+          // مجموع کل درس‌ها) فرق می‌کرد. حالا دقیقاً همان فرمولِ وزن‌دار بر
+          // اساس تعداد درسِ هر فصل محاسبه می‌شود تا این عدد در همه‌جای
+          // برنامه یکسان باشد.
+          final totalLessons = chapters.fold<int>(0, (sum, c) => sum + c.lessonCount);
+          final totalViewed = chapters.fold<int>(0, (sum, c) => sum + c.viewedCount);
+          final overall = totalLessons > 0 ? (totalViewed / totalLessons) * 100 : 0.0;
           final completedCount = chapters.where((c) => c.completed).length;
 
           return ListView(

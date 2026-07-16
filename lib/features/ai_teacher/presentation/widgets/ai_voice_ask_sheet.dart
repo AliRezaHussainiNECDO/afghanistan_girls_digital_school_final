@@ -117,6 +117,9 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     await ref.read(aiLessonConversationProvider(_focus).notifier).send(t);
     if (!mounted) return;
     setState(() => _sending = false);
+    // نوار پیشرفت «بخش X از Y» بعد از هر پیام ممکن است تغییر کرده باشد
+    // (پیشرفت خودکار به بخش بعدی، یا تکمیل درس) — دوباره خوانده می‌شود.
+    ref.invalidate(aiLessonProgressProvider(_focus));
     // پایین‌رفتن خودکار برای دیدن پاسخ تازه.
     await Future.delayed(const Duration(milliseconds: 100));
     if (_scroll.hasClients) {
@@ -180,6 +183,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
   Widget build(BuildContext context) {
     final messages = ref.watch(aiLessonConversationProvider(_focus));
     final voiceEnabled = ref.watch(aiVoiceServiceProvider) != null;
+    final progressAsync = ref.watch(aiLessonProgressProvider(_focus));
     final scheme = Theme.of(context).colorScheme;
 
     return SizedBox(
@@ -230,6 +234,57 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                 ),
               ],
             ),
+          ),
+          // ── نوار پیشرفت زندهٔ «بخش X از Y» — طبق درخواست کاربر برای
+          // دیزاینی پویاتر که همیشه نشان دهد شاگرد دقیقاً کجای درس است و
+          // با پیشرفت گام‌به‌گامِ تازه (تسهیم درس به بخش‌های کوتاه) هماهنگ
+          // است؛ بعد از هر پیام خودکار به‌روز می‌شود (نگاه کنید به `_sendText`).
+          progressAsync.when(
+            data: (p) {
+              if (p.total <= 1 && !p.completed) return const SizedBox.shrink();
+              final fraction = p.total > 0 ? (p.current / p.total).clamp(0.0, 1.0) : 0.0;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          p.completed ? 'درس کامل شد 🎉' : 'بخش ${p.current} از ${p.total}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: p.completed ? scheme.primary : scheme.onSurfaceVariant),
+                        ),
+                        if (!p.completed)
+                          Text('${(fraction * 100).round()}٪',
+                              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: fraction),
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, value, _) => LinearProgressIndicator(
+                          value: value,
+                          minHeight: 6,
+                          backgroundColor: scheme.surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation(
+                              p.completed ? scheme.primary : scheme.secondary),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
           ),
           const Divider(height: 16),
           Expanded(

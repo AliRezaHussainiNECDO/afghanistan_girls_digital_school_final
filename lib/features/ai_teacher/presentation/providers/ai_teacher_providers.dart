@@ -243,3 +243,17 @@ final aiLessonConversationProvider = StateNotifierProvider.family<AiLessonConver
     return AiLessonConversationNotifier(ref, focus, grade);
   },
 );
+
+/// «بخش X از Y» — نوار پیشرفت زندهٔ همین درس، طبق درخواست کاربر برای دیزاین
+/// پویاتر تا شاگرد همیشه بداند دقیقاً کجای درس است و خسته نشود. بعد از هر
+/// پیام تازه باید صراحتاً invalidate شود (StateNotifier جدا از این Provider
+/// است، پس خودکار رفرش نمی‌شود) — نگاه کنید به `_sendText` در
+/// `ai_voice_ask_sheet.dart`.
+final aiLessonProgressProvider =
+    FutureProvider.family<({int current, int total, bool completed}), AiLessonFocus>(
+  (ref, focus) => ref.read(aiTeacherDataSourceProvider).lessonProgress(
+        lessonId: focus.lessonId,
+        lessonTitle: focus.lessonTitle,
+        lessonContent: focus.lessonContent,
+      ),
+);

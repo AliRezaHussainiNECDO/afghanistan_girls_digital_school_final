@@ -415,6 +415,25 @@ class AiTeacherEngineDataSource {
     return sections;
   }
 
+  /// پیشرفت گام‌به‌گام شاگرد در همین درس — «بخش X از Y» — برای نمایش نوار
+  /// پیشرفت زنده در شیت «پرسش از معلم» (طبق درخواست کاربر برای دیزاین
+  /// پویاتر تا شاگرد خسته نشود و بداند دقیقاً کجای درس است).
+  Future<({int current, int total, bool completed})> lessonProgress({
+    required String lessonId,
+    required String lessonTitle,
+    required String lessonContent,
+  }) async {
+    final sections = _sectionsForLessonContent(lessonId, lessonTitle, lessonContent);
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lessonStateKey(lessonId));
+    if (raw == null) return (current: 0, total: sections.length, completed: false);
+    final state = _ConversationState.fromJson(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+    final current = state.completed
+        ? sections.length
+        : (state.sectionIndex + 1).clamp(0, sections.length);
+    return (current: current, total: sections.length, completed: state.completed);
+  }
+
   Future<List<AiChatMessage>> getLessonConversation({
     required String lessonId,
     required String lessonTitle,
