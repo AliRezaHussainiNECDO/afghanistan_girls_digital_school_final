@@ -4,6 +4,8 @@ import '../../../../core/student/selected_grade_provider.dart';
 import '../../../admin/ai_teacher_management/presentation/providers/ai_teacher_management_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../curriculum_library/data/datasources/curriculum_library_local_datasource.dart';
+import '../../../curriculum_library/presentation/providers/curriculum_library_providers.dart'
+    show curriculumLibraryDataSourceProvider;
 import '../../data/datasources/ai_semantic_search_datasource.dart';
 import '../../data/datasources/ai_teacher_engine_datasource.dart';
 import '../../data/datasources/ai_voice_remote_datasource.dart';
@@ -17,7 +19,16 @@ import '../../domain/repositories/ai_teacher_repository.dart';
 import '../../domain/usecases/ai_teacher_usecases.dart';
 import 'ai_engine_settings_provider.dart';
 
-final curriculumLibraryForAiProvider = Provider((ref) => CurriculumLibraryLocalDataSource());
+/// کتابخانهٔ نصاب که معلم هوشمند از آن تدریس می‌کند — **باید** همان سوییچ
+/// Live/Local بقیهٔ برنامه (`curriculumLibraryDataSourceProvider`) را دنبال
+/// کند. رفع اشکال: قبلاً همیشه به `CurriculumLibraryLocalDataSource` (کش
+/// محلیِ مخصوص هر دستگاه، فقط SharedPreferences) قفل بود — یعنی کتاب‌هایی
+/// که مدیر روی سرور آپلود/ساختاربندی می‌کرد هرگز روی دستگاه شاگرد دیده
+/// نمی‌شدند و «پرسش از معلم» همیشه می‌گفت «هیچ کتابی آپلود نشده»، حتی وقتی
+/// کتاب واقعاً روی سرور و منتشرشده بود.
+final curriculumLibraryForAiProvider = Provider<CurriculumLibraryDataSource>(
+  (ref) => ref.watch(curriculumLibraryDataSourceProvider),
+);
 
 /// سرویس صدای معلم AI — همیشه ساخته می‌شود تا دکمه‌های صدا («شنیدن درس»،
 /// «صحبت با معلم») در همهٔ حالت‌ها (Mock/Live) نمایش داده شوند؛ خودِ سرویس
@@ -131,5 +142,59 @@ final aiConversationProvider =
   (ref, subjectId) {
     final grade = ref.watch(activeGradeProvider);
     return AiConversationNotifier(ref, subjectId, grade);
+  },
+);
+
+/// شناسهٔ درسی که «پرسش از معلم» باید روی آن متمرکز بماند — برای شناسایی
+/// خودِ درس (نه فقط مضمون) در Family Providerهای زیر.
+typedef AiLessonFocus = ({String lessonId, String lessonTitle, String lessonContent, String subjectId});
+
+/// گفتگوی معلم هوشمند **متمرکز روی یک درس مشخص** — طبق درخواست کاربر: وقتی
+/// شاگرد از داخل یک درس «پرسش از معلم» را باز می‌کند، باید دقیقاً همان درس
+/// تدریس/سؤال/ارزیابی شود، نه کل مضمون. تاریخچهٔ هر درس جدا نگه‌داری
+/// می‌شود (کلیدبندی بر اساس `lessonId`) تا با رفتن سراغ درس دیگر، گفتگوی
+/// درس قبلی گیج‌کننده نماند و همیشه یک تجربهٔ تازه و مرتبط با همان درس باشد.
+class AiLessonConversationNotifier extends StateNotifier<List<AiChatMessage>> {
+  final Ref ref;
+  final AiLessonFocus focus;
+  final int grade;
+  bool sending = false;
+
+  AiLessonConversationNotifier(this.ref, this.focus, this.grade) : super([]) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    final messages = await ref.read(aiTeacherDataSourceProvider).getLessonConversation(
+          lessonId: focus.lessonId,
+          lessonTitle: focus.lessonTitle,
+          lessonContent: focus.lessonContent,
+          subjectId: focus.subjectId,
+          grade: grade,
+        );
+    state = messages;
+  }
+
+  Future<void> send(String text) async {
+    if (text.trim().isEmpty) return;
+    sending = true;
+    await ref.read(aiTeacherDataSourceProvider).sendLessonMessage(
+          lessonId: focus.lessonId,
+          lessonTitle: focus.lessonTitle,
+          lessonContent: focus.lessonContent,
+          subjectId: focus.subjectId,
+          grade: grade,
+          text: text,
+        );
+    sending = false;
+    await _load();
+  }
+}
+
+final aiLessonConversationProvider = StateNotifierProvider.family<AiLessonConversationNotifier,
+    List<AiChatMessage>, AiLessonFocus>(
+  (ref, focus) {
+    final grade = ref.watch(activeGradeProvider);
+    return AiLessonConversationNotifier(ref, focus, grade);
   },
 );

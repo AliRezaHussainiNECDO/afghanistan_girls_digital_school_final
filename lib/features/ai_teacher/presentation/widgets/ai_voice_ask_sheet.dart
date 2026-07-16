@@ -9,18 +9,27 @@ import '../../../../shared_models/subject.dart';
 import '../../domain/entities/chat_message.dart';
 import '../providers/ai_teacher_providers.dart';
 
-/// شیت گفتگوی صوتی با معلم AI — قابل استفاده در «نصاب تعلیمی» برای همهٔ
-/// مضامین (بخش ۲۱.۴ سند: صدا کاملاً ماژولار و Fail-safe است).
+/// شیت گفتگوی صوتی با معلم AI — همیشه از داخل صفحهٔ یک درس مشخص باز می‌شود
+/// و طبق درخواست کاربر روی **دقیقاً همان درس** متمرکز می‌ماند: معلم هوشمند
+/// از روی متن همان درس تدریس می‌کند، دربارهٔ آن سؤال می‌پرسد و پاسخ شاگرد
+/// را ارزیابی می‌کند — نه کل کتاب/مضمون. این رفتار برای هر مضمون و هر
+/// صنفی یکسان است چون محتوا مستقیماً از همان درسِ روی صفحه می‌آید (بخش ۲۱.۴).
 ///
-///  • میکروفون → ضبط → STT (Whisper روی Worker) → ارسال به معلم AI همان مضمون
+///  • میکروفون → ضبط → STT (Whisper روی Worker) → ارسال به معلم AI همین درس
 ///  • «شنیدن» → TTS پاسخ معلم با صدای خانم دری (Azure؛ صدا با AZURE_TTS_VOICE
 ///    در wrangler.toml قابل تنظیم است)
-///  • تاریخچهٔ گفتگو با صفحهٔ کامل «معلم هوشمند» مشترک است
-///    (همان aiConversationProvider per-subject).
+///  • تاریخچهٔ گفتگو به‌ازای همین درس ذخیره می‌شود (`aiLessonConversationProvider`)
+///    تا با رفتن سراغ درس دیگر، گفتگوی قبلی گیج‌کننده نماند.
 ///
 /// اگر Backend واقعی فعال نباشد (`USE_LIVE_BACKEND=false`)، دکمه‌های صوتی
 /// پنهان می‌شوند ولی پرسش متنی همچنان کار می‌کند.
-Future<void> showAiVoiceAskSheet(BuildContext context, String subjectId) {
+Future<void> showAiVoiceAskSheet(
+  BuildContext context, {
+  required String subjectId,
+  required String lessonId,
+  required String lessonTitle,
+  required String lessonContent,
+}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -31,14 +40,28 @@ Future<void> showAiVoiceAskSheet(BuildContext context, String subjectId) {
     ),
     builder: (_) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: AiVoiceAskSheet(subjectId: subjectId),
+      child: AiVoiceAskSheet(
+        subjectId: subjectId,
+        lessonId: lessonId,
+        lessonTitle: lessonTitle,
+        lessonContent: lessonContent,
+      ),
     ),
   );
 }
 
 class AiVoiceAskSheet extends ConsumerStatefulWidget {
   final String subjectId;
-  const AiVoiceAskSheet({super.key, required this.subjectId});
+  final String lessonId;
+  final String lessonTitle;
+  final String lessonContent;
+  const AiVoiceAskSheet({
+    super.key,
+    required this.subjectId,
+    required this.lessonId,
+    required this.lessonTitle,
+    required this.lessonContent,
+  });
 
   @override
   ConsumerState<AiVoiceAskSheet> createState() => _AiVoiceAskSheetState();
@@ -57,6 +80,13 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
 
   Subject get _subject =>
       mockSubjects.firstWhere((s) => s.id == widget.subjectId, orElse: () => mockSubjects.first);
+
+  AiLessonFocus get _focus => (
+        lessonId: widget.lessonId,
+        lessonTitle: widget.lessonTitle,
+        lessonContent: widget.lessonContent,
+        subjectId: widget.subjectId,
+      );
 
   @override
   void initState() {
@@ -84,7 +114,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     final t = text.trim();
     if (t.isEmpty || _sending) return;
     setState(() => _sending = true);
-    await ref.read(aiConversationProvider(widget.subjectId).notifier).send(t);
+    await ref.read(aiLessonConversationProvider(_focus).notifier).send(t);
     if (!mounted) return;
     setState(() => _sending = false);
     // پایین‌رفتن خودکار برای دیدن پاسخ تازه.
@@ -148,7 +178,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final messages = ref.watch(aiConversationProvider(widget.subjectId));
+    final messages = ref.watch(aiLessonConversationProvider(_focus));
     final voiceEnabled = ref.watch(aiVoiceServiceProvider) != null;
     final scheme = Theme.of(context).colorScheme;
 
@@ -183,12 +213,16 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('پرسش از معلم — ${_subject.nameFa}',
+                      Text('پرسش از معلم — ${widget.lessonTitle}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w800)),
                       Text(
                         voiceEnabled
-                            ? 'میکروفون را بزنید و سوال خود را بپرسید'
-                            : 'سوال خود را تایپ کنید',
+                            ? '${_subject.nameFa} · میکروفون را بزنید و دربارهٔ همین درس بپرسید'
+                            : '${_subject.nameFa} · سوال خود را دربارهٔ همین درس تایپ کنید',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                       ),
                     ],

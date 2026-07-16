@@ -85,13 +85,32 @@ class ChapterDetector {
   /// تضمین می‌کند هیچ‌وقت یک درس بیش‌ازحد بلند/زشت نمایش داده نشود.
   static const int _maxChunkChars = 1200;
 
-  static List<DetectedChapter> detect(PdfDocument document) {
-    List<TextLine> lines;
-    try {
-      lines = PdfTextExtractor(document).extractTextLines();
-    } catch (_) {
-      return const [];
-    }
+  /// خطوط سند به ترتیب واقعیِ خواندن (صفحه‌به‌صفحه، از بالا به پایین) —
+  /// منبع مشترک هم برای تشخیص فصل و هم برای متن کامل ذخیره‌شدهٔ کتاب.
+  ///
+  /// چرا لازم است: برخی PDFها (به‌خصوص کتاب‌های رسمی دری/پشتو با چیدمان
+  /// پیچیده) وقتی با متد سادهٔ `extractText()` به‌صورت یک‌جا خوانده می‌شوند،
+  /// ترتیب خط‌ها را جابه‌جا برمی‌گردانند (مثلاً چند خط پیاپی یک پاراگراف
+  /// برعکس/قاطی می‌شوند) — نتیجه‌اش متنی درهم‌ریخته در «مشاهدهٔ درس» شاگرد
+  /// است. `extractTextLines()` موقعیت هندسی هر خط را هم می‌دهد؛ با
+  /// مرتب‌سازی صریح بر اساس صفحه سپس فاصلهٔ عمودی از بالای صفحه، ترتیب خط‌ها
+  /// همیشه با ترتیب واقعی چاپ‌شده یکی می‌ماند — چه برای تشخیص فصل استفاده
+  /// شود چه برای متن کامل ذخیره‌شده (یکسان‌سازی منبع استخراج، رفع اشکال
+  /// «متن نامنظم»).
+  static List<TextLine> extractOrderedLines(PdfDocument document) {
+    final lines = PdfTextExtractor(document).extractTextLines();
+    final sorted = List<TextLine>.from(lines)
+      ..sort((a, b) {
+        final byPage = a.pageIndex.compareTo(b.pageIndex);
+        if (byPage != 0) return byPage;
+        return a.bounds.top.compareTo(b.bounds.top);
+      });
+    return sorted;
+  }
+
+  /// نسخهٔ [detect] که روی خطوط از پیش استخراج‌شده کار می‌کند — تا وقتی متن
+  /// کامل و فصل‌ها هر دو لازم‌اند، سند فقط یک‌بار استخراج شود.
+  static List<DetectedChapter> detectFromLines(List<TextLine> lines) {
     if (lines.isEmpty) return const [];
 
     final fontSizes = lines.map((l) => l.fontSize).where((s) => s > 0).toList()..sort();
@@ -149,6 +168,18 @@ class ChapterDetector {
       ));
     }
     return chapters;
+  }
+
+  /// نسخهٔ کامل (استخراج + تشخیص) برای فراخوان‌هایی که فقط فصل‌ها را
+  /// می‌خواهند و به متن کامل مرتب‌شده نیازی ندارند.
+  static List<DetectedChapter> detect(PdfDocument document) {
+    List<TextLine> lines;
+    try {
+      lines = extractOrderedLines(document);
+    } catch (_) {
+      return const [];
+    }
+    return detectFromLines(lines);
   }
 
   /// متن یک فصل را به «درس»‌های واقعی (اگر عنوان درس در متن باشد) یا در غیر

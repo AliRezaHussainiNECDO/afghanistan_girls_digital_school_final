@@ -17,6 +17,13 @@ class CurriculumBook extends Equatable {
   /// متن کامل استخراج‌شده از پی‌دی‌اف — پایهٔ RAG محلی معلم هوشمند.
   final String extractedText;
 
+  /// چند فصل از این کتاب در نصاب داشبورد شاگردان منتشر شده (`chapters` روی
+  /// سرور، پیوندشده با `source_book_id`). اگر کتاب آپلود شده ولی این عدد
+  /// صفر است، یعنی نصاب شاگردان برای این کتاب هنوز خالی است — دقیقاً همان
+  /// حالتی که «مدیریت معلم هوشمند» باید به مدیر نشان بدهد (طبق درخواست
+  /// کاربر: هماهنگی کامل بین آپلود مدیر و نصاب شاگرد).
+  final int chapterCount;
+
   const CurriculumBook({
     required this.id,
     required this.subjectId,
@@ -25,11 +32,16 @@ class CurriculumBook extends Equatable {
     required this.pageCount,
     required this.gradeId,
     required this.extractedText,
+    this.chapterCount = 0,
   });
 
   int get charCount => extractedText.length;
 
-  CurriculumBook copyWith({String? title}) => CurriculumBook(
+  /// آیا این کتاب هنوز به فصل/درسِ قابل‌نمایش در نصاب شاگردان تبدیل نشده —
+  /// نشانهٔ دقیق همان اشکالِ «کتاب آپلود شد ولی درسی نمایش داده نمی‌شود».
+  bool get needsStructuring => chapterCount == 0;
+
+  CurriculumBook copyWith({String? title, int? chapterCount}) => CurriculumBook(
         id: id,
         subjectId: subjectId,
         title: title ?? this.title,
@@ -37,6 +49,7 @@ class CurriculumBook extends Equatable {
         pageCount: pageCount,
         gradeId: gradeId,
         extractedText: extractedText,
+        chapterCount: chapterCount ?? this.chapterCount,
       );
 
   Map<String, dynamic> toJson() => {
@@ -47,6 +60,7 @@ class CurriculumBook extends Equatable {
         'pageCount': pageCount,
         'gradeId': gradeId,
         'extractedText': extractedText,
+        'chapterCount': chapterCount,
       };
 
   factory CurriculumBook.fromJson(Map<String, dynamic> json) => CurriculumBook(
@@ -57,10 +71,11 @@ class CurriculumBook extends Equatable {
         pageCount: json['pageCount'] as int? ?? 0,
         gradeId: json['gradeId'] as int? ?? 0,
         extractedText: json['extractedText'] as String? ?? '',
+        chapterCount: json['chapterCount'] as int? ?? 0,
       );
 
   @override
-  List<Object?> get props => [id, subjectId, title, uploadedAt, pageCount, gradeId];
+  List<Object?> get props => [id, subjectId, title, uploadedAt, pageCount, gradeId, chapterCount];
 }
 
 /// یک بخش/قطعهٔ منسجم از متن کتاب — واحد پایهٔ «درس دادن» و جست‌وجوی معلم

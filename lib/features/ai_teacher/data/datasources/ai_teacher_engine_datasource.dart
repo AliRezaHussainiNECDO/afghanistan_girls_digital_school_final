@@ -89,7 +89,7 @@ class _ConversationState {
 /// قاطی‌شدن گفتگو/پیشرفت صنف قبلی با صنف جدید (کلیدهای ذخیره‌سازی به‌ازای
 /// هر صنف جدا هستند).
 class AiTeacherEngineDataSource {
-  final CurriculumLibraryLocalDataSource _library;
+  final CurriculumLibraryDataSource _library;
   final AiEngine Function() _engineProvider;
 
   /// شخصیت تنظیم‌شدهٔ مدیر برای یک مضمون (از «مدیریت معلم هوشمند»)؛ `null`
@@ -106,7 +106,7 @@ class AiTeacherEngineDataSource {
   final Future<void> Function(String subjectId, int grade, bool wasCorrect)? _logAttempt;
 
   AiTeacherEngineDataSource({
-    required CurriculumLibraryLocalDataSource library,
+    required CurriculumLibraryDataSource library,
     required AiEngine Function() engineProvider,
     Future<String?> Function(String subjectId)? personaLookup,
     Future<List<BookSection>> Function(String subjectId, int grade, String query)? semanticSearch,
@@ -341,6 +341,183 @@ class AiTeacherEngineDataSource {
     );
     updatedHistory.add(aiMessage);
     await _writeConversation(subjectId, grade, updatedHistory);
+    return aiMessage;
+  }
+
+  // ═════════════ حالت «تمرکز روی یک درس مشخص» ═════════════════════════════
+  // طبق درخواست کاربر: وقتی «پرسش از معلم» از داخل صفحهٔ یک درس باز می‌شود
+  // (نه از فهرست کلی مضمون)، معلم هوشمند باید دقیقاً همان درس را تدریس کند،
+  // از شاگرد دربارهٔ آن سؤال بپرسد و پاسخش را ارزیابی کند — نه کل کتاب یا
+  // مضمون. چون محتوای درس مستقیماً از همان صفحه‌ای می‌آید که شاگرد در حال
+  // دیدنش است (نه از کتابخانهٔ نصاب/کش محلی)، این مسیر هرگز به مشکل «کتابی
+  // آپلود نشده» برنمی‌خورد و برای هر مضمون و هر صنفی دقیقاً یکسان کار
+  // می‌کند. گفتگو و پیشرفت هر درس جدا از گفتگوی کلی مضمون ذخیره می‌شود تا
+  // با رفتن سراغ درس دیگر، تاریخچهٔ درس قبلی گیج‌کننده نماند.
+
+  String _lessonConvKey(String lessonId) => 'ai_lesson_conv_v1_$lessonId';
+  String _lessonStateKey(String lessonId) => 'ai_lesson_state_v1_$lessonId';
+
+  /// محتوای درس را به چند «بخش» ~۶ جمله‌ای (همان واحد تدریس بقیهٔ موتور)
+  /// تقسیم می‌کند تا دستورهای «بخش بعدی»/«مثال دیگر»/«سؤال بده» داخل همین
+  /// درس هم به‌طور طبیعی کار کنند؛ اگر متن خیلی کوتاه بود، کل درس یک بخش می‌شود.
+  List<BookSection> _sectionsForLessonContent(String lessonId, String lessonTitle, String content) {
+    final sentences = BookSectionUtils.splitSentences(content);
+    if (sentences.isEmpty) {
+      return [
+        BookSection(bookId: lessonId, bookTitle: lessonTitle, index: 0, heading: lessonTitle, content: content),
+      ];
+    }
+    final sections = <BookSection>[];
+    for (var i = 0; i < sentences.length; i += BookSectionUtils.sentencesPerSection) {
+      final chunk = sentences.skip(i).take(BookSectionUtils.sentencesPerSection).toList();
+      sections.add(BookSection(
+        bookId: lessonId,
+        bookTitle: lessonTitle,
+        index: sections.length,
+        heading: lessonTitle,
+        content: chunk.join(' '),
+      ));
+    }
+    return sections;
+  }
+
+  Future<List<AiChatMessage>> getLessonConversation({
+    required String lessonId,
+    required String lessonTitle,
+    required String lessonContent,
+    required String subjectId,
+    required int grade,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lessonConvKey(lessonId));
+    if (raw != null) {
+      final list = jsonDecode(raw) as List;
+      final existing =
+          list.map((e) => _messageFromJson(Map<String, dynamic>.from(e as Map))).toList();
+      if (existing.isNotEmpty) return existing;
+    }
+    final welcome = AiChatMessage(
+      id: 'welcome-lesson-$lessonId',
+      sender: ChatSender.ai,
+      body: 'سلام! 🌸 من معلم هوشمند «$lessonTitle» هستم و می‌خواهم دقیقاً همین درس را با تو مرور کنم. آماده‌ای شروع کنیم؟',
+      timestamp: DateTime.now(),
+    );
+    await prefs.setString(
+        _lessonConvKey(lessonId), jsonEncode([welcome].map(_messageToJson).toList()));
+    await sendLessonMessage(
+      lessonId: lessonId,
+      lessonTitle: lessonTitle,
+      lessonContent: lessonContent,
+      subjectId: subjectId,
+      grade: grade,
+      text: AiCommands.start,
+    );
+    final rawAfter = prefs.getString(_lessonConvKey(lessonId));
+    if (rawAfter == null) return [welcome];
+    final list = jsonDecode(rawAfter) as List;
+    return list.map((e) => _messageFromJson(Map<String, dynamic>.from(e as Map))).toList();
+  }
+
+  Future<AiChatMessage> sendLessonMessage({
+    required String lessonId,
+    required String lessonTitle,
+    required String lessonContent,
+    required String subjectId,
+    required int grade,
+    required String text,
+  }) async {
+    final sections = _sectionsForLessonContent(lessonId, lessonTitle, lessonContent);
+    final prefs = await SharedPreferences.getInstance();
+
+    final rawState = prefs.getString(_lessonStateKey(lessonId));
+    final state = rawState == null
+        ? _ConversationState()
+        : _ConversationState.fromJson(Map<String, dynamic>.from(jsonDecode(rawState) as Map));
+
+    final rawConv = prefs.getString(_lessonConvKey(lessonId));
+    final history = rawConv == null
+        ? <AiChatMessage>[]
+        : (jsonDecode(rawConv) as List)
+            .map((e) => _messageFromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
+
+    final personaDescription = await _personaFor(subjectId);
+
+    AiIntent intent;
+    switch (text) {
+      case AiCommands.start:
+        intent = AiIntent.startLesson;
+        break;
+      case AiCommands.next:
+        intent = AiIntent.nextSection;
+        state.sectionIndex += 1;
+        break;
+      case AiCommands.example:
+        intent = AiIntent.giveExample;
+        break;
+      case AiCommands.question:
+        intent = AiIntent.askQuestion;
+        break;
+      default:
+        intent = state.awaitingAnswer ? AiIntent.answerAttempt : AiIntent.freeQuestion;
+    }
+
+    final currentSection =
+        state.sectionIndex < sections.length ? sections[state.sectionIndex] : sections.last;
+
+    final isSystemCommand = text == AiCommands.start ||
+        text == AiCommands.next ||
+        text == AiCommands.example ||
+        text == AiCommands.question;
+    final updatedHistory = List<AiChatMessage>.from(history);
+    if (!isSystemCommand) {
+      updatedHistory.add(AiChatMessage(
+        id: 'm${DateTime.now().millisecondsSinceEpoch}',
+        sender: ChatSender.student,
+        body: text,
+        timestamp: DateTime.now(),
+      ));
+    }
+
+    final engine = _engineProvider();
+    final response = await engine.respond(AiEngineRequest(
+      intent: intent,
+      subjectId: subjectId,
+      subjectNameFa: _subjectNameFa(subjectId),
+      personaDescription: personaDescription,
+      currentSection: currentSection,
+      allSections: sections,
+      pendingHintSentence: state.hintSentence,
+      history: updatedHistory,
+      studentMessage: _naturalInstructionFor(intent, text),
+      difficultyHint: state.difficultyHint,
+    ));
+
+    if (intent == AiIntent.answerAttempt) {
+      final wasCorrect = response.wasCorrectAttempt;
+      if (wasCorrect != null) {
+        state.registerAttempt(wasCorrect);
+        if (_logAttempt != null) {
+          unawaited(_logAttempt(subjectId, grade, wasCorrect).catchError((_) {}));
+        }
+      }
+    }
+
+    state.awaitingAnswer = response.posedNewQuestion;
+    state.hintSentence =
+        response.newHintSentence ?? (response.posedNewQuestion ? state.hintSentence : null);
+    await prefs.setString(_lessonStateKey(lessonId), jsonEncode(state.toJson()));
+
+    final aiMessage = AiChatMessage(
+      id: 'm${DateTime.now().millisecondsSinceEpoch + 1}',
+      sender: ChatSender.ai,
+      body: response.body,
+      timestamp: DateTime.now(),
+      sourceReference: response.sourceReference,
+    );
+    updatedHistory.add(aiMessage);
+    await prefs.setString(
+        _lessonConvKey(lessonId), jsonEncode(updatedHistory.map(_messageToJson).toList()));
     return aiMessage;
   }
 }

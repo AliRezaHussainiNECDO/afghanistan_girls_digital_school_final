@@ -99,6 +99,11 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
   bool _extracting = false;
   String? _extractError;
 
+  /// در حال بازسازی دستی نصاب برای کتابی که قبلاً آپلود شده (دکمهٔ «بازسازی
+  /// نصاب» روی ردیف‌های بدون فصل) — مستقل از `_extracting` چون نیازی به
+  /// انتخاب دوبارهٔ فایل PDF نیست.
+  bool _rebuilding = false;
+
   /// پیام موفقیت شناسایی فصل — بعد از آپلود موفق نشان داده می‌شود، مثل
   /// «۸ فصل شناسایی و منتشر شد» یا نمایش این‌که فصل‌بندی خودکار ممکن نشد.
   String? _chapterInfo;
@@ -191,15 +196,28 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
     _startProgressClock();
     try {
       final document = PdfDocument(inputBytes: bytes);
-      final text = PdfTextExtractor(document).extractText();
       final pageCount = document.pages.count;
 
-      // ── شناسایی هوشمند عناوین فصل — پیش از dispose سند (به خطوط/فونت نیاز دارد) ──
+      // ── متن کامل + شناسایی فصل، هر دو از همان خطوط مرتب‌شدهٔ هندسی ──
+      // پیش‌تر متن کامل با `extractText()` ساده گرفته می‌شد که برای برخی
+      // PDFهای دری/پشتو ترتیب خط‌ها را جابه‌جا برمی‌گرداند (رفع اشکال «متن
+      // نامنظم» در مشاهدهٔ درس). حالا هر دو از `ChapterDetector.extractOrderedLines`
+      // (مرتب‌شده بر اساس صفحه/موقعیت عمودی) ساخته می‌شوند تا هرگز با هم
+      // ناهماهنگ نباشند.
+      String text = '';
       List<DetectedChapter> detectedChapters = const [];
       try {
-        detectedChapters = ChapterDetector.detect(document);
+        final lines = ChapterDetector.extractOrderedLines(document);
+        text = lines.map((l) => l.text.trim()).where((t) => t.isNotEmpty).join('\n');
+        detectedChapters = ChapterDetector.detectFromLines(lines);
       } catch (_) {
         detectedChapters = const []; // Fail-safe: شکست تشخیص فصل نباید آپلود را متوقف کند
+      }
+      if (text.trim().isEmpty) {
+        // آخرین راه‌حل — اگر استخراج مرتب‌شده هم چیزی نداد.
+        try {
+          text = PdfTextExtractor(document).extractText();
+        } catch (_) {}
       }
       document.dispose();
 
@@ -221,35 +239,49 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
           ));
       ref.invalidate(booksForSubjectProvider(widget.subjectId));
 
-      // ── انتشار فصل‌ها و درس‌های شناسایی‌شده (فقط روی Backend واقعی و با اطمینان کافی) ──
+      // ── انتشار فصل‌ها و درس‌های شناسایی‌شده — تضمین می‌کند نصاب شاگردان هرگز
+      // به‌خاطر شکست یک هیوریستیک خالی نماند:
+      //   ۱) اگر کلاینت با اطمینان کافی (≥۲ فصل) تشخیص داده، همان مسیر سریع
+      //      قبلی طی می‌شود.
+      //   ۲) در غیر آن صورت (یا اگر همان مسیر شکست خورد)، ساختاربندی خودکار
+      //      سمت سرور از روی متن کامل ذخیره‌شدهٔ کتاب صدا زده می‌شود — این
+      //      مسیر همیشه چیزی تولید می‌کند، پس هرگز بی‌صدا رها نمی‌شویم.
       await addResult.fold((_) async {}, (book) async {
-        if (!kUseLiveBackend || detectedChapters.length < 2) return;
-        final lessonCount = detectedChapters.fold<int>(0, (sum, c) => sum + c.lessons.length);
-        try {
-          await ref.read(apiClientProvider).post(
-            '/admin/curriculum/subjects/${widget.subjectId}/publish-chapters',
-            data: {
-              'bookId': book.id,
-              'gradeId': widget.grade,
-              'chapters': detectedChapters
-                  .map((c) => {
-                        'title': c.title,
-                        'lessons': c.lessons
-                            .map((l) => {'title': l.title, 'content': l.content})
-                            .toList(),
-                      })
-                  .toList(),
-            },
-          );
+        if (!kUseLiveBackend) {
           if (mounted) {
-            setState(() => _chapterInfo =
-                '${detectedChapters.length} فصل و $lessonCount درس شناسایی و منتشر شد ✓');
+            setState(() => _chapterInfo = 'حالت آزمایشی محلی — فصل‌بندی فقط روی سرور واقعی انجام می‌شود.');
           }
-        } catch (e) {
-          if (mounted) {
-            setState(() => _chapterInfo = 'آپلود موفق بود؛ فصل‌بندی خودکار ناموفق شد.');
+          return;
+        }
+        if (detectedChapters.length >= 2) {
+          final lessonCount = detectedChapters.fold<int>(0, (sum, c) => sum + c.lessons.length);
+          try {
+            await ref.read(apiClientProvider).post(
+              '/admin/curriculum/subjects/${widget.subjectId}/publish-chapters',
+              data: {
+                'bookId': book.id,
+                'gradeId': widget.grade,
+                'chapters': detectedChapters
+                    .map((c) => {
+                          'title': c.title,
+                          'lessons': c.lessons
+                              .map((l) => {'title': l.title, 'content': l.content})
+                              .toList(),
+                        })
+                    .toList(),
+              },
+            );
+            if (mounted) {
+              setState(() => _chapterInfo =
+                  '${detectedChapters.length} فصل و $lessonCount درس شناسایی و منتشر شد ✓');
+            }
+            ref.invalidate(booksForSubjectProvider(widget.subjectId));
+            return;
+          } catch (_) {
+            // مسیر مبتنی بر تشخیص کلاینت شکست خورد → به مسیر ایمن سرور می‌رویم.
           }
         }
+        await _autoStructureOnServer(book.id, isFallback: true);
       });
 
       if (mounted) {
@@ -277,6 +309,51 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
   Future<void> _delete(String bookId) async {
     await ref.read(deleteBookUseCaseProvider).call(bookId);
     ref.invalidate(booksForSubjectProvider(widget.subjectId));
+  }
+
+  /// ساختاربندی خودکار سمت سرور — مستقیماً از متن ذخیره‌شدهٔ کتاب (بدون نیاز
+  /// به فایل PDF یا تشخیص کلاینت) فصل/درس می‌سازد. هم بلافاصله بعد از آپلود
+  /// (وقتی تشخیص کلاینت ناکافی بود) و هم از دکمهٔ «بازسازی نصاب» روی
+  /// کتاب‌های قبلاً آپلودشدهٔ بدون فصل صدا زده می‌شود؛ همیشه یک پیام واضح
+  /// نتیجه (موفق یا ناموفق) نشان می‌دهد — هرگز بی‌صدا رها نمی‌شویم.
+  Future<void> _autoStructureOnServer(String bookId, {bool isFallback = false}) async {
+    try {
+      final data = await ref
+          .read(apiClientProvider)
+          .post('/admin/curriculum-library/books/$bookId/auto-structure');
+      final map = Map<String, dynamic>.from(data as Map? ?? {});
+      final chaptersCreated = (map['chaptersCreated'] as num?)?.toInt() ?? 0;
+      final lessonsCreated = (map['lessonsCreated'] as num?)?.toInt() ?? 0;
+      if (mounted) {
+        setState(() => _chapterInfo = chaptersCreated > 0
+            ? '$chaptersCreated فصل و $lessonsCreated درس به‌صورت خودکار ساختاربندی شد ✓'
+            : 'ساختاربندی خودکار چیزی برای این کتاب تولید نکرد.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _chapterInfo = isFallback
+            ? 'آپلود موفق بود؛ ساختاربندی خودکار نصاب ناموفق شد — از دکمهٔ «بازسازی نصاب» دوباره تلاش کنید.'
+            : 'بازسازی نصاب ناموفق بود. لطفاً دوباره تلاش کنید.');
+      }
+    } finally {
+      ref.invalidate(booksForSubjectProvider(widget.subjectId));
+    }
+  }
+
+  /// دکمهٔ «بازسازی نصاب» روی کتاب‌های قبلاً آپلودشده که هنوز فصل‌بندی
+  /// نشده‌اند (مثلاً همان «چند کتاب نمونه»ای که پیش از این رفع اشکال آپلود
+  /// شده بودند) — بدون نیاز به آپلود دوبارهٔ فایل PDF.
+  Future<void> _rebuildFromExisting(String bookId) async {
+    if (!kUseLiveBackend) {
+      setState(() => _chapterInfo = 'حالت آزمایشی محلی — بازسازی فقط روی سرور واقعی ممکن است.');
+      return;
+    }
+    setState(() {
+      _rebuilding = true;
+      _chapterInfo = null;
+    });
+    await _autoStructureOnServer(bookId, isFallback: false);
+    if (mounted) setState(() => _rebuilding = false);
   }
 
   @override
@@ -321,6 +398,12 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                         style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ),
               if (book != null) ...[
+                _ChapterSyncChip(
+                  book: book,
+                  rebuilding: _rebuilding,
+                  onRebuild: () => _rebuildFromExisting(book.id),
+                ),
+                const SizedBox(width: 6),
                 Text('${book.pageCount} صفحه',
                     style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                 IconButton(
@@ -462,6 +545,64 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                 ],
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// نشانگر کوچک هماهنگی نصاب — دقیقاً نقطه‌ای که مدیر بدون آن نمی‌دانست چرا
+/// نصاب شاگردان خالی مانده: کتاب می‌تواند «آپلود شده» باشد (در کتابخانهٔ
+/// نصاب/مدیریت معلم هوشمند دیده شود) بدون آن‌که هنوز به فصل/درس واقعی روی
+/// نصاب شاگرد تبدیل شده باشد. سبز = هماهنگ؛ نارنجی = هنوز فصل‌بندی نشده،
+/// با دکمهٔ «بازسازی نصاب» برای رفع فوری بدون آپلود دوبارهٔ فایل.
+class _ChapterSyncChip extends StatelessWidget {
+  final CurriculumBook book;
+  final bool rebuilding;
+  final VoidCallback onRebuild;
+
+  const _ChapterSyncChip({
+    required this.book,
+    required this.rebuilding,
+    required this.onRebuild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final synced = !book.needsStructuring;
+    final color = synced ? AppColors.green600 : AppColors.orange600;
+    final bg = synced ? AppColors.green50 : AppColors.orange50;
+    final label = synced ? '${book.chapterCount} فصل' : 'فصل‌بندی نشده';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(synced ? Icons.check_circle_rounded : Icons.warning_amber_rounded, size: 12, color: color),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+          if (!synced) ...[
+            const SizedBox(width: 2),
+            GestureDetector(
+              onTap: rebuilding ? null : onRebuild,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 2),
+                child: rebuilding
+                    ? SizedBox(
+                        width: 11,
+                        height: 11,
+                        child: CircularProgressIndicator(strokeWidth: 1.6, color: color),
+                      )
+                    : Icon(Icons.refresh_rounded, size: 13, color: color),
+              ),
+            ),
+          ],
         ],
       ),
     );

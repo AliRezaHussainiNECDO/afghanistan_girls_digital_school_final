@@ -17,7 +17,8 @@
  *   PATCH  /students/:id/status             body {status, reason}
  *   POST   /students/:id/password-reset-link ارسال کد بازیابی به ایمیل شاگرد
  *   ── نصاب هوشمند (بخش شناسایی فصل از کتاب) ──
- *   POST   /curriculum/subjects/:subjectId/publish-chapters   انتشار فصل‌های شناسایی‌شده از یک کتاب
+ *   POST   /curriculum/subjects/:subjectId/publish-chapters   انتشار فصل‌های شناسایی‌شده از یک کتاب (کلاینت)
+ *   POST   /curriculum-library/books/:id/auto-structure       ساختاربندی خودکار سمت سرور (وقتی تشخیص کلاینت ناموفق بود)
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -29,6 +30,7 @@ import {
 } from '../lib/email';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 import { embedText } from '../lib/embeddings';
+import { structureBookText, aiRenameFallbackChapters } from '../lib/curriculumStructuring';
 
 type Bindings = {
   DB: D1Database;
@@ -38,6 +40,7 @@ type Bindings = {
   EMAIL_FROM?: string;
   AI_PROVIDER_KEY?: string;
   AI_PROVIDER_URL?: string;
+  AI_MODEL?: string;
   CF_ACCOUNT_ID?: string;
   CF_STREAM_CUSTOMER?: string;
 };
@@ -966,43 +969,42 @@ admin.get('/parents/:id', async (c) => {
 // تکمیل همهٔ درس‌های یک فصل = تکمیل فصل → پایهٔ قفل‌گشایی ترتیبی فصل بعدی
 // (lib/progress.ts). درخواست دوباره برای همان bookId، فصل‌های قبلیِ همان
 // کتاب را جایگزین می‌کند.
-admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
-  const subjectId = c.req.param('subjectId');
-  const b = await c.req
-    .json<{
-      bookId?: string;
-      gradeId?: number;
-      chapters?: { title?: string; content?: string; lessons?: { title?: string; content?: string }[] }[];
-    }>()
-    .catch(() => null);
-  const bookId = String(b?.bookId ?? '').trim();
-  const gradeId = Number(b?.gradeId ?? 0);
-  const chapters = Array.isArray(b?.chapters) ? b!.chapters! : [];
-  if (!bookId || !gradeId || !chapters.length) {
-    return c.json(fail('BAD_REQUEST', 'شناسهٔ کتاب، صنف و فهرست فصل‌ها لازم است', 'Missing fields'), 400);
-  }
-  const subject = await c.env.DB.prepare('SELECT id FROM subjects WHERE id = ?').bind(subjectId).first();
-  if (!subject) return c.json(fail('NOT_FOUND', 'مضمون یافت نشد', 'Subject not found'), 404);
-
+/**
+ * هستهٔ مشترک انتشار فصل‌ها — چه از تشخیص کلاینت بیاید (`publish-chapters`)
+ * چه از ساختاربندی خودکار سرور (`auto-structure`). درخواست دوباره برای
+ * همان `bookId`، فصل‌های قبلیِ همان کتاب (و درس‌ها/بازدیدها/تکمیل‌های
+ * وابسته) را جایگزین می‌کند تا آپلود مجدد یک کتاب همیشه نصاب را تازه نگه دارد.
+ */
+async function applyChapterPublish(
+  db: D1Database,
+  subjectId: string,
+  gradeId: number,
+  bookId: string,
+  chapters: { title?: string; content?: string; lessons?: { title?: string; content?: string }[] }[],
+): Promise<{
+  chaptersCreated: number;
+  lessonsCreated: number;
+  createdChapterIds: string[];
+  lessonsForEmbedding: { id: string; chapterId: string; content: string }[];
+}> {
   // جایگزینی کامل: فصل‌های قبلیِ همین کتاب (و درس‌ها/بازدیدها/تکمیل‌های وابسته) حذف می‌شوند.
-  const { results: oldChapters } = await c.env.DB.prepare('SELECT id FROM chapters WHERE source_book_id = ?')
+  const { results: oldChapters } = await db.prepare('SELECT id FROM chapters WHERE source_book_id = ?')
     .bind(bookId)
     .all<{ id: string }>();
   if (oldChapters.length) {
     const chIds = oldChapters.map((r) => r.id);
     const chPh = chIds.map(() => '?').join(',');
-    const { results: oldLessons } = await c.env.DB.prepare(`SELECT id FROM lessons WHERE chapter_id IN (${chPh})`)
+    const { results: oldLessons } = await db.prepare(`SELECT id FROM lessons WHERE chapter_id IN (${chPh})`)
       .bind(...chIds)
       .all<{ id: string }>();
     if (oldLessons.length) {
       const lsIds = oldLessons.map((r) => r.id);
       const lsPh = lsIds.map(() => '?').join(',');
-      await c.env.DB.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
-      await c.env.DB.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
+      await db.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+      await db.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
     }
-    await c.env.DB.prepare(`DELETE FROM student_chapter_completions WHERE chapter_id IN (${chPh})`).bind(...chIds).run();
-    await c.env.DB.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
+    await db.prepare(`DELETE FROM student_chapter_completions WHERE chapter_id IN (${chPh})`).bind(...chIds).run();
+    await db.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
   }
 
   // درج فصل‌های تازه — هر فصل = یک chapter + چند lesson (هر درس متن کوتاه و
@@ -1026,7 +1028,7 @@ admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
 
     createdChapterIds.push(chapterId);
     stmts.push(
-      c.env.DB.prepare(
+      db.prepare(
         'INSERT INTO chapters (id, grade_number, subject_id, title_fa, order_index, status, source_book_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
       ).bind(chapterId, gradeId, subjectId, title, i + 1, 'published', bookId),
     );
@@ -1040,24 +1042,138 @@ admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
       const minutes = Math.min(30, Math.max(3, Math.round(content.length / 500)));
       lessonsCreated += 1;
       stmts.push(
-        c.env.DB.prepare(
+        db.prepare(
           'INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
         ).bind(lessonId, chapterId, lessonTitle, minutes, j + 1, content, 'published'),
       );
       lessonsForEmbedding.push({ id: lessonId, chapterId, content: `${lessonTitle}\n${content}` });
     });
   });
-  await c.env.DB.batch(stmts);
+  await db.batch(stmts);
+
+  return { chaptersCreated: createdChapterIds.length, lessonsCreated, createdChapterIds, lessonsForEmbedding };
+}
+
+admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const subjectId = c.req.param('subjectId');
+  const b = await c.req
+    .json<{
+      bookId?: string;
+      gradeId?: number;
+      chapters?: { title?: string; content?: string; lessons?: { title?: string; content?: string }[] }[];
+    }>()
+    .catch(() => null);
+  const bookId = String(b?.bookId ?? '').trim();
+  const gradeId = Number(b?.gradeId ?? 0);
+  const chapters = Array.isArray(b?.chapters) ? b!.chapters! : [];
+  if (!bookId || !gradeId || !chapters.length) {
+    return c.json(fail('BAD_REQUEST', 'شناسهٔ کتاب، صنف و فهرست فصل‌ها لازم است', 'Missing fields'), 400);
+  }
+  const subject = await c.env.DB.prepare('SELECT id FROM subjects WHERE id = ?').bind(subjectId).first();
+  if (!subject) return c.json(fail('NOT_FOUND', 'مضمون یافت نشد', 'Subject not found'), 404);
+
+  const result = await applyChapterPublish(c.env.DB, subjectId, gradeId, bookId, chapters);
 
   // ── نمایه‌سازی معنایی در پس‌زمینه — پاسخ به مدیر معطل این کار نمی‌ماند.
   // اگر کلید هوش مصنوعی تنظیم نشده یا هر خطایی رخ دهد، بی‌صدا رد می‌شود؛
   // بازیابی کلمه‌ای قدیمی هم‌چنان به‌عنوان جایگزین کار می‌کند (Fail-safe).
   c.executionCtx.waitUntil(
-    embedLessonsBatch(c.env.DB, c.env.AI_PROVIDER_KEY, c.env.AI_PROVIDER_URL, subjectId, gradeId, lessonsForEmbedding),
+    embedLessonsBatch(
+      c.env.DB,
+      c.env.AI_PROVIDER_KEY,
+      c.env.AI_PROVIDER_URL,
+      subjectId,
+      gradeId,
+      result.lessonsForEmbedding,
+    ),
   );
 
   return c.json(
-    { success: true, chaptersCreated: createdChapterIds.length, lessonsCreated, chapterIds: createdChapterIds },
+    {
+      success: true,
+      chaptersCreated: result.chaptersCreated,
+      lessonsCreated: result.lessonsCreated,
+      chapterIds: result.createdChapterIds,
+    },
+    201,
+  );
+});
+
+// ═══════════════ نصاب هوشمند: ساختاربندی خودکار سمت سرور ═══════════════════
+// وقتی شناسایی هوشمند سمت کلاینت (فونت/الگوی PDF، کتاب‌های اسکن‌شده یا با
+// قالب‌بندی غیرمعمول) نتوانست با اطمینان کافی فصل‌بندی کند (کمتر از ۲ فصل)،
+// یا برای کتاب‌هایی که پیش‌تر بدون فصل‌بندی آپلود شده‌اند («چند کتاب نمونه»
+// که در کتابخانهٔ نصاب دیده می‌شوند اما نصاب شاگردان برایشان خالی است)، این
+// Endpoint مستقیماً از متن ذخیره‌شدهٔ کتاب (`extracted_text`) روی سرور
+// فصل/درس می‌سازد — تضمین می‌کند نصاب شاگردان هرگز به‌خاطر شکست یک
+// هیوریستیک سمت کلاینت خالی نماند. قابل فراخوانی هم بلافاصله بعد از آپلود
+// (اگر کلاینت فصلی تشخیص نداد) و هم بعداً به‌صورت دستی («بازسازی نصاب») از
+// همان ردیف کتاب در «مدیریت معلم هوشمند».
+admin.post('/curriculum-library/books/:id/auto-structure', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const bookId = c.req.param('id');
+  const book = await c.env.DB.prepare('SELECT * FROM curriculum_library_books WHERE id = ?')
+    .bind(bookId)
+    .first<{ id: string; subject_id: string; title: string; grade_id: number; extracted_text: string }>();
+  if (!book) return c.json(fail('NOT_FOUND', 'کتاب یافت نشد', 'Book not found'), 404);
+  if (!book.grade_id) {
+    return c.json(fail('BAD_REQUEST', 'این کتاب صنف مشخصی ندارد', 'Book has no grade'), 400);
+  }
+  const text = book.extracted_text ?? '';
+  if (!text.trim()) {
+    return c.json(fail('BAD_REQUEST', 'متن این کتاب خالی است', 'Book text is empty'), 400);
+  }
+
+  const { chapters, usedFallback } = structureBookText(text);
+  if (!chapters.length) {
+    return c.json(fail('STRUCTURE_FAILED', 'ساختاربندی خودکار ممکن نشد', 'Auto-structuring failed'), 422);
+  }
+
+  const result = await applyChapterPublish(c.env.DB, book.subject_id, book.grade_id, bookId, chapters);
+
+  c.executionCtx.waitUntil(
+    embedLessonsBatch(
+      c.env.DB,
+      c.env.AI_PROVIDER_KEY,
+      c.env.AI_PROVIDER_URL,
+      book.subject_id,
+      book.grade_id,
+      result.lessonsForEmbedding,
+    ),
+  );
+
+  // ── پرداخت عنوان با هوش مصنوعی، فقط اگر همه‌چیز طول‌محور بود (بدون عنوان
+  // واقعی فصل در متن کتاب) — کاملاً پس‌زمینه‌ای، پاسخ به مدیر معطل آن نمی‌ماند.
+  if (usedFallback) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        const titles = await aiRenameFallbackChapters(
+          c.env.AI_PROVIDER_KEY,
+          c.env.AI_PROVIDER_URL,
+          c.env.AI_MODEL,
+          book.title,
+          chapters,
+        );
+        if (!titles || !titles.length) return;
+        const stmts = result.createdChapterIds
+          .map((id, i) =>
+            titles[i] ? c.env.DB.prepare('UPDATE chapters SET title_fa = ? WHERE id = ?').bind(titles[i], id) : null,
+          )
+          .filter((s): s is NonNullable<typeof s> => s !== null);
+        if (stmts.length) await c.env.DB.batch(stmts);
+      })(),
+    );
+  }
+
+  return c.json(
+    {
+      success: true,
+      chaptersCreated: result.chaptersCreated,
+      lessonsCreated: result.lessonsCreated,
+      chapterIds: result.createdChapterIds,
+      autoTitled: usedFallback,
+    },
     201,
   );
 });

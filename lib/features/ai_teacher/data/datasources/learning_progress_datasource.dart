@@ -16,7 +16,7 @@ import '../../domain/entities/learning_progress.dart';
 /// با شمارهٔ صنف مشخص می‌شوند تا با ارتقای صنف، گفتگو/پیشرفت صنف قبلی با
 /// صنف جدید قاطی نشود و هر صنف پیشرفت مستقل خودش را داشته باشد.
 class LearningProgressDataSource {
-  final CurriculumLibraryLocalDataSource library;
+  final CurriculumLibraryDataSource library;
   LearningProgressDataSource(this.library);
 
   static String masteredKey(String subjectId, int grade) =>

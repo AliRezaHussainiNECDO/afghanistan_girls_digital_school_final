@@ -188,12 +188,22 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(title: Text(context.tr('curriculum.viewLesson'))),
-      // ── پرسش صوتی/متنی از معلم AI همین مضمون — در همهٔ مضامین نصاب ──
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'ask_ai_lesson',
-        icon: Icon(voiceEnabled ? Icons.mic_rounded : Icons.smart_toy_rounded),
-        label: const Text('پرسش از معلم'),
-        onPressed: () => showAiVoiceAskSheet(context, widget.subjectId),
+      // ── پرسش صوتی/متنی از معلم AI — متمرکز روی دقیقاً همین درس، در همهٔ
+      // مضامین و صنف‌های نصاب (طبق درخواست کاربر) ──
+      floatingActionButton: lessonAsync.maybeWhen(
+        data: (lesson) => FloatingActionButton.extended(
+          heroTag: 'ask_ai_lesson',
+          icon: Icon(voiceEnabled ? Icons.mic_rounded : Icons.smart_toy_rounded),
+          label: const Text('پرسش از معلم'),
+          onPressed: () => showAiVoiceAskSheet(
+            context,
+            subjectId: widget.subjectId,
+            lessonId: lesson.id,
+            lessonTitle: lesson.titleFa,
+            lessonContent: lesson.contentBody,
+          ),
+        ),
+        orElse: () => null,
       ),
       body: lessonAsync.when(
         loading: () => const LoadingView(),

@@ -339,13 +339,23 @@ function libraryBookJson(r: any) {
     pageCount: r.page_count,
     gradeId: r.grade_id,
     extractedText: r.extracted_text ?? '',
+    // چند فصل از این کتاب در نصاب داشبورد شاگردان منتشر شده — تا «مدیریت
+    // معلم هوشمند» بتواند وضعیت هماهنگی را نشان دهد (کتاب آپلود شده اما
+    // هنوز فصل‌بندی نشده = ۰؛ باید با «بازسازی نصاب» رفع شود).
+    chapterCount: r.chapter_count ?? 0,
   };
 }
+
+// کوئری پایه — تعداد فصل‌های منتشرشدهٔ همین کتاب را هم برمی‌گرداند
+// (source_book_id در chapters، از migration 0017).
+const LIBRARY_BOOK_SELECT = `
+  SELECT b.*, (SELECT COUNT(*) FROM chapters ch WHERE ch.source_book_id = b.id) AS chapter_count
+  FROM curriculum_library_books b`;
 
 c11m.get('/curriculum-library/books', async (c) => {
   if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM curriculum_library_books ORDER BY uploaded_at DESC',
+    `${LIBRARY_BOOK_SELECT} ORDER BY b.uploaded_at DESC`,
   ).all<any>();
   return c.json({ books: results.map(libraryBookJson) });
 });
@@ -353,7 +363,7 @@ c11m.get('/curriculum-library/books', async (c) => {
 c11m.get('/curriculum-library/subjects/:subjectId/books', async (c) => {
   if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM curriculum_library_books WHERE subject_id = ? ORDER BY uploaded_at DESC',
+    `${LIBRARY_BOOK_SELECT} WHERE b.subject_id = ? ORDER BY b.uploaded_at DESC`,
   )
     .bind(c.req.param('subjectId'))
     .all<any>();
