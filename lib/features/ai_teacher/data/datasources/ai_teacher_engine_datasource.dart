@@ -36,11 +36,17 @@ class _ConversationState {
   /// استفاده می‌شود.
   int correctStreak;
 
+  /// آیا شاگرد این درس را کاملاً تا آخرین بخش با موفقیت تمام کرده — طبق
+  /// درخواست کاربر: امتیاز فقط یک‌بار، در همین لحظه، داده می‌شود (نه به‌ازای
+  /// هر پاسخ درستِ میان‌راه). بعد از تکمیل، دیگر سؤال تازه پرسیده نمی‌شود.
+  bool completed;
+
   _ConversationState({
     this.sectionIndex = 0,
     this.awaitingAnswer = false,
     this.hintSentence,
     this.correctStreak = 0,
+    this.completed = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -48,12 +54,14 @@ class _ConversationState {
         'awaitingAnswer': awaitingAnswer,
         'hintSentence': hintSentence,
         'correctStreak': correctStreak,
+        'completed': completed,
       };
   factory _ConversationState.fromJson(Map<String, dynamic> j) => _ConversationState(
         sectionIndex: j['sectionIndex'] as int? ?? 0,
         awaitingAnswer: j['awaitingAnswer'] as bool? ?? false,
         hintSentence: j['hintSentence'] as String?,
         correctStreak: j['correctStreak'] as int? ?? 0,
+        completed: j['completed'] as bool? ?? false,
       );
 
   /// راهنمای متنی تطبیق سختی برای پرامپت سیستم — `null` یعنی روند عادی.
@@ -377,9 +385,15 @@ class AiTeacherEngineDataSource {
   String _lessonConvKey(String lessonId) => 'ai_lesson_conv_v1_$lessonId';
   String _lessonStateKey(String lessonId) => 'ai_lesson_state_v1_$lessonId';
 
-  /// محتوای درس را به چند «بخش» ~۶ جمله‌ای (همان واحد تدریس بقیهٔ موتور)
-  /// تقسیم می‌کند تا دستورهای «بخش بعدی»/«مثال دیگر»/«سؤال بده» داخل همین
-  /// درس هم به‌طور طبیعی کار کنند؛ اگر متن خیلی کوتاه بود، کل درس یک بخش می‌شود.
+  /// محتوای درس را به چند «بخش» کوتاه تقسیم می‌کند — طبق درخواست صریح
+  /// کاربر که معلم هوشمند هرگز نباید کل درس را یک‌جا بریزد («طولانی و
+  /// خسته‌کننده است»)؛ باید قدم‌به‌قدم، یک تکه کوچک در هر نوبت، همراه با
+  /// سؤال/مثال پیش برود. عمداً کوچک‌تر از واحد تدریس عمومی کتاب
+  /// ([BookSectionUtils.sentencesPerSection] = ۶) گرفته شده — چون خودِ
+  /// «درس»ها (بعد از ساختاربندی فصل/درس) از قبل کوتاه‌اند؛ با تکه‌های ۶
+  /// جمله‌ای معمولاً کل درس در یک بخش می‌افتاد و هیچ گام‌به‌گامی حس نمی‌شد.
+  static const int _lessonSentencesPerSection = 3;
+
   List<BookSection> _sectionsForLessonContent(String lessonId, String lessonTitle, String content) {
     final sentences = BookSectionUtils.splitSentences(content);
     if (sentences.isEmpty) {
@@ -388,8 +402,8 @@ class AiTeacherEngineDataSource {
       ];
     }
     final sections = <BookSection>[];
-    for (var i = 0; i < sentences.length; i += BookSectionUtils.sentencesPerSection) {
-      final chunk = sentences.skip(i).take(BookSectionUtils.sentencesPerSection).toList();
+    for (var i = 0; i < sentences.length; i += _lessonSentencesPerSection) {
+      final chunk = sentences.skip(i).take(_lessonSentencesPerSection).toList();
       sections.add(BookSection(
         bookId: lessonId,
         bookTitle: lessonTitle,
@@ -500,7 +514,7 @@ class AiTeacherEngineDataSource {
     }
 
     final engine = _engineProvider();
-    final response = await engine.respond(AiEngineRequest(
+    var response = await engine.respond(AiEngineRequest(
       intent: intent,
       subjectId: subjectId,
       subjectNameFa: _subjectNameFa(subjectId),
@@ -513,14 +527,52 @@ class AiTeacherEngineDataSource {
       difficultyHint: state.difficultyHint,
     ));
 
-    if (intent == AiIntent.answerAttempt) {
-      final wasCorrect = response.wasCorrectAttempt;
-      if (wasCorrect != null) {
-        state.registerAttempt(wasCorrect);
-        if (_logAttempt != null) {
-          unawaited(_logAttempt(subjectId, grade, wasCorrect).catchError((_) {}));
+    // ── پیشرفت خودکار + امتیاز فقط در پایان درس (طبق درخواست صریح کاربر) ──
+    // قبلاً پیشرفت به بخش بعدی فقط با دکمهٔ دستی «بخش بعدی» ممکن بود — که در
+    // این شیت (پرسش از داخل یک درس مشخص) اصلاً وجود نداشت، پس گفتگو بعد از
+    // اولین سؤال عملاً متوقف می‌ماند. حالا: وقتی موتور تشخیص می‌دهد شاگرد
+    // درست پاسخ داده، اگر بخش بعدی وجود دارد بلافاصله (بدون فشردن دکمه‌ای)
+    // همان‌جا تدریس می‌شود؛ و امتیاز فقط وقتی داده می‌شود که شاگرد آخرین
+    // بخش را هم با موفقیت جواب داده باشد — یعنی واقعاً کل درس را تمام کرده.
+    if (intent == AiIntent.answerAttempt && response.wasCorrectAttempt != null) {
+      final wasCorrect = response.wasCorrectAttempt!;
+      state.registerAttempt(wasCorrect);
+      if (wasCorrect) {
+        final isLastSection = state.sectionIndex >= sections.length - 1;
+        if (isLastSection) {
+          state.completed = true;
+          if (_logAttempt != null) {
+            unawaited(_logAttempt(subjectId, grade, true).catchError((_) {}));
+          }
+          response = AiEngineResponse(
+            body: '${response.body}\n\n🎉 آفرین! این درس را کامل تمام کردی و امتیازش برایت ثبت شد.',
+            sourceReference: response.sourceReference,
+            posedNewQuestion: false,
+          );
+        } else {
+          state.sectionIndex += 1;
+          final nextSection = sections[state.sectionIndex];
+          final nextResponse = await engine.respond(AiEngineRequest(
+            intent: AiIntent.nextSection,
+            subjectId: subjectId,
+            subjectNameFa: _subjectNameFa(subjectId),
+            personaDescription: personaDescription,
+            currentSection: nextSection,
+            allSections: sections,
+            pendingHintSentence: null,
+            history: updatedHistory,
+            studentMessage: _naturalInstructionFor(AiIntent.nextSection, AiCommands.next),
+            difficultyHint: state.difficultyHint,
+          ));
+          response = AiEngineResponse(
+            body: '${response.body}\n\n${nextResponse.body}',
+            sourceReference: nextResponse.sourceReference,
+            posedNewQuestion: nextResponse.posedNewQuestion,
+            newHintSentence: nextResponse.newHintSentence,
+          );
         }
       }
+      // پاسخ غلط: نه پیشرفت، نه امتیاز — همان راهنمایی/تلاش دوباره از موتور کافی است.
     }
 
     state.awaitingAnswer = response.posedNewQuestion;

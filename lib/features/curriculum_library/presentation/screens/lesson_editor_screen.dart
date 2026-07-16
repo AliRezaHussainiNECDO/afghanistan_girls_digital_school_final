@@ -402,7 +402,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                                           IconButton(
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
-                                            icon: const Icon(Icons.drive_file_move_outline_rounded),
+                                            icon: const Icon(Icons.swap_horiz_rounded),
                                             tooltip: 'جابجایی به فصل دیگر',
                                             onPressed: _chapters.length < 2 ? null : () => _moveLesson(chapter, lesson),
                                           ),
