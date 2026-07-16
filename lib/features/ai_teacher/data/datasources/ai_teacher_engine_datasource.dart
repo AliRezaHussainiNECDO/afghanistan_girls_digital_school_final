@@ -212,8 +212,28 @@ class AiTeacherEngineDataSource {
     }
   }
 
+  bool _looksLikeStaleNoBookMessage(AiChatMessage m) =>
+      m.sender == ChatSender.ai && m.body.contains('آپلود نشده');
+
   Future<List<AiChatMessage>> getConversation(String subjectId, int grade) async {
-    final existing = await _readConversation(subjectId, grade);
+    var existing = await _readConversation(subjectId, grade);
+
+    // رفع اشکال کش قدیمی: اگر آخرین پیام ذخیره‌شده همان «هنوز کتابی آپلود
+    // نشده» است (از زمانی که واقعاً کتابی نبود یا معلم هوشمند به‌اشتباه به
+    // کتابخانهٔ محلی خالی وصل بود)، و حالا کتاب/فصل واقعاً در دسترس است،
+    // این گفتگوی قدیمی را دور می‌ریزیم و از نو شروع می‌کنیم. وگرنه شاگرد
+    // برای همیشه با یک پیام اشتباه گیر می‌ماند، حتی مدت‌ها بعد از اینکه
+    // مدیر کتاب را آپلود/ساختاربندی کرده.
+    if (existing.isNotEmpty && _looksLikeStaleNoBookMessage(existing.last)) {
+      final sections = await _sectionsFor(subjectId, grade);
+      if (sections.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_convKey(subjectId, grade));
+        await prefs.remove(_stateKey(subjectId, grade));
+        existing = [];
+      }
+    }
+
     if (existing.isNotEmpty) return existing;
     // اولین بار در این صنف: پیام خوش‌آمدگویی + شروع خودکار درس.
     final welcome = AiChatMessage(

@@ -19,6 +19,8 @@
  *   ── نصاب هوشمند (بخش شناسایی فصل از کتاب) ──
  *   POST   /curriculum/subjects/:subjectId/publish-chapters   انتشار فصل‌های شناسایی‌شده از یک کتاب (کلاینت)
  *   POST   /curriculum-library/books/:id/auto-structure       ساختاربندی خودکار سمت سرور (وقتی تشخیص کلاینت ناموفق بود)
+ *   POST   /curriculum-library/books/:id/fix-rtl-text         رفع اصلاحیِ متن معکوس‌شدهٔ یک کتاب (RTL) + بازسازی فصل/درس
+ *   POST   /curriculum-library/books/fix-rtl-text-all         همان رفع اصلاحی برای همهٔ کتاب‌های کتابخانه (همهٔ صنف‌ها/مضامین)
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -30,7 +32,7 @@ import {
 } from '../lib/email';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 import { embedText } from '../lib/embeddings';
-import { structureBookText, aiRenameFallbackChapters } from '../lib/curriculumStructuring';
+import { structureBookText, aiRenameFallbackChapters, smartFixRtlText } from '../lib/curriculumStructuring';
 
 type Bindings = {
   DB: D1Database;
@@ -1176,6 +1178,126 @@ admin.post('/curriculum-library/books/:id/auto-structure', async (c) => {
     },
     201,
   );
+});
+
+// ═══════════════ نصاب هوشمند: رفع اصلاحیِ متنِ قبلاً معکوس‌شده (RTL) ═══════════
+// کتاب‌هایی که پیش از رفع اشکال «متن نامنظم/بی‌مفهوم» در کلاینت آپلود شده‌اند
+// (مثلاً «جغرافیه») ستون `extracted_text`شان برای همیشه معکوس باقی می‌ماند —
+// چون متن فقط یک‌بار، در لحظهٔ آپلود، استخراج می‌شود. برای اینکه مدیر مجبور
+// نباشد هر کتاب را در هر صنف/مضمون دستی حذف و دوباره آپلود کند، این دو
+// Endpoint مستقیماً متنِ ذخیره‌شده را (با همان منطق خود-تصحیح‌گرِ
+// `smartFixRtlText` — کاملاً ایمن، هرگز متنِ از قبل درست را خراب نمی‌کند)
+// اصلاح و فصل/درس‌های وابسته را بازسازی می‌کنند.
+async function fixBookRtlText(
+  c: any,
+  book: { id: string; subject_id: string; title: string; grade_id: number; extracted_text: string },
+): Promise<{
+  bookId: string;
+  changed: boolean;
+  chaptersCreated: number;
+  lessonsCreated: number;
+  usedFallback: boolean;
+} | { bookId: string; error: string }> {
+  const raw = book.extracted_text ?? '';
+  if (!raw.trim()) return { bookId: book.id, changed: false, chaptersCreated: 0, lessonsCreated: 0, usedFallback: false };
+
+  const { text: fixedText, changed } = smartFixRtlText(raw);
+  if (!changed) {
+    return { bookId: book.id, changed: false, chaptersCreated: 0, lessonsCreated: 0, usedFallback: false };
+  }
+
+  await c.env.DB.prepare('UPDATE curriculum_library_books SET extracted_text = ? WHERE id = ?')
+    .bind(fixedText, book.id)
+    .run();
+
+  if (!book.grade_id) {
+    // کتاب هنوز به صنفی وصل نیست — متن اصلاح شد اما فصل/درسی برای بازسازی نیست.
+    return { bookId: book.id, changed: true, chaptersCreated: 0, lessonsCreated: 0, usedFallback: false };
+  }
+
+  const { chapters, usedFallback } = structureBookText(fixedText);
+  if (!chapters.length) {
+    return { bookId: book.id, changed: true, chaptersCreated: 0, lessonsCreated: 0, usedFallback: false };
+  }
+
+  const result = await applyChapterPublish(c.env.DB, book.subject_id, book.grade_id, book.id, chapters);
+
+  c.executionCtx.waitUntil(
+    embedLessonsBatch(
+      c.env.DB,
+      c.env.AI_PROVIDER_KEY,
+      c.env.AI_PROVIDER_URL,
+      book.subject_id,
+      book.grade_id,
+      result.lessonsForEmbedding,
+    ),
+  );
+
+  if (usedFallback) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        const titles = await aiRenameFallbackChapters(
+          c.env.AI_PROVIDER_KEY,
+          c.env.AI_PROVIDER_URL,
+          c.env.AI_MODEL,
+          book.title,
+          chapters,
+        );
+        if (!titles || !titles.length) return;
+        const stmts = result.createdChapterIds
+          .map((id, i) =>
+            titles[i] ? c.env.DB.prepare('UPDATE chapters SET title_fa = ? WHERE id = ?').bind(titles[i], id) : null,
+          )
+          .filter((s): s is NonNullable<typeof s> => s !== null);
+        if (stmts.length) await c.env.DB.batch(stmts);
+      })(),
+    );
+  }
+
+  return {
+    bookId: book.id,
+    changed: true,
+    chaptersCreated: result.chaptersCreated,
+    lessonsCreated: result.lessonsCreated,
+    usedFallback,
+  };
+}
+
+/** رفع اصلاحیِ متن یک کتاب مشخص — دکمهٔ «رفع متن نامنظم» روی هر ردیف کتاب در «مدیریت معلم هوشمند». */
+admin.post('/curriculum-library/books/:id/fix-rtl-text', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const bookId = c.req.param('id');
+  const book = await c.env.DB.prepare('SELECT * FROM curriculum_library_books WHERE id = ?')
+    .bind(bookId)
+    .first<{ id: string; subject_id: string; title: string; grade_id: number; extracted_text: string }>();
+  if (!book) return c.json(fail('NOT_FOUND', 'کتاب یافت نشد', 'Book not found'), 404);
+
+  const result = await fixBookRtlText(c, book);
+  return c.json({ success: true, result }, 200);
+});
+
+/**
+ * رفع اصلاحیِ متن **همهٔ** کتاب‌های کتابخانه در یک تماس — طبق درخواست صریح
+ * کاربر که این رفع باید «در تمام صنف‌ها و تمام مضامین» بیاید بدون نیاز به
+ * حذف/آپلود دستیِ تک‌تک کتاب‌ها. هر کتاب مستقل و Fail-safe پردازش می‌شود؛
+ * خطای یک کتاب مانع رسیدگی به بقیه نمی‌شود.
+ */
+admin.post('/curriculum-library/books/fix-rtl-text-all', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const { results: books } = await c.env.DB.prepare('SELECT * FROM curriculum_library_books')
+    .all<{ id: string; subject_id: string; title: string; grade_id: number; extracted_text: string }>();
+
+  const results: Array<Awaited<ReturnType<typeof fixBookRtlText>>> = [];
+  for (const book of books) {
+    try {
+      results.push(await fixBookRtlText(c, book));
+    } catch (e: any) {
+      results.push({ bookId: book.id, error: String(e?.message ?? e) });
+    }
+  }
+
+  const changedCount = results.filter((r: any) => r.changed).length;
+  return c.json({ success: true, totalBooks: books.length, changedCount, results }, 200);
 });
 
 /** Embedding چند درس پشت‌سرهم و ذخیرهٔ آن‌ها در `lesson_embeddings` — کاملاً بی‌صدا در برابر خطا. */

@@ -1,5 +1,18 @@
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+/// یک خط استخراج‌شده از PDF، به همراه متنِ **اصلاح‌شده** (نه خام) — تا کل
+/// این فایل به‌جای `TextLine.text` خام (که برای برخی PDFهای دری/پشتو
+/// نویسه‌های هر کلمه را معکوس برمی‌گرداند، مثلاً «ایمیک» به‌جای «کیمیا»)
+/// همیشه از متن خواناشده استفاده کند. `fontSize`/`pageIndex` عیناً از
+/// `TextLine` منبع می‌آیند (برای سرنخ فونت/شمارهٔ صفحه).
+class OrderedLine {
+  final String text;
+  final double fontSize;
+  final int pageIndex;
+
+  const OrderedLine({required this.text, required this.fontSize, required this.pageIndex});
+}
+
 /// یک «درس» شناسایی‌شده درون یک فصل — عنوان کوتاه + متن همان بخش.
 class DetectedLesson {
   final String title;
@@ -97,7 +110,7 @@ class ChapterDetector {
   /// همیشه با ترتیب واقعی چاپ‌شده یکی می‌ماند — چه برای تشخیص فصل استفاده
   /// شود چه برای متن کامل ذخیره‌شده (یکسان‌سازی منبع استخراج، رفع اشکال
   /// «متن نامنظم»).
-  static List<TextLine> extractOrderedLines(PdfDocument document) {
+  static List<OrderedLine> extractOrderedLines(PdfDocument document) {
     final lines = PdfTextExtractor(document).extractTextLines();
     final sorted = List<TextLine>.from(lines)
       ..sort((a, b) {
@@ -105,12 +118,116 @@ class ChapterDetector {
         if (byPage != 0) return byPage;
         return a.bounds.top.compareTo(b.bounds.top);
       });
-    return sorted;
+
+    // یک‌بار روی یک نمونه (نه کل سند، برای سرعت) تصمیم می‌گیریم که آیا این
+    // PDF مشخصاً به مشکل «نویسه‌های معکوس» دچار است یا نه، و همان تصمیم را
+    // یکسان روی همهٔ خط‌ها اعمال می‌کنیم — هر PDF ممکن است رفتار متفاوتی
+    // داشته باشد (بعضی درست، بعضی معکوس)، پس هرگز کورکورانه فرض نمی‌کنیم.
+    final sample = sorted.take(400).map((l) => l.text).join(' ');
+    final needsFix = _looksReversed(sample);
+
+    return sorted
+        .map((l) => OrderedLine(
+              text: needsFix ? fixRtlRunOrder(l.text) : l.text,
+              fontSize: l.fontSize,
+              pageIndex: l.pageIndex,
+            ))
+        .toList();
+  }
+
+  /// چند کلمهٔ خیلی پرکاربرد دری/فارسی — برای سنجش «خواناتر بودن» یک متن
+  /// بدون نیاز به فرهنگ لغت کامل. اگر این کلمات در نسخهٔ اصلاح‌شده به‌وضوح
+  /// بیشتر از نسخهٔ خام دیده شوند، متن واقعاً معکوس بوده است.
+  static const List<String> _commonWords = [
+    'است', 'در', 'از', 'به', 'که', 'این', 'را', 'با', 'برای', 'هم', 'یک', 'می',
+  ];
+
+  /// شمارش دستیِ رخداد هر «کلمهٔ کامل» (نه زیررشته‌ای داخل کلمهٔ دیگر) —
+  /// عمداً بدون lookbehind/`\p{L}` نوشته شده تا به هیچ رفتار خاصِ موتور
+  /// RegExp وابسته نباشد و روی هر نسخهٔ Dart قابل‌اتکا کار کند.
+  static bool _isArabicLetter(int rune) => _isArabicScript(rune);
+
+  static int _commonWordScore(String text) {
+    var score = 0;
+    for (final w in _commonWords) {
+      var searchFrom = 0;
+      while (true) {
+        final idx = text.indexOf(w, searchFrom);
+        if (idx == -1) break;
+        final before = idx > 0 ? text.codeUnitAt(idx - 1) : null;
+        final afterIdx = idx + w.length;
+        final after = afterIdx < text.length ? text.codeUnitAt(afterIdx) : null;
+        final boundaryBefore = before == null || !_isArabicLetter(before);
+        final boundaryAfter = after == null || !_isArabicLetter(after);
+        if (boundaryBefore && boundaryAfter) score++;
+        searchFrom = idx + w.length;
+      }
+    }
+    return score;
+  }
+
+  /// آیا این نمونه‌متن مشخصاً به شکل معکوس ذخیره شده — با مقایسهٔ بسامد
+  /// کلمات پرکاربرد دری در حالت خام در برابر حالتِ [fixRtlRunOrder]. این
+  /// تصمیم خود-تصحیح‌گر است: متنِ از قبل درست هرگز به‌اشتباه خراب نمی‌شود،
+  /// چون در آن حالت نسخهٔ «اصلاح‌شده» امتیاز کمتری می‌گیرد، نه بیشتر.
+  static bool _looksReversed(String sample) {
+    if (sample.trim().isEmpty) return false;
+    final originalScore = _commonWordScore(sample);
+    final fixedScore = _commonWordScore(fixRtlRunOrder(sample));
+    return fixedScore > originalScore;
+  }
+
+  /// محدودهٔ نویسه‌های عربی/دری/پشتو (شامل اعداد اختیاری دری در همان بلوک) —
+  /// برای تشخیص «قطعهٔ راست‌به‌چپ» در [fixRtlRunOrder].
+  static bool _isArabicScript(int rune) =>
+      (rune >= 0x0600 && rune <= 0x06FF) || // Arabic (+ اعداد دری ۰-۹)
+      (rune >= 0x0750 && rune <= 0x077F) || // Arabic Supplement
+      (rune >= 0x08A0 && rune <= 0x08FF) || // Arabic Extended-A
+      (rune >= 0xFB50 && rune <= 0xFDFF) || // Arabic Presentation Forms-A
+      (rune >= 0xFE70 && rune <= 0xFEFF); // Arabic Presentation Forms-B
+
+  /// رفع اشکال «متن نامنظم/بی‌مفهوم»: برخی PDFهای رسمی دری/پشتو (بسته به
+  /// ابزار تولیدشان) هر کلمه را در جریان محتوای PDF به ترتیب بصری
+  /// چپ‌به‌راست ذخیره می‌کنند، نه ترتیب منطقی راست‌به‌چپ — استخراج خام
+  /// Syncfusion همان ترتیب معکوس را برمی‌گرداند (مثلاً «ایمیک» به‌جای
+  /// «کیمیا»، یا «ناغفا» به‌جای «افغان»). اعداد لاتین/انگلیسی (مثل سال
+  /// ۱۳۹۸) از این اشکال مصون‌اند چون در بلوک یونیکد جداگانه‌ای هستند.
+  ///
+  /// این تابع هر قطعهٔ پیوستهٔ نویسهٔ عربی/دری/پشتو (یعنی هر «کلمه») را در
+  /// خودش معکوس می‌کند — بدون دست‌زدن به فاصله‌ها، اعداد لاتین، یا ترتیب
+  /// کلمات در خط — تا متن دوباره خوانا شود. این تابع Idempotent نیست (روی
+  /// متنی که یک‌بار از آن عبور کرده، دوباره صدا زدنش دوباره معکوسش می‌کند)،
+  /// به همین دلیل هرگز به‌صورت کورکورانه روی همهٔ PDFها اعمال نمی‌شود:
+  /// [extractOrderedLines] ابتدا با [_looksReversed] روی یک نمونه از سند
+  /// تصمیم می‌گیرد که آیا اصلاً لازم است، و فقط در آن صورت این تابع را
+  /// یک‌بار برای هر خط صدا می‌زند — تا PDFهایی که از قبل درست استخراج
+  /// می‌شوند هرگز به‌اشتباه خراب نشوند.
+  static String fixRtlRunOrder(String line) {
+    final runes = line.runes.toList();
+    if (runes.isEmpty) return line;
+    final buf = StringBuffer();
+    var i = 0;
+    while (i < runes.length) {
+      if (_isArabicScript(runes[i])) {
+        var j = i + 1;
+        while (j < runes.length && _isArabicScript(runes[j])) {
+          j++;
+        }
+        for (var k = j - 1; k >= i; k--) {
+          buf.writeCharCode(runes[k]);
+        }
+        i = j;
+      } else {
+        buf.writeCharCode(runes[i]);
+        i++;
+      }
+    }
+    return buf.toString();
   }
 
   /// نسخهٔ [detect] که روی خطوط از پیش استخراج‌شده کار می‌کند — تا وقتی متن
   /// کامل و فصل‌ها هر دو لازم‌اند، سند فقط یک‌بار استخراج شود.
-  static List<DetectedChapter> detectFromLines(List<TextLine> lines) {
+  static List<DetectedChapter> detectFromLines(List<OrderedLine> lines) {
     if (lines.isEmpty) return const [];
 
     final fontSizes = lines.map((l) => l.fontSize).where((s) => s > 0).toList()..sort();
@@ -173,7 +290,7 @@ class ChapterDetector {
   /// نسخهٔ کامل (استخراج + تشخیص) برای فراخوان‌هایی که فقط فصل‌ها را
   /// می‌خواهند و به متن کامل مرتب‌شده نیازی ندارند.
   static List<DetectedChapter> detect(PdfDocument document) {
-    List<TextLine> lines;
+    List<OrderedLine> lines;
     try {
       lines = extractOrderedLines(document);
     } catch (_) {
@@ -185,7 +302,7 @@ class ChapterDetector {
   /// متن یک فصل را به «درس»‌های واقعی (اگر عنوان درس در متن باشد) یا در غیر
   /// این صورت به قطعه‌های کوتاه و خواناتقسیم می‌کند — خروجی هرگز یک بلوک
   /// خامِ تک‌پارچه نیست.
-  static List<DetectedLesson> _splitIntoLessons(List<TextLine> bodyLines, double medianFont) {
+  static List<DetectedLesson> _splitIntoLessons(List<OrderedLine> bodyLines, double medianFont) {
     if (bodyLines.isEmpty) return const [];
 
     bool isShort(String t) => t.isNotEmpty && t.length <= _maxTitleLength;
@@ -229,7 +346,7 @@ class ChapterDetector {
     return _chunkByLength(bodyLines);
   }
 
-  static String _cleanJoin(List<TextLine> ls) {
+  static String _cleanJoin(List<OrderedLine> ls) {
     final buf = <String>[];
     for (final l in ls) {
       final t = l.text.trim();
@@ -239,7 +356,7 @@ class ChapterDetector {
     return buf.join('\n');
   }
 
-  static List<DetectedLesson> _chunkByLength(List<TextLine> bodyLines) {
+  static List<DetectedLesson> _chunkByLength(List<OrderedLine> bodyLines) {
     final cleanedLines = <String>[
       for (final l in bodyLines)
         if (l.text.trim().isNotEmpty && !_pageNoiseLine.hasMatch(l.text.trim())) l.text.trim(),

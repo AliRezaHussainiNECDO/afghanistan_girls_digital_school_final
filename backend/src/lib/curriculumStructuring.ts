@@ -29,6 +29,98 @@ export interface StructuredChapter {
   lessons: StructuredLesson[];
 }
 
+// ── رفع اصلاحی متن‌های قبلاً معکوس‌شده (RTL run reversal) ─────────────────
+// همتای دقیق منطق سمت کلاینت در
+// `lib/features/curriculum_library/domain/services/chapter_detector.dart`
+// (`fixRtlRunOrder` / `_looksReversed`) — اما اینجا برای اصلاح **متنِ از قبل
+// در دیتابیس ذخیره‌شده** (کتاب‌هایی که پیش از رفع اشکال کلاینت آپلود شده‌اند
+// و ستون `extracted_text`شان همیشه معکوس باقی می‌ماند، چون فقط زمان آپلود
+// استخراج می‌شود) به کار می‌رود. همان تصمیم خود-تصحیح‌گر: فقط وقتی به‌کار
+// می‌رود که واقعاً معکوس‌شدگی را تشخیص دهد، پس هرگز متن از قبل درست را خراب
+// نمی‌کند.
+
+function isArabicScriptCodePoint(cp: number): boolean {
+  return (
+    (cp >= 0x0600 && cp <= 0x06ff) ||
+    (cp >= 0x0750 && cp <= 0x077f) ||
+    (cp >= 0x08a0 && cp <= 0x08ff) ||
+    (cp >= 0xfb50 && cp <= 0xfdff) ||
+    (cp >= 0xfe70 && cp <= 0xfeff)
+  );
+}
+
+/** هر قطعهٔ پیوستهٔ نویسهٔ عربی/دری/پشتو («کلمه») را در خودش معکوس می‌کند —
+ *  بدون دست‌زدن به فاصله‌ها، اعداد لاتین، یا ترتیب کلمات در خط. */
+export function fixRtlRunOrder(line: string): string {
+  const chars = Array.from(line); // با در نظر گرفتن جفت‌های surrogate
+  if (chars.length === 0) return line;
+  let out = '';
+  let i = 0;
+  while (i < chars.length) {
+    const cp = chars[i].codePointAt(0) ?? 0;
+    if (isArabicScriptCodePoint(cp)) {
+      let j = i + 1;
+      while (j < chars.length && isArabicScriptCodePoint(chars[j].codePointAt(0) ?? 0)) {
+        j++;
+      }
+      for (let k = j - 1; k >= i; k--) out += chars[k];
+      i = j;
+    } else {
+      out += chars[i];
+      i++;
+    }
+  }
+  return out;
+}
+
+const COMMON_DARI_WORDS = ['است', 'در', 'از', 'به', 'که', 'این', 'را', 'با', 'برای', 'هم', 'یک', 'می'];
+
+function commonWordScore(text: string): number {
+  let score = 0;
+  for (const w of COMMON_DARI_WORDS) {
+    let searchFrom = 0;
+    for (;;) {
+      const idx = text.indexOf(w, searchFrom);
+      if (idx === -1) break;
+      const before = idx > 0 ? text.codePointAt(idx - 1) : undefined;
+      const afterIdx = idx + w.length;
+      const after = afterIdx < text.length ? text.codePointAt(afterIdx) : undefined;
+      const boundaryBefore = before === undefined || !isArabicScriptCodePoint(before);
+      const boundaryAfter = after === undefined || !isArabicScriptCodePoint(after);
+      if (boundaryBefore && boundaryAfter) score++;
+      searchFrom = idx + w.length;
+    }
+  }
+  return score;
+}
+
+function looksReversed(sample: string): boolean {
+  if (!sample.trim()) return false;
+  const originalScore = commonWordScore(sample);
+  const fixedScore = commonWordScore(fixRtlRunOrder(sample));
+  return fixedScore > originalScore;
+}
+
+export interface RtlFixResult {
+  text: string;
+  changed: boolean;
+}
+
+/**
+ * اصلاح خود-تصحیح‌گر یک متنِ ذخیره‌شدهٔ کامل کتاب: روی یک نمونه (اولین
+ * ~۴۰۰ خط) تصمیم می‌گیرد که آیا کل متن معکوس‌شده — اگر بله، هر خط را با
+ * [fixRtlRunOrder] اصلاح می‌کند؛ اگر نه، متن دست‌نخورده برمی‌گردد.
+ * `changed: false` یعنی متن از قبل درست بود (و فراخوان نباید کار اضافه‌ای
+ * مثل بازسازی فصل‌ها انجام دهد).
+ */
+export function smartFixRtlText(rawText: string): RtlFixResult {
+  if (!rawText || !rawText.trim()) return { text: rawText, changed: false };
+  const lines = rawText.split(/\r?\n/);
+  const sample = lines.slice(0, 400).join(' ');
+  if (!looksReversed(sample)) return { text: rawText, changed: false };
+  return { text: lines.map(fixRtlRunOrder).join('\n'), changed: true };
+}
+
 const CHAPTER_WORD_RE = /^\s*(فصل|بخش|باب|چپتر|Chapter|Unit)\s*[:\-–—]?\s*[\d۰-۹IVXLCM]*\s*[:\-–—]?\s*/i;
 const LESSON_WORD_RE = /^\s*(درس|مبحث|گفتار|Lesson)\s*[:\-–—]?\s*[\d۰-۹]*\s*[:\-–—]?\s*/i;
 const PAGE_NOISE_RE = /^[\d۰-۹\s\-–—._]{1,4}$/;

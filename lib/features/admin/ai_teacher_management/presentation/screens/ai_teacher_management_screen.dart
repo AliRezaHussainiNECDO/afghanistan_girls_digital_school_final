@@ -10,6 +10,7 @@ import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
 import '../../../../ai_teacher/presentation/widgets/ai_engine_settings_card.dart';
 import '../../../../curriculum_library/presentation/widgets/book_upload_section.dart';
+import '../../../../curriculum_library/presentation/widgets/rtl_fix_all_button.dart';
 import '../../domain/entities/ai_teacher_config.dart';
 import '../../domain/usecases/ai_teacher_management_usecases.dart';
 import '../providers/ai_teacher_management_providers.dart';
@@ -80,6 +81,10 @@ class AiTeacherManagementScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  // ── رفع اصلاحیِ متن‌های معکوس‌شدهٔ کتاب‌های قبلاً آپلودشده،
+                  // در همهٔ صنف‌ها و مضامین با یک کلیک ──
+                  const RtlFixAllButton(),
                 ],
               );
             }
