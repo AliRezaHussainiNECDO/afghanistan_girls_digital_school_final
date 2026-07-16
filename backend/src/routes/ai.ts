@@ -126,8 +126,18 @@ ai.post('/ai-teacher/chat', async (c) => {
 });
 
 // ═══════════════════════ TTS — متن به گفتار (صدای خانم دری) ═══════════════════
-// اولویت با Azure (صدای اصیل دری افغانستان: prs-AF-FatimaNeural)؛ در نبود آن،
-// TTS سازگار با OpenAI (صدای خانم مثل «shimmer/nova») به‌عنوان جایگزین.
+// نکتهٔ مهم (کشف‌شده بعد از گزارش کاربر که «صدای فاطمه کار نمی‌کند»): Azure
+// Speech **هیچ صدای Text-to-Speech برای دری (fa-AF) یا پشتو (ps-AF) ندارد** —
+// این دو زبان هنوز در Backlog مایکروسافت‌اند و ETA عمومی ندارند (تأییدشده از
+// Microsoft Q&A، آوریل ۲۰۲۶). یعنی نام صدای قبلی («prs-AF-FatimaNeural») اصلاً
+// وجود خارجی نداشت و هر درخواست Azure از همان ابتدا با خطا رد می‌شد — دقیقاً
+// همان چیزی که کاربر تجربه کرده بود. نزدیک‌ترین صدای **واقعی و کارکردنیِ**
+// Azure، فارسی ایران (fa-IR) است — از نظر زبانی به دری خیلی نزدیک و قابل‌فهم
+// است (تفاوت اصلی لهجه)، پس به‌عنوان جایگزین تا زمان انتشار صدای رسمی دری
+// استفاده می‌شود. اگر Azure در آینده صدای دری منتشر کرد، فقط کافی است Secret
+// `AZURE_TTS_VOICE` را به نام صدای جدید تغییر دهید — کد نیازی به تغییر ندارد.
+// در نبود Azure، TTS سازگار با OpenAI (صدای خانم مثل «shimmer/nova» — چندزبانه
+// و می‌تواند دری/فارسی را هم بخواند) به‌عنوان جایگزین دوم است.
 // خروجی: بایت‌های audio/mpeg (استریم). در نبود هر دو → 503 (کلاینت Fail-safe).
 
 ai.post('/ai-teacher/tts', async (c) => {
@@ -136,13 +146,18 @@ ai.post('/ai-teacher/tts', async (c) => {
   const text = (body?.text ?? '').trim();
   if (!text) return c.json(fail('BAD_REQUEST', 'متن خالی است', 'Empty text'), 400);
 
-  // ۱) Azure — صدای خانم دری (prs-AF). قابل‌تنظیم با AZURE_TTS_VOICE اگر نام
-  //    صدا متفاوت بود (مثلاً prs-AF-LatifaNeural).
+  // ۱) Azure — نزدیک‌ترین صدای خانمِ واقعاً موجود (فارسی ایران؛ دری هنوز در
+  //    Azure پشتیبانی نمی‌شود — بالا را ببینید). با AZURE_TTS_VOICE قابل تغییر.
   if (c.env.AZURE_TTS_KEY && c.env.AZURE_TTS_REGION) {
-    const voice = c.env.AZURE_TTS_VOICE ?? 'prs-AF-FatimaNeural';
+    // اگر Secret هنوز مقدار قدیمیِ نامعتبر («prs-AF-...») را دارد، خودکار به
+    // صدای واقعی جایگزین می‌رویم — تا رفع این اشکال نیازمند دست‌زدن دستی به
+    // Cloudflare Secrets نباشد.
+    const configuredVoice = c.env.AZURE_TTS_VOICE ?? '';
+    const voice = configuredVoice && !configuredVoice.startsWith('prs-AF') ? configuredVoice : 'fa-IR-DilaraNeural';
+    const lang = voice.slice(0, 5);
     const ssml =
-      `<speak version='1.0' xml:lang='prs-AF'>` +
-      `<voice xml:lang='prs-AF' name='${voice}'>${escapeXml(text)}</voice></speak>`;
+      `<speak version='1.0' xml:lang='${lang}'>` +
+      `<voice xml:lang='${lang}' name='${voice}'>${escapeXml(text)}</voice></speak>`;
     try {
       const res = await fetch(
         `https://${c.env.AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`,

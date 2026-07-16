@@ -21,6 +21,12 @@
  *   POST   /curriculum-library/books/:id/auto-structure       ساختاربندی خودکار سمت سرور (وقتی تشخیص کلاینت ناموفق بود)
  *   POST   /curriculum-library/books/:id/fix-rtl-text         رفع اصلاحیِ متن معکوس‌شدهٔ یک کتاب (RTL) + بازسازی فصل/درس
  *   POST   /curriculum-library/books/fix-rtl-text-all         همان رفع اصلاحی برای همهٔ کتاب‌های کتابخانه (همهٔ صنف‌ها/مضامین)
+ *   POST   /curriculum-library/wipe-all                       پاک‌سازی کامل نصاب (همهٔ کتاب‌ها/فصل‌ها/درس‌ها) — نیازمند تأیید صریح
+ *   PATCH  /curriculum-library/lessons/:id                    ویرایش دستی عنوان/محتوای یک درس
+ *   POST   /curriculum-library/lessons/:id/rebuild             بازسازی یک درس مشخص از متن کتاب مبدأ
+ *   POST   /curriculum-library/lessons/:id/move                جابجایی یک درس به فصل دیگر
+ *   POST   /curriculum-library/chapters/:id/merge-into/:targetId  ادغام یک فصل در فصل دیگر
+ *   POST   /curriculum-library/chapters/:id/split-lesson/:lessonId  تقسیم یک درس به دو درس
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -1298,6 +1304,257 @@ admin.post('/curriculum-library/books/fix-rtl-text-all', async (c) => {
 
   const changedCount = results.filter((r: any) => r.changed).length;
   return c.json({ success: true, totalBooks: books.length, changedCount, results }, 200);
+});
+
+// ═══════════════ نصاب هوشمند: پاک‌سازی کامل (بازسازی از صفر) ═══════════════════
+// طبق درخواست صریح کاربر: «همه‌چیز پاک شود، کتاب‌ها هم دوباره آپلود شوند».
+// این Endpoint هر ردِ پای نصابِ فعلی — کتاب‌های کتابخانه، فصل‌ها، درس‌ها،
+// بازدیدها/تکمیل‌های شاگردان روی آن درس‌ها، و نمایه‌سازی معنایی — را حذف
+// می‌کند تا مدیر بتواند از صفر و با منطق/داده‌های تازه شروع کند. کاملاً
+// غیرقابل‌بازگشت است، به همین دلیل عمداً پشت یک بدنهٔ تأیید صریح
+// (`{confirm:"WIPE_ALL_CURRICULUM"}`) قفل شده — فراتر از تأیید دوگانهٔ سمت
+// کلاینت — تا هرگز با یک درخواست تصادفی/اشتباه اجرا نشود. آمار/لاگ‌های
+// معلم هوشمند (`ai_teacher_chat_logs`/`ai_teacher_answer_logs`) و شخصیت‌های
+// تنظیم‌شدهٔ مدیر دست‌نخورده می‌مانند — این‌ها بخشی از «نصاب» نیستند.
+admin.post('/curriculum-library/wipe-all', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const body = await c.req.json<{ confirm?: string }>().catch(() => null);
+  if (body?.confirm !== 'WIPE_ALL_CURRICULUM') {
+    return c.json(
+      fail('CONFIRMATION_REQUIRED', 'برای پاک‌سازی کامل، تأیید صریح لازم است', 'Explicit confirmation required'),
+      400,
+    );
+  }
+
+  const counts = {
+    books: 0,
+    chapters: 0,
+    lessons: 0,
+    lessonViews: 0,
+    chapterCompletions: 0,
+    embeddings: 0,
+  };
+
+  try {
+    const bookCount = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM curriculum_library_books').first<{ n: number }>();
+    const chapterCount = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM chapters').first<{ n: number }>();
+    const lessonCount = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM lessons').first<{ n: number }>();
+    counts.books = bookCount?.n ?? 0;
+    counts.chapters = chapterCount?.n ?? 0;
+    counts.lessons = lessonCount?.n ?? 0;
+  } catch (_) {
+    // شمارش قبل از حذف صرفاً برای گزارش است — شکست آن مانع پاک‌سازی نمی‌شود.
+  }
+
+  try {
+    const r1 = await c.env.DB.prepare('DELETE FROM lesson_embeddings').run();
+    counts.embeddings = r1.meta?.changes ?? 0;
+  } catch (_) {
+    // جدول ممکن است هنوز مهاجرت نشده باشد.
+  }
+  try {
+    const r2 = await c.env.DB.prepare('DELETE FROM student_lesson_views').run();
+    counts.lessonViews = r2.meta?.changes ?? 0;
+  } catch (_) {}
+  try {
+    const r3 = await c.env.DB.prepare('DELETE FROM student_chapter_completions').run();
+    counts.chapterCompletions = r3.meta?.changes ?? 0;
+  } catch (_) {}
+  await c.env.DB.prepare('DELETE FROM lessons').run();
+  await c.env.DB.prepare('DELETE FROM chapters').run();
+  await c.env.DB.prepare('DELETE FROM curriculum_library_books').run();
+
+  return c.json({ success: true, deleted: counts }, 200);
+});
+
+// ═══════════════ نصاب هوشمند: ویرایشگر درس برای مدیر ═══════════════════════
+// طبق درخواست کاربر: «مدیریت معلم هوشمند» باید بتواند خودِ درس را ادیت کند و
+// مشکلات کوچک (متن نامنظم یک درسِ خاص، ترتیب نادرست، فصل اشتباه) را بدون
+// نیاز به آپلود دوبارهٔ کل کتاب رفع کند. همهٔ این Endpointها مستقیماً روی
+// جدول `lessons`/`chapters` کار می‌کنند — تغییری که مدیر اینجا ذخیره می‌کند
+// بلافاصله در نصاب شاگردان و آمار والدین هم منعکس می‌شود (همان جدول مشترک).
+
+function estimateMinutes(content: string): number {
+  return Math.min(30, Math.max(3, Math.round(content.length / 500)));
+}
+
+/** ویرایش دستی عنوان/محتوای یک درس — ویرایشگر متن کامل «مدیریت معلم هوشمند». */
+admin.patch('/curriculum-library/lessons/:id', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const lessonId = c.req.param('id');
+  const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
+    .bind(lessonId)
+    .first<{ id: string; chapter_id: string; title_fa: string; content_body: string }>();
+  if (!lesson) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+
+  const body = await c.req.json<{ titleFa?: string; contentBody?: string }>().catch(() => null);
+  const titleFa = body?.titleFa !== undefined ? String(body.titleFa).trim().slice(0, 200) : lesson.title_fa;
+  const contentBody = body?.contentBody !== undefined ? String(body.contentBody) : lesson.content_body;
+  if (!titleFa || !contentBody.trim()) {
+    return c.json(fail('BAD_REQUEST', 'عنوان و محتوا نمی‌تواند خالی باشد', 'Title/content required'), 400);
+  }
+
+  await c.env.DB.prepare(
+    'UPDATE lessons SET title_fa = ?, content_body = ?, estimated_minutes = ? WHERE id = ?',
+  )
+    .bind(titleFa, contentBody, estimateMinutes(contentBody), lessonId)
+    .run();
+
+  // چون محتوا دستی تغییر کرده، نمایه‌سازی معنایی قدیمی دیگر دقیق نیست —
+  // در پس‌زمینه دوباره Embed می‌شود (Fail-safe، پاسخ به مدیر معطلش نمی‌ماند).
+  try {
+    const chapter = await c.env.DB.prepare('SELECT subject_id, grade_number FROM chapters WHERE id = ?')
+      .bind(lesson.chapter_id)
+      .first<{ subject_id: string; grade_number: number }>();
+    if (chapter) {
+      c.executionCtx.waitUntil(
+        embedLessonsBatch(c.env.DB, c.env.AI_PROVIDER_KEY, c.env.AI_PROVIDER_URL, chapter.subject_id, chapter.grade_number, [
+          { id: lessonId, chapterId: lesson.chapter_id, content: `${titleFa}\n${contentBody}` },
+        ]),
+      );
+    }
+  } catch (_) {}
+
+  return c.json({ success: true, lessonId, titleFa, contentBody });
+});
+
+/** حذف یک درس مشخص (و بازدیدهای وابسته به آن). */
+admin.delete('/curriculum-library/lessons/:id', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const lessonId = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM student_lesson_views WHERE lesson_id = ?').bind(lessonId).run();
+  try {
+    await c.env.DB.prepare('DELETE FROM lesson_embeddings WHERE lesson_id = ?').bind(lessonId).run();
+  } catch (_) {}
+  await c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(lessonId).run();
+  return c.json({ success: true });
+});
+
+/**
+ * بازسازی/رفع اصلاحیِ **یک درسِ مشخص** — بدون نیاز به بازسازی کل کتاب. همان
+ * منطق خود-تصحیح‌گر `smartFixRtlText` را فقط روی متن همین درس اجرا می‌کند؛
+ * وقتی فقط یک-دو درس از یک کتاب مشکل متنی دارند (نه کل کتاب)، مدیر می‌تواند
+ * دقیقاً همان‌ها را هدف بگیرد.
+ */
+admin.post('/curriculum-library/lessons/:id/rebuild', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const lessonId = c.req.param('id');
+  const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
+    .bind(lessonId)
+    .first<{ id: string; title_fa: string; content_body: string }>();
+  if (!lesson) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+
+  const { text: fixedContent, changed: contentChanged } = smartFixRtlText(lesson.content_body ?? '');
+  const { text: fixedTitle, changed: titleChanged } = smartFixRtlText(lesson.title_fa ?? '');
+  if (!contentChanged && !titleChanged) {
+    return c.json({ success: true, changed: false });
+  }
+  await c.env.DB.prepare('UPDATE lessons SET title_fa = ?, content_body = ?, estimated_minutes = ? WHERE id = ?')
+    .bind(fixedTitle, fixedContent, estimateMinutes(fixedContent), lessonId)
+    .run();
+  return c.json({ success: true, changed: true, titleFa: fixedTitle, contentBody: fixedContent });
+});
+
+/** جابجایی یک درس به فصل دیگر (همان کتاب یا حتی فصل دیگر) — انتهای فصل مقصد قرار می‌گیرد. */
+admin.post('/curriculum-library/lessons/:id/move', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const lessonId = c.req.param('id');
+  const body = await c.req.json<{ targetChapterId?: string }>().catch(() => null);
+  const targetChapterId = String(body?.targetChapterId ?? '').trim();
+  if (!targetChapterId) return c.json(fail('BAD_REQUEST', 'فصل مقصد لازم است', 'targetChapterId required'), 400);
+
+  const lesson = await c.env.DB.prepare('SELECT id FROM lessons WHERE id = ?').bind(lessonId).first();
+  if (!lesson) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+  const targetChapter = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(targetChapterId).first();
+  if (!targetChapter) return c.json(fail('NOT_FOUND', 'فصل مقصد یافت نشد', 'Target chapter not found'), 404);
+
+  const maxOrder = await c.env.DB.prepare('SELECT MAX(order_index) AS m FROM lessons WHERE chapter_id = ?')
+    .bind(targetChapterId)
+    .first<{ m: number | null }>();
+  const nextOrder = (maxOrder?.m ?? 0) + 1;
+
+  await c.env.DB.prepare('UPDATE lessons SET chapter_id = ?, order_index = ? WHERE id = ?')
+    .bind(targetChapterId, nextOrder, lessonId)
+    .run();
+  return c.json({ success: true });
+});
+
+/** ادغام یک فصل در فصل دیگر — همهٔ درس‌های فصل مبدأ به انتهای فصل مقصد منتقل و فصل مبدأ حذف می‌شود. */
+admin.post('/curriculum-library/chapters/:id/merge-into/:targetId', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const sourceId = c.req.param('id');
+  const targetId = c.req.param('targetId');
+  if (sourceId === targetId) {
+    return c.json(fail('BAD_REQUEST', 'فصل مبدأ و مقصد یکی است', 'Source and target are the same'), 400);
+  }
+  const source = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(sourceId).first();
+  const target = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(targetId).first();
+  if (!source || !target) return c.json(fail('NOT_FOUND', 'فصل یافت نشد', 'Chapter not found'), 404);
+
+  const maxOrder = await c.env.DB.prepare('SELECT MAX(order_index) AS m FROM lessons WHERE chapter_id = ?')
+    .bind(targetId)
+    .first<{ m: number | null }>();
+  let nextOrder = (maxOrder?.m ?? 0) + 1;
+
+  const { results: sourceLessons } = await c.env.DB.prepare(
+    'SELECT id FROM lessons WHERE chapter_id = ? ORDER BY order_index ASC',
+  )
+    .bind(sourceId)
+    .all<{ id: string }>();
+  const stmts = sourceLessons.map((l) =>
+    c.env.DB.prepare('UPDATE lessons SET chapter_id = ?, order_index = ? WHERE id = ?').bind(targetId, nextOrder++, l.id),
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
+
+  try {
+    await c.env.DB.prepare('DELETE FROM student_chapter_completions WHERE chapter_id = ?').bind(sourceId).run();
+  } catch (_) {}
+  await c.env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(sourceId).run();
+
+  return c.json({ success: true, movedLessons: sourceLessons.length });
+});
+
+/**
+ * تقسیم یک درس به دو درس — مدیر متن را در رابط کاربری به دو بخش تقسیم‌شده
+ * ویرایش می‌کند و اینجا فقط ذخیره می‌شود: درس اصلی محتوای بخش اول را نگه
+ * می‌دارد، یک درس تازه بلافاصله بعد از آن (همان فصل) با بخش دوم ساخته می‌شود.
+ */
+admin.post('/curriculum-library/lessons/:id/split', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const lessonId = c.req.param('id');
+  const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
+    .bind(lessonId)
+    .first<{ id: string; chapter_id: string; order_index: number; title_fa: string }>();
+  if (!lesson) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+
+  const body = await c.req
+    .json<{ firstContent?: string; secondContent?: string; secondTitleFa?: string }>()
+    .catch(() => null);
+  const firstContent = String(body?.firstContent ?? '').trim();
+  const secondContent = String(body?.secondContent ?? '').trim();
+  if (!firstContent || !secondContent) {
+    return c.json(fail('BAD_REQUEST', 'هر دو بخش باید متن داشته باشند', 'Both parts required'), 400);
+  }
+  const secondTitleFa = String(body?.secondTitleFa ?? `${lesson.title_fa} (۲)`).trim().slice(0, 200);
+
+  // جای خالی برای درس تازه باز می‌شود: order_index همهٔ درس‌های بعدیِ همین فصل یکی جلو می‌رود.
+  await c.env.DB.prepare('UPDATE lessons SET order_index = order_index + 1 WHERE chapter_id = ? AND order_index > ?')
+    .bind(lesson.chapter_id, lesson.order_index)
+    .run();
+
+  const newLessonId = `${lessonId}_split_${Date.now()}`;
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE lessons SET content_body = ?, estimated_minutes = ? WHERE id = ?').bind(
+      firstContent,
+      estimateMinutes(firstContent),
+      lessonId,
+    ),
+    c.env.DB.prepare(
+      'INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).bind(newLessonId, lesson.chapter_id, secondTitleFa, estimateMinutes(secondContent), lesson.order_index + 1, secondContent, 'published'),
+  ]);
+
+  return c.json({ success: true, newLessonId });
 });
 
 /** Embedding چند درس پشت‌سرهم و ذخیرهٔ آن‌ها در `lesson_embeddings` — کاملاً بی‌صدا در برابر خطا. */

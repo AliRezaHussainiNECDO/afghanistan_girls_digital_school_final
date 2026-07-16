@@ -12,6 +12,7 @@ import '../../domain/entities/curriculum_book.dart';
 import '../../domain/services/chapter_detector.dart';
 import '../../domain/usecases/curriculum_library_usecases.dart';
 import '../providers/curriculum_library_providers.dart';
+import '../screens/lesson_editor_screen.dart';
 
 /// بخش «کتاب‌های نصاب تعلیمی» برای هر مضمون — مدیر از این‌جا کتاب پی‌دی‌اف
 /// رسمی وزارت معارف را برای هر صنف (۷ الی ۱۲) به‌طور جداگانه آپلود می‌کند؛
@@ -70,6 +71,7 @@ class BookUploadSection extends ConsumerWidget {
                 children: AppConstants.grades
                     .map((grade) => _GradeBookRow(
                           subjectId: subjectId,
+                          subjectNameFa: subjectNameFa,
                           grade: grade,
                           book: byGrade[grade],
                         ))
@@ -85,10 +87,16 @@ class BookUploadSection extends ConsumerWidget {
 
 class _GradeBookRow extends ConsumerStatefulWidget {
   final String subjectId;
+  final String subjectNameFa;
   final int grade;
   final CurriculumBook? book;
 
-  const _GradeBookRow({required this.subjectId, required this.grade, required this.book});
+  const _GradeBookRow({
+    required this.subjectId,
+    required this.subjectNameFa,
+    required this.grade,
+    required this.book,
+  });
 
   @override
   ConsumerState<_GradeBookRow> createState() => _GradeBookRowState();
@@ -406,6 +414,19 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                 const SizedBox(width: 6),
                 Text('${book.pageCount} صفحه',
                     style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                IconButton(
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.edit_note_rounded, color: scheme.secondary),
+                  tooltip: 'ویرایش دروس این کتاب',
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => LessonEditorScreen(
+                      subjectId: widget.subjectId,
+                      grade: widget.grade,
+                      subjectNameFa: widget.subjectNameFa,
+                    ),
+                  )),
+                ),
                 IconButton(
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,

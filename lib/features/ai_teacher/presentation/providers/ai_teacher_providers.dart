@@ -129,11 +129,34 @@ class AiConversationNotifier extends StateNotifier<List<AiChatMessage>> {
   Future<void> send(String text) async {
     if (text.trim().isEmpty) return;
     sending = true;
+    // ── رفع اشکال «سکوت کامل»: قبلاً اگر هر جای زنجیره (کتابخانه/شبکه) خطا
+    // می‌داد، `result.fold((f) => null, ...)` هیچ کاری نمی‌کرد — نه پیام
+    // شاگرد نمایش داده می‌شد نه خطایی. حالا پیام شاگرد فوری/optimistic روی
+    // صفحه می‌آید (هرگز گم نمی‌شود)، و اگر کل زنجیره — حتی موتور محلی
+    // رایگان — شکست بخورد، یک پیام گرم و روشن به‌جای سکوت نشان داده می‌شود.
+    final optimisticStudentMsg = AiChatMessage(
+      id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+      sender: ChatSender.student,
+      body: text,
+      timestamp: DateTime.now(),
+    );
+    state = [...state, optimisticStudentMsg];
     final result = await ref
         .read(sendMessageUseCaseProvider)
         .call(SendMessageParams(subjectId: subjectId, text: text, grade: grade));
     sending = false;
-    result.fold((f) => null, (_) => _load());
+    result.fold(
+      (f) => state = [
+        ...state,
+        AiChatMessage(
+          id: 'err_${DateTime.now().millisecondsSinceEpoch}',
+          sender: ChatSender.ai,
+          body: 'یک مشکل موقت پیش آمد و نتوانستم پاسخ بدهم. لطفاً دوباره تلاش کن. 🌸',
+          timestamp: DateTime.now(),
+        ),
+      ],
+      (_) => _load(),
+    );
   }
 }
 
@@ -178,16 +201,38 @@ class AiLessonConversationNotifier extends StateNotifier<List<AiChatMessage>> {
   Future<void> send(String text) async {
     if (text.trim().isEmpty) return;
     sending = true;
-    await ref.read(aiTeacherDataSourceProvider).sendLessonMessage(
-          lessonId: focus.lessonId,
-          lessonTitle: focus.lessonTitle,
-          lessonContent: focus.lessonContent,
-          subjectId: focus.subjectId,
-          grade: grade,
-          text: text,
-        );
-    sending = false;
-    await _load();
+    // همان رفع اشکال «سکوت کامل» بالا — اینجا هم پیام شاگرد فوری نمایش داده
+    // می‌شود و شکست کامل زنجیره یک پیام گرم نشان می‌دهد، نه سکوت.
+    final optimisticStudentMsg = AiChatMessage(
+      id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+      sender: ChatSender.student,
+      body: text,
+      timestamp: DateTime.now(),
+    );
+    state = [...state, optimisticStudentMsg];
+    try {
+      await ref.read(aiTeacherDataSourceProvider).sendLessonMessage(
+            lessonId: focus.lessonId,
+            lessonTitle: focus.lessonTitle,
+            lessonContent: focus.lessonContent,
+            subjectId: focus.subjectId,
+            grade: grade,
+            text: text,
+          );
+      sending = false;
+      await _load();
+    } catch (_) {
+      sending = false;
+      state = [
+        ...state,
+        AiChatMessage(
+          id: 'err_${DateTime.now().millisecondsSinceEpoch}',
+          sender: ChatSender.ai,
+          body: 'یک مشکل موقت پیش آمد و نتوانستم پاسخ بدهم. لطفاً دوباره تلاش کن. 🌸',
+          timestamp: DateTime.now(),
+        ),
+      ];
+    }
   }
 }
 
