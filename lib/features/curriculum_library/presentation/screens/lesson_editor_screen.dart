@@ -336,6 +336,55 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     }
   }
 
+  Future<void> _editChapterTitle(_EditableChapter chapter) async {
+    final controller = TextEditingController(text: chapter.titleFa);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ویرایش عنوان فصل'),
+        content: TextField(controller: controller, decoration: const InputDecoration(border: OutlineInputBorder())),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ذخیره')),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final newTitle = controller.text.trim();
+    if (newTitle.isEmpty) return;
+    try {
+      await ref.read(apiClientProvider).patch('/admin/curriculum-library/chapters/${chapter.id}', data: {
+        'titleFa': newTitle,
+      });
+      setState(() => chapter.titleFa = newTitle);
+      _snack('عنوان فصل ذخیره شد ✓');
+    } catch (e) {
+      _snack('خطا در ذخیره: $e');
+    }
+  }
+
+  Future<void> _deleteChapter(_EditableChapter chapter) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف فصل'),
+        content: Text('فصل «${chapter.titleFa}» و همهٔ ${chapter.lessons.length} درسِ آن برای همیشه حذف شود؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف کامل')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(apiClientProvider).delete('/admin/curriculum-library/chapters/${chapter.id}');
+      _snack('فصل «${chapter.titleFa}» حذف شد.');
+      await _load();
+    } catch (e) {
+      _snack('خطا در حذف فصل: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -358,10 +407,25 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                           child: ExpansionTile(
                             title: Text(chapter.titleFa, style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text('${chapter.lessons.length} درس'),
-                            trailing: IconButton(
-                              icon: Icon(Icons.merge_type_rounded, color: scheme.secondary),
-                              tooltip: 'ادغام این فصل در فصل دیگر',
-                              onPressed: _chapters.length < 2 ? null : () => _mergeChapter(chapter),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_rounded),
+                                  tooltip: 'ویرایش عنوان فصل',
+                                  onPressed: () => _editChapterTitle(chapter),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.merge_type_rounded, color: scheme.secondary),
+                                  tooltip: 'ادغام این فصل در فصل دیگر',
+                                  onPressed: _chapters.length < 2 ? null : () => _mergeChapter(chapter),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_forever_rounded, color: scheme.error),
+                                  tooltip: 'حذف کامل این فصل',
+                                  onPressed: () => _deleteChapter(chapter),
+                                ),
+                              ],
                             ),
                             children: chapter.lessons.map((lesson) {
                               final busy = _busyLessonIds.contains(lesson.id);

@@ -399,10 +399,44 @@ c11m.post('/curriculum-library/books', async (c) => {
   return c.json({ book: libraryBookJson(row) }, 201);
 });
 
+// رفع اشکال ناهماهنگی: قبلاً این Endpoint فقط ردیف کتابخانه را حذف می‌کرد —
+// فصل/درس‌های منتشرشدهٔ همان کتاب (`chapters`/`lessons`، که نصاب داشبورد
+// شاگردان دقیقاً از همان‌ها می‌خواند، نه از `curriculum_library_books`)
+// دست‌نخورده می‌ماندند، پس مدیر کتاب را «حذف» می‌کرد ولی شاگردان همچنان
+// همان درس‌ها را می‌دیدند. حالا حذف کتاب، فصل/درس‌های وابسته (و
+// بازدید/تکمیل/نمایه‌سازی معنایی مرتبط) را هم به همان شکلی که در
+// `applyChapterPublish` (backend/src/routes/admin.ts) هنگام جایگزینی
+// انجام می‌شود، پاک می‌کند.
 c11m.delete('/curriculum-library/books/:id', async (c) => {
   if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
-  await c.env.DB.prepare('DELETE FROM curriculum_library_books WHERE id = ?').bind(c.req.param('id')).run();
-  return c.json({ success: true });
+  const bookId = c.req.param('id');
+
+  const { results: chapters } = await c.env.DB.prepare('SELECT id FROM chapters WHERE source_book_id = ?')
+    .bind(bookId)
+    .all<{ id: string }>();
+  if (chapters.length) {
+    const chIds = chapters.map((r) => r.id);
+    const chPh = chIds.map(() => '?').join(',');
+    const { results: lessons } = await c.env.DB.prepare(`SELECT id FROM lessons WHERE chapter_id IN (${chPh})`)
+      .bind(...chIds)
+      .all<{ id: string }>();
+    if (lessons.length) {
+      const lsIds = lessons.map((r) => r.id);
+      const lsPh = lsIds.map(() => '?').join(',');
+      await c.env.DB.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+      try {
+        await c.env.DB.prepare(`DELETE FROM lesson_embeddings WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+      } catch (_) {
+        // جدول ممکن است هنوز مهاجرت نشده باشد.
+      }
+      await c.env.DB.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
+    }
+    await c.env.DB.prepare(`DELETE FROM student_chapter_completions WHERE chapter_id IN (${chPh})`).bind(...chIds).run();
+    await c.env.DB.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
+  }
+
+  await c.env.DB.prepare('DELETE FROM curriculum_library_books WHERE id = ?').bind(bookId).run();
+  return c.json({ success: true, deletedChapters: chapters.length });
 });
 
 export default c11m;

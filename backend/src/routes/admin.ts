@@ -22,11 +22,14 @@
  *   POST   /curriculum-library/books/:id/fix-rtl-text         رفع اصلاحیِ متن معکوس‌شدهٔ یک کتاب (RTL) + بازسازی فصل/درس
  *   POST   /curriculum-library/books/fix-rtl-text-all         همان رفع اصلاحی برای همهٔ کتاب‌های کتابخانه (همهٔ صنف‌ها/مضامین)
  *   POST   /curriculum-library/wipe-all                       پاک‌سازی کامل نصاب (همهٔ کتاب‌ها/فصل‌ها/درس‌ها) — نیازمند تأیید صریح
+ *   POST   /curriculum-library/cleanup-orphaned-chapters       پاک‌سازی فصل/درس‌های یتیمِ کتاب‌های قبلاً حذف‌شده
  *   PATCH  /curriculum-library/lessons/:id                    ویرایش دستی عنوان/محتوای یک درس
  *   POST   /curriculum-library/lessons/:id/rebuild             بازسازی یک درس مشخص از متن کتاب مبدأ
  *   POST   /curriculum-library/lessons/:id/move                جابجایی یک درس به فصل دیگر
  *   POST   /curriculum-library/chapters/:id/merge-into/:targetId  ادغام یک فصل در فصل دیگر
- *   POST   /curriculum-library/chapters/:id/split-lesson/:lessonId  تقسیم یک درس به دو درس
+ *   PATCH  /curriculum-library/chapters/:id                    ویرایش عنوان یک فصل
+ *   DELETE /curriculum-library/chapters/:id                    حذف کامل یک فصل (و درس‌های آن)
+ *   POST   /curriculum-library/lessons/:id/split                تقسیم یک درس به دو درس
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -1514,6 +1517,49 @@ admin.post('/curriculum-library/chapters/:id/merge-into/:targetId', async (c) =>
   return c.json({ success: true, movedLessons: sourceLessons.length });
 });
 
+/** ویرایش عنوان یک فصل — طبق درخواست کاربر: مدیر باید بعد از ساختاربندی خودکار هوش مصنوعی، اختیار کامل اصلاح داشته باشد. */
+admin.patch('/curriculum-library/chapters/:id', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const chapterId = c.req.param('id');
+  const chapter = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(chapterId).first();
+  if (!chapter) return c.json(fail('NOT_FOUND', 'فصل یافت نشد', 'Chapter not found'), 404);
+  const body = await c.req.json<{ titleFa?: string }>().catch(() => null);
+  const titleFa = String(body?.titleFa ?? '').trim().slice(0, 200);
+  if (!titleFa) return c.json(fail('BAD_REQUEST', 'عنوان نمی‌تواند خالی باشد', 'Title required'), 400);
+  await c.env.DB.prepare('UPDATE chapters SET title_fa = ? WHERE id = ?').bind(titleFa, chapterId).run();
+  return c.json({ success: true, titleFa });
+});
+
+/**
+ * حذف کامل یک فصل (و همهٔ درس‌های آن) — بدون نیاز به ادغام در فصل دیگر؛
+ * برای فصل‌های اشتباهی/تکراری که هوش مصنوعی یا آپلود قبلی ساخته است.
+ */
+admin.delete('/curriculum-library/chapters/:id', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const chapterId = c.req.param('id');
+  const chapter = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(chapterId).first();
+  if (!chapter) return c.json(fail('NOT_FOUND', 'فصل یافت نشد', 'Chapter not found'), 404);
+
+  const { results: lessons } = await c.env.DB.prepare('SELECT id FROM lessons WHERE chapter_id = ?')
+    .bind(chapterId)
+    .all<{ id: string }>();
+  if (lessons.length) {
+    const lsIds = lessons.map((r) => r.id);
+    const lsPh = lsIds.map(() => '?').join(',');
+    await c.env.DB.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+    try {
+      await c.env.DB.prepare(`DELETE FROM lesson_embeddings WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+    } catch (_) {}
+    await c.env.DB.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
+  }
+  try {
+    await c.env.DB.prepare('DELETE FROM student_chapter_completions WHERE chapter_id = ?').bind(chapterId).run();
+  } catch (_) {}
+  await c.env.DB.prepare('DELETE FROM chapters WHERE id = ?').bind(chapterId).run();
+
+  return c.json({ success: true });
+});
+
 /**
  * تقسیم یک درس به دو درس — مدیر متن را در رابط کاربری به دو بخش تقسیم‌شده
  * ویرایش می‌کند و اینجا فقط ذخیره می‌شود: درس اصلی محتوای بخش اول را نگه
@@ -1555,6 +1601,48 @@ admin.post('/curriculum-library/lessons/:id/split', async (c) => {
   ]);
 
   return c.json({ success: true, newLessonId });
+});
+
+/**
+ * پاک‌سازی فصل/درس‌های «یتیم» — مانده از کتاب‌هایی که قبلاً از کتابخانه حذف
+ * شده‌اند اما (به‌خاطر اشکال قدیمیِ Endpoint حذف کتاب که اکنون رفع شده)
+ * فصل/درس‌هایشان در نصاب باقی مانده بودند؛ دقیقاً همان چیزی که کاربر گزارش
+ * داد: «کتاب را از مدیریت پاک کردم اما هنوز در بخش شاگردان است». این
+ * Endpoint یک‌بار همهٔ چنین فصل‌هایی (که `source_book_id`شان دیگر در
+ * `curriculum_library_books` وجود ندارد) را پیدا و حذف می‌کند.
+ */
+admin.post('/curriculum-library/cleanup-orphaned-chapters', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+
+  const { results: orphaned } = await c.env.DB.prepare(
+    `SELECT ch.id FROM chapters ch
+      WHERE ch.source_book_id IS NOT NULL
+        AND ch.source_book_id NOT IN (SELECT id FROM curriculum_library_books)`,
+  ).all<{ id: string }>();
+
+  if (!orphaned.length) {
+    return c.json({ success: true, chaptersRemoved: 0, lessonsRemoved: 0 });
+  }
+
+  const chIds = orphaned.map((r) => r.id);
+  const chPh = chIds.map(() => '?').join(',');
+  const { results: lessons } = await c.env.DB.prepare(`SELECT id FROM lessons WHERE chapter_id IN (${chPh})`)
+    .bind(...chIds)
+    .all<{ id: string }>();
+
+  if (lessons.length) {
+    const lsIds = lessons.map((r) => r.id);
+    const lsPh = lsIds.map(() => '?').join(',');
+    await c.env.DB.prepare(`DELETE FROM student_lesson_views WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+    try {
+      await c.env.DB.prepare(`DELETE FROM lesson_embeddings WHERE lesson_id IN (${lsPh})`).bind(...lsIds).run();
+    } catch (_) {}
+    await c.env.DB.prepare(`DELETE FROM lessons WHERE id IN (${lsPh})`).bind(...lsIds).run();
+  }
+  await c.env.DB.prepare(`DELETE FROM student_chapter_completions WHERE chapter_id IN (${chPh})`).bind(...chIds).run();
+  await c.env.DB.prepare(`DELETE FROM chapters WHERE id IN (${chPh})`).bind(...chIds).run();
+
+  return c.json({ success: true, chaptersRemoved: chIds.length, lessonsRemoved: lessons.length });
 });
 
 /** Embedding چند درس پشت‌سرهم و ذخیرهٔ آن‌ها در `lesson_embeddings` — کاملاً بی‌صدا در برابر خطا. */
