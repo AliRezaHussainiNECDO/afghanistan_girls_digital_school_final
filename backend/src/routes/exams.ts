@@ -8,6 +8,17 @@
  *   GET  /students/:studentId/certificates
  *   POST /admin/certificates              صدور گواهی‌نامه (مدیر)
  *   DELETE /admin/certificates/:id        ابطال گواهی‌نامه (مدیر)
+ *
+ *   -- مدیریت امتحانات/سؤالات (فقط مدیر — رفع اشکال: قبلاً هیچ راهی برای
+ *      ساخت امتحان/سؤال از داخل برنامه وجود نداشت، پس امتحان «نهایی» برای
+ *      هیچ صنفی هرگز وجود نداشت و سیستم ارتقا عملاً غیرقابل‌دسترس بود) --
+ *   GET    /admin/exams                       لیست همهٔ امتحانات (همهٔ وضعیت‌ها)
+ *   POST   /admin/exams                       ایجاد/ویرایش امتحان
+ *   PATCH  /admin/exams/:id/status             تغییر وضعیت (draft/published/closed)
+ *   DELETE /admin/exams/:id                    حذف امتحان + سؤالات/تلاش‌های وابسته
+ *   GET    /admin/exams/:examId/questions      سؤالات با پاسخ صحیح (فقط مدیر)
+ *   POST   /admin/exams/:examId/questions      ایجاد/ویرایش سؤال
+ *   DELETE /admin/questions/:id                حذف سؤال
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -217,5 +228,186 @@ function certJson(r: any) {
     issuedBy: r.issued_by,
   };
 }
+
+// ═══════════ مدیریت امتحانات و سؤالات (فقط مدیر — احراز صنف نهایی) ═══════════
+// قبلاً هیچ Endpointای برای ساخت/ویرایش امتحان یا سؤال وجود نداشت — تنها
+// دادهٔ موجود، دو امتحانِ نمونهٔ Seed در migration 0004 برای صنف ۷ بود و
+// هیچ امتحان نوع «نهایی» (final) برای هیچ صنفی وجود نداشت. این یعنی
+// `promoteIfEligible` (بخش ۷.۴/lib/progress.ts) عملاً هرگز از مسیر امتحان
+// واقعی قابل بررسی نبود. این بخش به مدیر اجازه می‌دهد امتحان و سؤالات آن
+// را مستقیماً از داخل برنامه بسازد/ویرایش/حذف کند.
+
+const EXAM_TYPES = new Set(['daily_quiz', 'homework', 'monthly', 'final']);
+const EXAM_STATUSES = new Set(['draft', 'published', 'closed']);
+
+function adminExamJson(r: any) {
+  return {
+    id: r.id,
+    subjectId: r.subject_id,
+    subjectNameFa: r.subject_name_fa,
+    gradeNumber: r.grade_number,
+    type: r.type,
+    title: r.title,
+    durationMinutes: r.duration_minutes,
+    status: r.status,
+    questionCount: r.question_count ?? 0,
+    createdAt: r.created_at,
+  };
+}
+
+const ADMIN_EXAM_SELECT = `
+  SELECT e.*, s.name_fa AS subject_name_fa,
+    (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
+  FROM exams e JOIN subjects s ON s.id = e.subject_id`;
+
+exams.get('/admin/exams', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const { results } = await c.env.DB.prepare(`${ADMIN_EXAM_SELECT} ORDER BY e.grade_number, e.created_at DESC`).all<any>();
+  return c.json({ exams: results.map(adminExamJson) });
+});
+
+exams.post('/admin/exams', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req
+    .json<{
+      id?: string;
+      subjectId?: string;
+      gradeNumber?: number;
+      type?: string;
+      title?: string;
+      durationMinutes?: number;
+      status?: string;
+    }>()
+    .catch(() => null);
+  const subjectId = String(b?.subjectId ?? '').trim();
+  const gradeNumber = Number(b?.gradeNumber ?? 0);
+  const title = String(b?.title ?? '').trim();
+  const type = EXAM_TYPES.has(String(b?.type)) ? String(b!.type) : 'daily_quiz';
+  const status = EXAM_STATUSES.has(String(b?.status)) ? String(b!.status) : 'draft';
+  const durationMinutes = Number(b?.durationMinutes ?? 10);
+  if (!subjectId || !gradeNumber || !title) {
+    return c.json(fail('BAD_REQUEST', 'مضمون، صنف و عنوان لازم است', 'Missing fields'), 400);
+  }
+
+  const id = b?.id && String(b.id).trim().length > 0 ? String(b.id).trim() : uid();
+  const existing = await c.env.DB.prepare('SELECT id FROM exams WHERE id = ?').bind(id).first();
+  if (existing) {
+    await c.env.DB.prepare(
+      'UPDATE exams SET subject_id=?, grade_number=?, type=?, title=?, duration_minutes=?, status=? WHERE id=?',
+    )
+      .bind(subjectId, gradeNumber, type, title, durationMinutes, status, id)
+      .run();
+    const row = await c.env.DB.prepare(`${ADMIN_EXAM_SELECT} WHERE e.id = ?`).bind(id).first<any>();
+    return c.json({ exam: adminExamJson(row) }, 200);
+  }
+  await c.env.DB.prepare(
+    `INSERT INTO exams (id, subject_id, grade_number, type, title, duration_minutes, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(id, subjectId, gradeNumber, type, title, durationMinutes, status)
+    .run();
+  const row = await c.env.DB.prepare(`${ADMIN_EXAM_SELECT} WHERE e.id = ?`).bind(id).first<any>();
+  return c.json({ exam: adminExamJson(row) }, 201);
+});
+
+exams.patch('/admin/exams/:id/status', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req.json<{ status?: string }>().catch(() => null);
+  const status = EXAM_STATUSES.has(String(b?.status)) ? String(b!.status) : 'draft';
+  await c.env.DB.prepare('UPDATE exams SET status = ? WHERE id = ?').bind(status, c.req.param('id')).run();
+  return c.json({ success: true });
+});
+
+exams.delete('/admin/exams/:id', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const examId = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM exam_attempts WHERE exam_id = ?').bind(examId).run();
+  await c.env.DB.prepare('DELETE FROM questions WHERE exam_id = ?').bind(examId).run();
+  await c.env.DB.prepare('DELETE FROM exams WHERE id = ?').bind(examId).run();
+  return c.json({ success: true });
+});
+
+// سؤالات — نسخهٔ مدیر شامل پاسخ صحیح (برخلاف /exams/:examId/questions عمومی).
+
+exams.get('/admin/exams/:examId/questions', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, exam_id, text, options, correct_index, order_index FROM questions WHERE exam_id = ? ORDER BY order_index',
+  )
+    .bind(c.req.param('examId'))
+    .all<any>();
+  const list = results.map((q) => ({
+    id: q.id,
+    examId: q.exam_id,
+    text: q.text,
+    options: JSON.parse(q.options),
+    correctIndex: q.correct_index,
+    orderIndex: q.order_index,
+  }));
+  return c.json({ questions: list });
+});
+
+exams.post('/admin/exams/:examId/questions', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const examId = c.req.param('examId');
+  const examExists = await c.env.DB.prepare('SELECT id FROM exams WHERE id = ?').bind(examId).first();
+  if (!examExists) return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found'), 404);
+
+  const b = await c.req
+    .json<{
+      id?: string;
+      text?: string;
+      options?: string[];
+      correctIndex?: number;
+      orderIndex?: number;
+    }>()
+    .catch(() => null);
+  const text = String(b?.text ?? '').trim();
+  const options = Array.isArray(b?.options) ? b!.options!.map((o) => String(o)) : [];
+  const correctIndex = Number(b?.correctIndex ?? -1);
+  if (!text || options.length < 2 || correctIndex < 0 || correctIndex >= options.length) {
+    return c.json(
+      fail('BAD_REQUEST', 'متن سؤال، حداقل ۲ گزینه و پاسخ صحیح معتبر لازم است', 'Missing/invalid fields'),
+      400,
+    );
+  }
+
+  const id = b?.id && String(b.id).trim().length > 0 ? String(b.id).trim() : uid();
+  const existing = await c.env.DB.prepare('SELECT id FROM questions WHERE id = ?').bind(id).first();
+  let orderIndex = Number(b?.orderIndex ?? 0);
+  if (!existing && !orderIndex) {
+    const countRow = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM questions WHERE exam_id = ?')
+      .bind(examId)
+      .first<{ n: number }>();
+    orderIndex = (countRow?.n ?? 0) + 1;
+  }
+  if (existing) {
+    await c.env.DB.prepare(
+      'UPDATE questions SET text=?, options=?, correct_index=?, order_index=? WHERE id=?',
+    )
+      .bind(text, JSON.stringify(options), correctIndex, orderIndex, id)
+      .run();
+    return c.json({ question: { id, examId, text, options, correctIndex, orderIndex } }, 200);
+  }
+  await c.env.DB.prepare(
+    'INSERT INTO questions (id, exam_id, text, options, correct_index, order_index) VALUES (?, ?, ?, ?, ?, ?)',
+  )
+    .bind(id, examId, text, JSON.stringify(options), correctIndex, orderIndex)
+    .run();
+  return c.json({ question: { id, examId, text, options, correctIndex, orderIndex } }, 201);
+});
+
+exams.delete('/admin/questions/:id', async (c) => {
+  const me = await auth(c);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  await c.env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(c.req.param('id')).run();
+  return c.json({ success: true });
+});
 
 export default exams;
