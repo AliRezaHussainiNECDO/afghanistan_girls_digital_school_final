@@ -14,7 +14,7 @@
  *   POST /seminars/:id/go-live          (استاد/مدیر) شروع پخش زنده
  *   POST /seminars/:id/end-live         (استاد/مدیر) پایان پخش زنده
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { verifyBearer } from '../lib/auth';
 
 type Bindings = {
@@ -48,7 +48,7 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
  * یا Super Admin اجازه دارند.
  */
 async function loadOwnedSeminar(
-  c: any,
+  c: Context<{ Bindings: Bindings }>,
   id: string,
   me: { sub: string; role: string },
 ): Promise<{ ok: true; row: any } | { ok: false; response: Response }> {
