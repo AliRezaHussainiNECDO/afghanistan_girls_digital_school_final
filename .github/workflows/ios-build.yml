@@ -47,6 +47,15 @@ jobs:
       - name: Update CocoaPods repo
         run: pod repo update
 
+      # ۴.۷. اجرای صریح pod install — این کار باعث می‌شود Pods.xcodeproj همین
+      # الان (نه فقط پنهانی داخل flutter build ios) ساخته شود، تا اسکریپت
+      # غیرفعال‌کردن امضا بتواند هم روی Runner.xcodeproj و هم روی
+      # Pods.xcodeproj (پکیج‌هایی مثل jitsi_meet_flutter_sdk و
+      # apivideo_live_stream) اعمال شود.
+      - name: Run pod install
+        working-directory: ios
+        run: pod install
+
       # ۴.۷۵. غیرفعال‌کردن کامل امضای کد در فایل پروژه Xcode (project.pbxproj)
       # چون فقط تنظیم CODE_SIGNING_ALLOWED=NO در Release.xcconfig کافی نیست —
       # Xcode مقدار ProvisioningStyle=Automatic را مستقیماً از project.pbxproj

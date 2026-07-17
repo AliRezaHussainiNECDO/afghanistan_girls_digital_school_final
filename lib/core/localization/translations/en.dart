@@ -259,6 +259,7 @@ const Map<String, String> enStrings = {
 'admin.instructors': 'Instructor management',
 'admin.instructorsSubtitle': 'Instructor list, activities and full control over their seminars',
 'admin.cms': 'Content management (CMS)',
+'admin.examsManagement': 'Exams management',
 'admin.safetyQueue': 'Safety review queue',
 'admin.reports': 'Reports',
 'admin.aiTeacherManagement': 'AI Teacher management',

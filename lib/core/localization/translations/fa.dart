@@ -262,6 +262,7 @@ const Map<String, String> faStrings = {
 'admin.parents': 'مدیریت والدین',
 'admin.parentsSubtitle': 'فرزندان لینک‌شده و پیشرفت زندهٔ هرکدام برای هر والد',
 'admin.cms': 'مدیریت محتوا (CMS)',
+'admin.examsManagement': 'مدیریت امتحانات',
 'admin.safetyQueue': 'صف بازبینی ایمنی',
 'admin.reports': 'گزارش‌ها',
 'admin.aiTeacherManagement': 'مدیریت معلم هوشمند',

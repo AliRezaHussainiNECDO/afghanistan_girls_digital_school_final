@@ -259,6 +259,7 @@ const Map<String, String> psStrings = {
 'admin.instructors': 'د استادانو مدیریت',
 'admin.instructorsSubtitle': 'د استادانو لیست، فعالیتونه او د هر یو د سیمینارونو بشپړ کنترول',
 'admin.cms': 'د محتوا مدیریت (CMS)',
+'admin.examsManagement': 'د ازموینو مدیریت',
 'admin.safetyQueue': 'د خوندیتوب کتنې لیست',
 'admin.reports': 'راپورونه',
 'admin.aiTeacherManagement': 'د هوښیار ښوونکي مدیریت',

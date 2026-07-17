@@ -7,7 +7,6 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/app_notification.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import '../../data/advisor_store.dart';
 import '../../domain/advisor_entities.dart';
 import '../advisor_providers.dart';
 

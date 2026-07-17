@@ -12,6 +12,7 @@ import '../../features/admin/chat_monitoring/presentation/screens/admin_chat_thr
 import '../../features/admin/chat_monitoring/presentation/screens/admin_class_chats_screen.dart';
 import '../../features/admin/cms/presentation/screens/cms_screen.dart';
 import '../../features/admin/dashboard/presentation/screens/admin_dashboard_screen.dart';
+import '../../features/admin/exams_management/presentation/screens/admin_exams_screen.dart';
 import '../../features/admin/reports/presentation/screens/reports_screen.dart';
 import '../../features/admin/safety_queue/presentation/screens/safety_queue_screen.dart';
 import '../../features/admin/seminars/presentation/screens/admin_seminars_screen.dart';
@@ -273,6 +274,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             fadeSlidePage(s, ParentDetailScreen(parentId: s.pathParameters['parentId']!)),
       ),
       GoRoute(path: AppRoutes.adminCms, pageBuilder: (c, s) => fadeSlidePage(s, const CmsScreen())),
+      GoRoute(
+          path: AppRoutes.adminExamsManagement,
+          pageBuilder: (c, s) => fadeSlidePage(s, const AdminExamsScreen())),
       GoRoute(
           path: AppRoutes.adminAiTeacher,
           pageBuilder: (c, s) => fadeSlidePage(s, const AiTeacherManagementScreen())),

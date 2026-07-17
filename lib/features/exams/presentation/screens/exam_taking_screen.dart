@@ -7,6 +7,7 @@ import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
 import '../../../../core/student/selected_grade_provider.dart';
+import '../../../../shared_models/app_notification.dart';
 import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/celebration_overlay.dart';
 import '../../../../core/widgets/error_view.dart';

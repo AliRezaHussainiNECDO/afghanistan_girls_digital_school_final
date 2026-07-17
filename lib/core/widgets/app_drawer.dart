@@ -35,6 +35,7 @@ const _adminItems = [
   _DrawerItem(Icons.dashboard_rounded, 'admin.dashboard', AppRoutes.adminDashboard),
   _DrawerItem(Icons.people_rounded, 'admin.users', AppRoutes.adminUsers),
   _DrawerItem(Icons.edit_note_rounded, 'admin.cms', AppRoutes.adminCms),
+  _DrawerItem(Icons.quiz_rounded, 'admin.examsManagement', AppRoutes.adminExamsManagement),
   _DrawerItem(Icons.smart_toy_rounded, 'admin.aiTeacherManagement', AppRoutes.adminAiTeacher),
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
   _DrawerItem(Icons.forum_rounded, 'admin.chatMonitoring', AppRoutes.adminChats),
