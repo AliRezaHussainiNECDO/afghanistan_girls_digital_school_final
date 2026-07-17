@@ -102,19 +102,23 @@ class SetQuestionStatusUseCase implements UseCase<Unit, SetStatusParams> {
 }
 
 // ─────────────────────────── INVITE CODES ───────────────────────────
-class GetInviteCodesUseCase implements UseCase<List<CmsInviteCodeRow>, NoParams> {
+/// `type`: 'student' یا 'instructor' — تا هر دو تب کدهای دعوت (شاگرد/استاد)
+/// از همین یک UseCase واحد و واقعی بگذرند.
+class GetInviteCodesUseCase implements UseCase<List<CmsInviteCodeRow>, String> {
   final CmsRepository repository;
   GetInviteCodesUseCase(this.repository);
   @override
-  Future<Either<Failure, List<CmsInviteCodeRow>>> call(NoParams params) => repository.getInviteCodes();
+  Future<Either<Failure, List<CmsInviteCodeRow>>> call(String type) =>
+      repository.getInviteCodes(type: type);
 }
 
 class GenerateInviteCodesParams extends Equatable {
   final int count;
   final String batchLabel;
-  const GenerateInviteCodesParams({required this.count, required this.batchLabel});
+  final String type; // 'student' یا 'instructor'
+  const GenerateInviteCodesParams({required this.count, required this.batchLabel, this.type = 'student'});
   @override
-  List<Object?> get props => [count, batchLabel];
+  List<Object?> get props => [count, batchLabel, type];
 }
 
 class GenerateInviteCodesUseCase implements UseCase<Unit, GenerateInviteCodesParams> {
@@ -122,7 +126,7 @@ class GenerateInviteCodesUseCase implements UseCase<Unit, GenerateInviteCodesPar
   GenerateInviteCodesUseCase(this.repository);
   @override
   Future<Either<Failure, Unit>> call(GenerateInviteCodesParams params) =>
-      repository.generateInviteCodes(params.count, params.batchLabel);
+      repository.generateInviteCodes(params.count, params.batchLabel, type: params.type);
 }
 
 class RevokeInviteCodeUseCase implements UseCase<Unit, String> {

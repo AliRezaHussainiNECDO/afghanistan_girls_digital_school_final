@@ -67,10 +67,12 @@ class CmsRepositoryImpl implements CmsRepository {
 
   // Invite codes
   @override
-  Future<Either<Failure, List<CmsInviteCodeRow>>> getInviteCodes() => _guard(dataSource.getInviteCodes);
+  Future<Either<Failure, List<CmsInviteCodeRow>>> getInviteCodes({String type = 'student'}) =>
+      _guard(() => dataSource.getInviteCodes(type: type));
   @override
-  Future<Either<Failure, Unit>> generateInviteCodes(int count, String batchLabel) => _guard(() async {
-        await dataSource.generateInviteCodes(count, batchLabel);
+  Future<Either<Failure, Unit>> generateInviteCodes(int count, String batchLabel, {String type = 'student'}) =>
+      _guard(() async {
+        await dataSource.generateInviteCodes(count, batchLabel, type: type);
         return unit;
       });
   @override

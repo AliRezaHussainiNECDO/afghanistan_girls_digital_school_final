@@ -164,12 +164,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Text(context.tr('common.cancel')),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               if (!(formKey.currentState?.validate() ?? false)) return;
-              ref.read(authSessionProvider.notifier).updateDisplayName(nameController.text);
+              final ok = await ref
+                  .read(authSessionProvider.notifier)
+                  .updateDisplayName(nameController.text);
+              if (!dialogContext.mounted) return;
               Navigator.of(dialogContext).pop();
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text(context.tr('profile.profileUpdated'))));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(ok
+                    ? context.tr('profile.profileUpdated')
+                    : (ref.read(authSessionProvider.notifier).lastError ??
+                        context.tr('common.error'))),
+              ));
             },
             child: Text(context.tr('common.save')),
           ),
@@ -204,8 +212,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 controller: newController,
                 obscureText: true,
                 decoration: InputDecoration(labelText: context.tr('profile.newPassword')),
+                // حداقل ۸ کاراکتر — هماهنگ با حداقل واقعیِ سرور (auth.ts
+                // /change-password و /reset-password)، تا کاربر پیش از
+                // فرستادن درخواست رد نشود.
                 validator: (v) =>
-                    (v == null || v.length < 6) ? context.tr('common.required') : null,
+                    (v == null || v.length < 8) ? context.tr('common.required') : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -224,12 +235,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Text(context.tr('common.cancel')),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               if (!(formKey.currentState?.validate() ?? false)) return;
-              // فاز ۱: بدون بک‌اند واقعی — فقط شبیه‌سازی موفقیت‌آمیز بودن عملیات.
+              final notifier = ref.read(authSessionProvider.notifier);
+              final ok = await notifier.changePassword(
+                currentPassword: currentController.text,
+                newPassword: newController.text,
+              );
+              if (!dialogContext.mounted) return;
               Navigator.of(dialogContext).pop();
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(SnackBar(content: Text(context.tr('profile.passwordChanged'))));
+              if (!context.mounted) return;
+              if (ok) {
+                // سرور همهٔ نشست‌ها (این دستگاه هم) را باطل کرده؛ کاربر باید
+                // با رمز تازه دوباره وارد شود.
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(context.tr('profile.passwordChanged'))),
+                );
+                context.go(AppRoutes.login);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(notifier.lastError ?? context.tr('common.error')),
+                ));
+              }
             },
             child: Text(context.tr('common.save')),
           ),

@@ -7,6 +7,8 @@
  *  POST   /refresh                تمدید Access Token با Refresh Token (Rotation)
  *  POST   /logout                 ابطال Refresh Token
  *  GET    /me                    کاربر فعلی از روی Access Token
+ *  PATCH  /me                    ویرایش نام کاربر فعلی (رفع اشکال: قبلاً فقط محلی بود)
+ *  POST   /change-password        تغییر رمز با رمز فعلی، کاربرِ واردشده (رفع اشکال: قبلاً ساختگی بود)
  *  GET    /verify-email           تأیید ایمیل با توکن لینک (صفحهٔ HTML)
  *  POST   /resend-verification    ارسال مجدد لینک تأیید ایمیل
  *  POST   /forgot-password        ارسال کد ۶ رقمی بازیابی به ایمیل
@@ -40,6 +42,25 @@ const uid = () => crypto.randomUUID();
 /** پاسخ خطای استاندارد مطابق قرارداد بخش ۱۹.۱۰ سند. */
 function fail(code: string, messageFa: string, messageEn: string) {
   return { success: false, error: { code, message_fa: messageFa, message_en: messageEn } };
+}
+
+/**
+ * نرمال‌سازی کد دعوت پیش از مقایسه: حذف فاصله‌های اضافه، حروف بزرگ، و
+ * تبدیل ارقام فارسی/عربی به لاتین — تا مقایسهٔ دقیق سرور با کدهایی که
+ * کاربر با فاصله/حروف کوچک/ارقام فارسی تایپ کرده هم درست کار کند.
+ */
+function normalizeInviteCode(raw: string): string {
+  const fa = '۰۱۲۳۴۵۶۷۸۹';
+  const ar = '٠١٢٣٤٥٦٧٨٩';
+  let out = '';
+  for (const ch of raw.trim().toUpperCase()) {
+    const iFa = fa.indexOf(ch);
+    const iAr = ar.indexOf(ch);
+    if (iFa >= 0) out += String(iFa);
+    else if (iAr >= 0) out += String(iAr);
+    else if (ch !== ' ') out += ch;
+  }
+  return out;
 }
 
 interface UserRow {
@@ -171,7 +192,13 @@ auth.post('/register', async (c) => {
   const inviteType = role === 'seminar_instructor' ? 'instructor' : 'student';
   let inviteRow: { id: string } | null = null;
   if (needsInvite) {
-    const code = String(body.inviteCode ?? '').trim();
+    // رفع اشکال: مقایسهٔ کد در SQLite به‌طور پیش‌فرض حساس به بزرگی/کوچکی حروف
+    // است، اما کدها همیشه با حروف بزرگ ساخته می‌شوند (`TCH-XXXXXX`/
+    // `STU-XXXXXX`)؛ اگر کاربر آن را با حروف کوچک یا با فاصلهٔ اضافه تایپ
+    // کند، مقایسهٔ دقیق شکست می‌خورد و پیام «کد نامعتبر» به‌اشتباه نمایش
+    // داده می‌شود. اینجا همان نرمال‌سازی‌ای که قبلاً فقط سمت کلاینت (محلی)
+    // انجام می‌شد را روی سرور هم اعمال می‌کنیم.
+    const code = normalizeInviteCode(String(body.inviteCode ?? ''));
     inviteRow = await c.env.DB.prepare(
       "SELECT id FROM invite_codes WHERE code = ? AND type = ? AND status = 'unused' " +
         "AND (expires_at IS NULL OR expires_at > datetime('now'))",
@@ -507,6 +534,55 @@ auth.get('/me', async (c) => {
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
     .bind(sub)
     .first<UserRow>();
+  if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found'), 401);
+  return c.json({ user: publicUser(user) });
+});
+
+// رفع اشکال حیاتی: قبلاً دیالوگ «تغییر رمز عبور» در صفحهٔ پروفایل هیچ
+// درخواستی به سرور نمی‌فرستاد و فقط پیام «موفق» ساختگی نشان می‌داد — یعنی
+// رمز عبور واقعاً هرگز تغییر نمی‌کرد، اما کاربر گمان می‌کرد رمزش عوض شده.
+auth.post('/change-password', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const sub = payload?.['sub'] as string | undefined;
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const b = await c.req.json<{ currentPassword?: string; newPassword?: string }>().catch(() => null);
+  const currentPassword = String(b?.currentPassword ?? '');
+  const newPassword = String(b?.newPassword ?? '');
+  if (newPassword.length < 8) {
+    return c.json(fail('WEAK_PASSWORD', 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد', 'Password too short'), 400);
+  }
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
+  if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
+    return c.json(fail('INVALID_CREDENTIALS', 'رمز عبور فعلی نادرست است', 'Current password is incorrect'), 401);
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(passwordHash, sub),
+    // امنیت: همهٔ نشست‌ها (این دستگاه هم) باطل می‌شوند تا کاربر با رمز تازه دوباره وارد شود.
+    c.env.DB.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').bind(sub),
+  ]);
+  return c.json({ success: true, message_fa: 'رمز عبور با موفقیت تغییر کرد' });
+});
+
+// رفع اشکال: قبلاً «ویرایش نام» در صفحهٔ پروفایل فقط `state` محلی نشست را
+// تغییر می‌داد (بدون بک‌اند واقعی) — یعنی با ورود مجدد یا در هر داشبورد
+// دیگری (فهرست شاگردان مدیر، هم‌صنفی‌های چت، فهرست ثبت‌نامی سمینار و...)
+// نام قدیمی همچنان دیده می‌شد. اکنون واقعاً روی جدول `users` ذخیره می‌شود.
+auth.patch('/me', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const sub = payload?.['sub'] as string | undefined;
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  const b = await c.req.json<{ firstName?: string; lastName?: string }>().catch(() => null);
+  const firstName = String(b?.firstName ?? '').trim();
+  const lastName = String(b?.lastName ?? '').trim();
+  if (!firstName) {
+    return c.json(fail('BAD_REQUEST', 'نام نمی‌تواند خالی باشد', 'Name is required'), 400);
+  }
+  await c.env.DB.prepare("UPDATE users SET first_name = ?, last_name = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(firstName, lastName, sub)
+    .run();
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
   if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found'), 401);
   return c.json({ user: publicUser(user) });
 });

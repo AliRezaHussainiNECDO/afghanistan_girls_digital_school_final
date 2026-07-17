@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../advisor/data/advisor_store.dart';
 import '../../../../advisor/domain/advisor_entities.dart';
-import '../../../../progression/data/progression_store.dart';
+import '../../../../advisor/presentation/advisor_providers.dart';
 import '../../../../certificates/presentation/widgets/admin_certificates_section.dart';
 import '../../domain/entities/student_entities.dart';
 import '../providers/student_management_providers.dart';
@@ -200,7 +200,7 @@ class _OverviewTab extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 14),
-      _PromotionSection(studentId: s.id, grade: s.grade),
+      _PromotionSection(studentId: s.id, detail: detail),
       const SizedBox(height: 14),
       SectionCard(
         title: 'معلومات شخصی',
@@ -549,16 +549,45 @@ class _BulletList extends StatelessWidget {
 }
 
 // ── Tab 5: گفتگوهای مشاور هوشمند ──────────────────────────────────────────
-class _AdvisorTab extends StatelessWidget {
+// رفع اشکال: قبلاً مستقیماً از `AdvisorStore.instance` می‌خواند بدون هیچ
+// اتصالی به سرور (چون هیچ‌جا `configure()`/hydrate صدا زده نمی‌شد)؛ اکنون
+// از `advisorStoreProvider` (که کلاینت API را تزریق می‌کند) و
+// `hydrateForAdmin` برای دریافت تاریخچهٔ واقعی این شاگرد از سرور استفاده
+// می‌شود.
+class _AdvisorTab extends ConsumerStatefulWidget {
   final String studentId;
   const _AdvisorTab({required this.studentId});
+
+  @override
+  ConsumerState<_AdvisorTab> createState() => _AdvisorTabState();
+}
+
+class _AdvisorTabState extends ConsumerState<_AdvisorTab> {
+  bool _loading = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final store = ref.read(advisorStoreProvider);
+    if (store.isLive) {
+      store.hydrateForAdmin(widget.studentId).whenComplete(() {
+        if (mounted) setState(() => _loading = false);
+      });
+    } else {
+      _loading = false;
+    }
+  }
 
   String _time(DateTime d) =>
       '${d.year}/${d.month}/${d.day} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
-    final store = AdvisorStore.instance;
+    final store = ref.watch(advisorStoreProvider);
+    final studentId = widget.studentId;
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return AnimatedBuilder(
       animation: store,
       builder: (context, _) {
@@ -668,92 +697,96 @@ class _AdvisorBubble extends StatelessWidget {
 }
 
 // ── بخش ارتقا/کاهش صنف (نمای مدیر) ────────────────────────────────────────
-class _PromotionSection extends StatelessWidget {
+// رفع اشکال هماهنگی: این بخش قبلاً فقط انبار محلیِ گوشیِ مدیر
+// (ProgressionStore) را می‌خواند و تغییر می‌داد — هرگز روی دیتابیس واقعی
+// اثر نمی‌گذاشت، یعنی «ارتقا»یی که مدیر اینجا می‌زد، نه شاگرد در نصاب
+// درسی‌اش می‌دید و نه با نصب مجدد باقی می‌ماند. اکنون از دادهٔ واقعیِ
+// `StudentDetail` (که خودِ سرور طبق lib/progress.ts::getPromotionStatus
+// محاسبه کرده) می‌خواند و اقدام را روی همان سرور اعمال می‌کند.
+class _PromotionSection extends ConsumerWidget {
   final String studentId;
-  final int grade;
-  const _PromotionSection({required this.studentId, required this.grade});
+  final StudentDetail detail;
+  const _PromotionSection({required this.studentId, required this.detail});
 
   void _snack(BuildContext context, String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 
   @override
-  Widget build(BuildContext context) {
-    final store = ProgressionStore.instance;
-    return AnimatedBuilder(
-      animation: store,
-      builder: (context, _) {
-        final p = store.progressFor(studentId, fallbackGrade: grade);
-        final canPromote = p.currentGrade < 12;
-        final canDemote = p.currentGrade > p.enrolledGrade && p.currentGrade > 7;
-        return SectionCard(
-          title: 'ارتقا / کاهش صنف',
-          icon: Icons.trending_up,
-          trailing: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppPalette.green.withValues(alpha: .12),
-              borderRadius: BorderRadius.circular(8),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final grade = detail.summary.grade;
+    final canPromote = grade < 12;
+    final canDemote = grade > 7;
+    final busy = ref.watch(studentActionsProvider).isLoading;
+
+    return SectionCard(
+      title: 'ارتقا / کاهش صنف',
+      icon: Icons.trending_up,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppPalette.green.withValues(alpha: .12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text('صنف فعلی: $grade',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppPalette.greenDark)),
+      ),
+      child: Column(children: [
+        ScoreBar(value: detail.summary.gradeAverage, label: 'تکمیل مضامین صنف $grade'),
+        const SizedBox(height: 12),
+        Row(children: [
+          Icon(detail.examPassed ? Icons.check_circle : Icons.pending_rounded,
+              size: 18, color: detail.examPassed ? AppPalette.green : AppPalette.amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              detail.examBestScore != null
+                  ? 'امتحان: ٪${detail.examBestScore!.toStringAsFixed(0)} ${detail.examPassed ? '(کامیاب)' : '(ناکام)'}'
+                  : 'امتحان: هنوز داده نشده',
+              style: const TextStyle(fontSize: 13),
             ),
-            child: Text('صنف فعلی: ${p.currentGrade}',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppPalette.greenDark)),
           ),
-          child: Column(children: [
-            ScoreBar(value: p.overallCompletion, label: 'تکمیل مضامین صنف ${p.currentGrade}'),
-            const SizedBox(height: 12),
-            Row(children: [
-              Icon(p.examPassed ? Icons.check_circle : Icons.pending_rounded,
-                  size: 18, color: p.examPassed ? AppPalette.green : AppPalette.amber),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  p.examTaken
-                      ? 'امتحان: ٪${p.examScore.toStringAsFixed(0)} ${p.examPassed ? '(کامیاب)' : '(ناکام)'}'
-                      : 'امتحان: هنوز داده نشده',
-                  style: const TextStyle(fontSize: 13),
-                ),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: AppPalette.green),
+              onPressed: canPromote && !busy
+                  ? () async {
+                      final newGrade = await ref.read(studentActionsProvider.notifier).promote(studentId);
+                      if (context.mounted) {
+                        _snack(context, newGrade != null ? 'به صنف $newGrade ارتقا یافت' : 'ارتقا ناکام شد');
+                      }
+                    }
+                  : null,
+              icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+              label: Text(canPromote ? 'ارتقا به صنف ${grade + 1}' : 'بالاترین صنف'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppPalette.red,
+                side: BorderSide(color: AppPalette.red.withValues(alpha: .5)),
               ),
-            ]),
-            const SizedBox(height: 14),
-            Row(children: [
-              Expanded(
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: AppPalette.green),
-                  onPressed: canPromote
-                      ? () {
-                          final target = p.currentGrade + 1;
-                          store.promote(studentId);
-                          _snack(context, 'به صنف $target ارتقا یافت');
-                        }
-                      : null,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-                  label: Text(canPromote ? 'ارتقا به صنف ${p.currentGrade + 1}' : 'بالاترین صنف'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppPalette.red,
-                    side: BorderSide(color: AppPalette.red.withValues(alpha: .5)),
-                  ),
-                  onPressed: canDemote
-                      ? () {
-                          final target = p.currentGrade - 1;
-                          store.demote(studentId);
-                          _snack(context, 'به صنف $target کاهش یافت');
-                        }
-                      : null,
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 18),
-                  label: const Text('کاهش صنف'),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Text('ارتقای دستی یک تصمیم مدیریتی است و مستقل از تکمیل خودکار انجام می‌شود.',
-                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
-          ]),
-        );
-      },
+              onPressed: canDemote && !busy
+                  ? () async {
+                      final newGrade = await ref.read(studentActionsProvider.notifier).demote(studentId);
+                      if (context.mounted) {
+                        _snack(context, newGrade != null ? 'به صنف $newGrade کاهش یافت' : 'کاهش ناکام شد');
+                      }
+                    }
+                  : null,
+              icon: const Icon(Icons.arrow_downward_rounded, size: 18),
+              label: const Text('کاهش صنف'),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Text('ارتقای دستی یک تصمیم مدیریتی است و مستقل از تکمیل خودکار انجام می‌شود.',
+            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+      ]),
     );
   }
 }

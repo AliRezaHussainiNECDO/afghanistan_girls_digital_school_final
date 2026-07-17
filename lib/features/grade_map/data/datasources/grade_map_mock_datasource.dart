@@ -43,6 +43,10 @@ class GradeMapMockDataSource implements GradeMapDataSource {
       gradeAveragePercent: p.overallCompletion,
       attendanceRatePercent: 91.2, // حاضری هنوز mock است (فاز ۳: از Backend)
       subjects: subjects,
+      allSubjectsComplete: p.allSubjectsComplete,
+      examPassed: p.examPassed,
+      examBestScore: p.examTaken ? p.examScore : null,
+      canPromote: p.canPromote,
     );
   }
 }

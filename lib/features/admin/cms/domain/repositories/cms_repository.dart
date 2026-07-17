@@ -21,8 +21,8 @@ abstract class CmsRepository {
   Future<Either<Failure, Unit>> deleteQuestion(String id);
   Future<Either<Failure, Unit>> setQuestionStatus(String id, ContentStatus status);
 
-  // Invite codes
-  Future<Either<Failure, List<CmsInviteCodeRow>>> getInviteCodes();
-  Future<Either<Failure, Unit>> generateInviteCodes(int count, String batchLabel);
+  // Invite codes — `type`: 'student' (پیش‌فرض) یا 'instructor'.
+  Future<Either<Failure, List<CmsInviteCodeRow>>> getInviteCodes({String type = 'student'});
+  Future<Either<Failure, Unit>> generateInviteCodes(int count, String batchLabel, {String type = 'student'});
   Future<Either<Failure, Unit>> revokeInviteCode(String id);
 }

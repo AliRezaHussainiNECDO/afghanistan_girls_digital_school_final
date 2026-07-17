@@ -20,6 +20,9 @@ final profileRepositoryProvider =
 final generateGuardianInviteCodeUseCaseProvider =
     Provider((ref) => GenerateGuardianInviteCodeUseCase(ref.watch(profileRepositoryProvider)));
 
-/// عکس پروفایل کاربر واردشده — فاز ۱: فقط در حافظه (per session)، بدون
-/// آپلود واقعی به سرور. با خروج از حساب پاک می‌شود (به‌صورت دستی ری‌ست کنید).
+/// پیش‌نمایش فوری/محلیِ عکس پروفایل (Optimistic UI) بلافاصله پس از انتخاب
+/// عکس — آپلود واقعی و ماندگار روی سرور (R2) از طریق
+/// `AuthSessionNotifier.uploadAvatar` انجام می‌شود که `avatarUrl` واقعی را
+/// در `authSessionProvider` ذخیره می‌کند؛ همان مقدار است که در همهٔ
+/// دستگاه‌ها/بخش‌ها دیده می‌شود. این Provider فقط برای نمایش آنیِ محلی است.
 final profilePhotoProvider = StateProvider<Uint8List?>((ref) => null);

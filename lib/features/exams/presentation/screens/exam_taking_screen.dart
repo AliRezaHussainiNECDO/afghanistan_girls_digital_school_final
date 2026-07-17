@@ -5,10 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/notifications/notification_center.dart';
+import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/celebration_overlay.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../grade_map/presentation/providers/grade_map_providers.dart';
 import '../../domain/entities/exam_entities.dart';
 import '../../domain/usecases/exams_usecases.dart';
 import '../providers/exams_providers.dart';
@@ -39,6 +43,24 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
     });
     if (mounted && _result != null && _result!.scorePercent >= 50) {
       CelebrationOverlay.of(context)?.burst();
+    }
+
+    // رفع اشکال ارتقای صنف: این امتحان یک امتحان «نهایی» واقعی بود و سرور
+    // ارتقا را بلافاصله روی دیتابیس اعمال کرد (بخش
+    // lib/progress.ts::promoteIfEligible) — نشست کاربر و نصاب درسی را
+    // بدون نیاز به ورود مجدد به‌روز می‌کنیم تا همه‌جا هماهنگ باشد.
+    final r = _result;
+    if (r != null && r.promoted && r.newGrade != null) {
+      ref.read(authSessionProvider.notifier).updateCurrentGrade(r.newGrade!);
+      ref.read(selectedGradeProvider.notifier).select(r.newGrade!);
+      final studentId = ref.read(authSessionProvider)?.id;
+      if (studentId != null) ref.invalidate(gradeMapProvider(studentId));
+      NotificationCenter.instance.push(
+        title: 'ارتقا به صنف بعدی 🎓',
+        body: 'تبریک! تمام مضامین را کامل کردی و امتحان نهایی را کامیاب شدی — به صنف ${r.newGrade} ارتقا یافتی.',
+        kind: NotificationKind.grade,
+        priority: NotificationPriority.high,
+      );
     }
   }
 

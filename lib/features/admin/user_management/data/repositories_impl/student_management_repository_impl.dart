@@ -55,4 +55,12 @@ class StudentManagementRepositoryImpl implements StudentManagementRepository {
   @override
   Future<Either<Failure, void>> sendPasswordResetLink(String studentId) =>
       _guard(() => remote.sendPasswordResetLink(studentId));
+
+  @override
+  Future<Either<Failure, int>> promoteStudent(String studentId) =>
+      _guard(() => remote.promoteGrade(studentId));
+
+  @override
+  Future<Either<Failure, int>> demoteStudent(String studentId) =>
+      _guard(() => remote.demoteGrade(studentId));
 }

@@ -216,6 +216,10 @@ class StudentManagementMockDataSource
       examsTaken: subs.length,
       classRank: classRank,
       classSize: classSize == 0 ? 1 : classSize,
+      allSubjectsComplete: progress.allSubjectsComplete,
+      examPassed: progress.examPassed,
+      examBestScore: progress.examTaken ? progress.examScore : null,
+      canPromote: progress.canPromote,
     );
   }
 
@@ -328,4 +332,16 @@ class StudentManagementMockDataSource
   @override
   Future<void> sendPasswordResetLink(String studentId) =>
       Future.delayed(const Duration(milliseconds: 300));
+
+  @override
+  Future<int> promoteGrade(String studentId) async {
+    ProgressionStore.instance.promote(studentId);
+    return ProgressionStore.instance.progressFor(studentId).currentGrade;
+  }
+
+  @override
+  Future<int> demoteGrade(String studentId) async {
+    ProgressionStore.instance.demote(studentId);
+    return ProgressionStore.instance.progressFor(studentId).currentGrade;
+  }
 }

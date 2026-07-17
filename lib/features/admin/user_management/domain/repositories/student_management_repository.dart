@@ -20,4 +20,11 @@ abstract class StudentManagementRepository {
 
   /// ارسال لینک ریست رمز (نه نمایش مستقیم رمز — بخش ۱۵.۲)
   Future<Either<Failure, void>> sendPasswordResetLink(String studentId);
+
+  /// ارتقای دستی صنف (تصمیم مدیریتی) — POST /admin/students/{id}/promote.
+  /// خروجی: صنف جدید.
+  Future<Either<Failure, int>> promoteStudent(String studentId);
+
+  /// کاهش دستی صنف (تصمیم مدیریتی) — POST /admin/students/{id}/demote.
+  Future<Either<Failure, int>> demoteStudent(String studentId);
 }

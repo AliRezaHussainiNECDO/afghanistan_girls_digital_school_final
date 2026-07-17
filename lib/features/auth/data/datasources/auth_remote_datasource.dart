@@ -62,6 +62,12 @@ abstract class AuthDataSource {
   /// آپلود عکس پروفایل روی سرور؛ خروجی آدرس کامل عکس یا null (در Mock).
   Future<String?> uploadAvatar(List<int> bytes, String contentType);
 
+  /// ویرایش نام کاربر فعلی — رفع اشکال: قبلاً فقط نشست محلی تغییر می‌کرد.
+  Future<AppUserModel> updateProfile({required String firstName, required String lastName});
+
+  /// تغییر رمز عبور — رفع اشکال: قبلاً در UI کاملاً ساختگی بود.
+  Future<void> changePassword({required String currentPassword, required String newPassword});
+
   Future<void> logout();
 
   AppUserModel? get currentUser;
@@ -238,6 +244,26 @@ class AuthRemoteDataSource implements AuthDataSource {
       );
     }
     return url;
+  }
+
+  @override
+  Future<AppUserModel> updateProfile({required String firstName, required String lastName}) async {
+    final body = await _api.patch('/auth/me', data: {
+      'firstName': firstName.trim(),
+      'lastName': lastName.trim(),
+    });
+    final userJson = (body['user'] is Map) ? Map<String, dynamic>.from(body['user'] as Map) : body;
+    final user = _userFromApi(userJson);
+    _cached = user;
+    return user;
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    await _api.post('/auth/change-password', data: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
   }
 
   @override

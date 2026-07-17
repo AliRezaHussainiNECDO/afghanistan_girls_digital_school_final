@@ -61,6 +61,21 @@ abstract class AuthRepository {
   /// آپلود عکس پروفایل؛ خروجی آدرس کامل عکس روی سرور یا null.
   Future<Either<Failure, String?>> uploadAvatar(List<int> bytes, String contentType);
 
+  /// ویرایش نام کاربر فعلی روی سرور (رفع اشکال: قبلاً فقط `state` محلی نشست
+  /// تغییر می‌کرد و با ورود مجدد یا در سایر داشبوردها دیده نمی‌شد).
+  Future<Either<Failure, AppUser>> updateProfile({
+    required String firstName,
+    required String lastName,
+  });
+
+  /// تغییر رمز عبور کاربر واردشده (نیاز به رمز فعلی) — رفع اشکال: قبلاً این
+  /// دیالوگ در UI هیچ درخواستی به سرور نمی‌فرستاد و صرفاً پیام موفقیت
+  /// ساختگی نشان می‌داد.
+  Future<Either<Failure, Unit>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+
   Future<Either<Failure, Unit>> logout();
 
   Future<AppUser?> getCurrentUser();

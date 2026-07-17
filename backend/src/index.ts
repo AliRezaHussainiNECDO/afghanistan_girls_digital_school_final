@@ -18,6 +18,7 @@ import mediaRouter from './routes/media';
 import cmsRouter from './routes/cms';
 import memoryRouter from './routes/memory';
 import academyRouter from './routes/academy';
+import advisorRouter from './routes/advisor';
 
 type Bindings = {
   DB: D1Database;
@@ -118,5 +119,8 @@ app.route('/api/v1', memoryRouter);
 
 // ─────────────────────── آکادمی (کتابخانه/بانک سؤال/پاسخ‌ها) ────────────────
 app.route('/api/v1', academyRouter);
+
+// ───────────────────────────── مشاور هوشمند ─────────────────────────────────
+app.route('/api/v1', advisorRouter);
 
 export default app;

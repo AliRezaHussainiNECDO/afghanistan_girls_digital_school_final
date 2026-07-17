@@ -19,8 +19,8 @@ abstract class CmsDataSource {
   Future<void> deleteQuestion(String id);
   Future<void> setQuestionStatus(String id, ContentStatus status);
 
-  Future<List<CmsInviteCodeRow>> getInviteCodes();
-  Future<void> generateInviteCodes(int count, String batchLabel);
+  Future<List<CmsInviteCodeRow>> getInviteCodes({String type = 'student'});
+  Future<void> generateInviteCodes(int count, String batchLabel, {String type = 'student'});
   Future<void> revokeInviteCode(String id);
 }
 
@@ -61,20 +61,25 @@ class CmsRemoteDataSource implements CmsDataSource {
       _api.patch('/admin/cms/books/$id/status', data: {'status': status.key});
 
   // ────────────────────────────── دروس ───────────────────────────────
+  // رفع اشکال: قبلاً این متدها `/admin/cms/lessons` را صدا می‌زدند که به
+  // جدول جداگانه و بی‌اثر `cms_lessons` می‌نوشت — نصاب واقعی که شاگردان
+  // می‌بینند از `lessons`/`chapters` (روتر curriculum) می‌آید. اکنون مستقیم
+  // به همان endpointهای واقعی وصل می‌شود.
 
   @override
   Future<List<CmsLessonRow>> getLessons() async {
-    final data = await _api.get('/admin/cms/lessons');
+    final data = await _api.get('/admin/curriculum/lessons');
     return ((data['lessons'] as List?) ?? []).map(_lessonFrom).toList();
   }
 
   @override
   Future<CmsLessonRow> saveLesson(CmsLessonRow row) async {
-    final data = await _api.post('/admin/cms/lessons', data: {
-      'id': row.id,
+    final data = await _api.post('/admin/curriculum/lessons', data: {
+      if (!row.id.startsWith('new')) 'id': row.id,
+      'gradeNumber': row.gradeNumber,
+      'subjectId': row.subjectId,
       'title': row.title,
       'chapterTitle': row.chapterTitle,
-      'bookTitle': row.bookTitle,
       'durationMinutes': row.durationMinutes,
       'content': row.content,
       'status': row.status.key,
@@ -83,11 +88,11 @@ class CmsRemoteDataSource implements CmsDataSource {
   }
 
   @override
-  Future<void> deleteLesson(String id) => _api.delete('/admin/cms/lessons/$id');
+  Future<void> deleteLesson(String id) => _api.delete('/admin/curriculum/lessons/$id');
 
   @override
   Future<void> setLessonStatus(String id, ContentStatus status) =>
-      _api.patch('/admin/cms/lessons/$id/status', data: {'status': status.key});
+      _api.patch('/admin/curriculum/lessons/$id/status', data: {'status': status.key});
 
   // ────────────────────────────── سؤالات ─────────────────────────────
 
@@ -120,17 +125,23 @@ class CmsRemoteDataSource implements CmsDataSource {
       _api.patch('/admin/cms/questions/$id/status', data: {'status': status.key});
 
   // ──────────────────── کدهای دعوت (روتر admin موجود) ─────────────────
+  // رفع اشکال: قبلاً `type` همیشه به‌صورت ثابت 'student' فرستاده می‌شد —
+  // یعنی تب «کدهای استادان» اصلاً به این DataSource وصل نبود (کد دیگری
+  // به‌صورت کاملاً محلی روی گوشی مدیر می‌ساخت که هرگز در جدول واقعی
+  // `invite_codes` سرور ثبت نمی‌شد، پس صفحهٔ راجستر استاد آن را «نامعتبر»
+  // می‌دانست). اکنون `type` پارامتری است تا هم کد شاگرد و هم کد استاد از
+  // همین یک مسیر واحد و واقعی عبور کنند.
 
   @override
-  Future<List<CmsInviteCodeRow>> getInviteCodes() async {
-    final data = await _api.get('/admin/invite-codes', queryParameters: {'type': 'student'});
+  Future<List<CmsInviteCodeRow>> getInviteCodes({String type = 'student'}) async {
+    final data = await _api.get('/admin/invite-codes', queryParameters: {'type': type});
     return ((data['inviteCodes'] as List?) ?? []).map(_inviteFrom).toList();
   }
 
   @override
-  Future<void> generateInviteCodes(int count, String batchLabel) => _api.post(
+  Future<void> generateInviteCodes(int count, String batchLabel, {String type = 'student'}) => _api.post(
         '/admin/invite-codes/bulk-generate',
-        data: {'type': 'student', 'count': count, 'batchLabel': batchLabel},
+        data: {'type': type, 'count': count, 'batchLabel': batchLabel},
       );
 
   @override
@@ -153,8 +164,9 @@ class CmsRemoteDataSource implements CmsDataSource {
   CmsLessonRow _lessonFrom(dynamic e) => CmsLessonRow(
         id: e['id'] as String,
         title: e['title'] as String? ?? '',
+        gradeNumber: (e['gradeNumber'] as num?)?.toInt() ?? 7,
+        subjectId: e['subjectId'] as String? ?? '',
         chapterTitle: e['chapterTitle'] as String? ?? '',
-        bookTitle: e['bookTitle'] as String? ?? '',
         durationMinutes: (e['durationMinutes'] as num?)?.toInt() ?? 0,
         content: e['content'] as String? ?? '',
         status: ContentStatusX.fromKey(e['status'] as String? ?? 'draft'),

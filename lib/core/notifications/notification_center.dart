@@ -3,11 +3,17 @@ import '../../shared_models/app_notification.dart';
 
 /// مرکز اعلان‌های درون‌برنامه‌ای — یک منبع واحد و زندهٔ اعلان‌ها که هر بخش
 /// اپ می‌تواند به آن اعلان جدید «push» کند (مثلاً هنگام انتشار کتاب، ساخت
-/// امتحان جدید، یا ثبت نمرهٔ شاگرد). چون یک [ChangeNotifier] است، هر صفحه‌ای
-/// که به آن گوش می‌دهد بلافاصله به‌روزرسانی می‌شود.
+/// امتحان جدید، یا ثبت نمرهٔ شاگرد) تا بلافاصله (همین نشست) دیده شود. چون
+/// یک [ChangeNotifier] است، هر صفحه‌ای که به آن گوش می‌دهد بلافاصله
+/// به‌روزرسانی می‌شود.
 ///
-/// در فاز اتصال به Backend، همین‌جا می‌توان اعلان‌های Push واقعی (FCM/APNs)
-/// را نیز دریافت و به همین لیست تزریق کرد، بدون تغییر در UI.
+/// رفع اشکال: این مرکز فقط در حافظهٔ برنامه (per-device, per-session) بود و
+/// هیچ‌وقت به سرور وصل نمی‌شد — یعنی اعلان‌های واقعی سرور (نمرهٔ امتحان،
+/// اعلان والدین و...، از جدول `notifications`) هرگز در این فهرست دیده
+/// نمی‌شدند. اکنون [ingestServer] اعلان‌های واقعی سرور را با این فهرست محلی
+/// ادغام می‌کند (بدون تکرار) تا هم فوریتِ UX محلی و هم صحتِ داده‌های سرور
+/// با هم حفظ شوند. برای هر آیتمی که منشأ سرور دارد، [isServerSourced] آن را
+/// علامت می‌زند تا صفحهٔ اعلان‌ها بداند کِی باید backend را هم به‌روز کند.
 class NotificationCenter extends ChangeNotifier {
   NotificationCenter._();
   static final NotificationCenter instance = NotificationCenter._();
@@ -24,6 +30,11 @@ class NotificationCenter extends ChangeNotifier {
     ),
   ];
 
+  /// شناسهٔ اعلان‌هایی که منشأ واقعی سرور دارند (برای markRead هوشمند).
+  final Set<String> _serverIds = {};
+
+  bool isServerSourced(String id) => _serverIds.contains(id);
+
   /// فهرست اعلان‌ها از جدید به قدیم.
   List<AppNotification> get items {
     final copy = [..._items]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -34,7 +45,7 @@ class NotificationCenter extends ChangeNotifier {
 
   int _seq = 0;
 
-  /// افزودن یک اعلان جدید و اطلاع‌رسانی به شنونده‌ها.
+  /// افزودن یک اعلان جدید و اطلاع‌رسانی به شنونده‌ها (فقط محلی/همین نشست).
   void push({
     required String title,
     required String body,
@@ -53,6 +64,26 @@ class NotificationCenter extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  /// ادغام اعلان‌های واقعیِ دریافت‌شده از سرور با فهرست محلی — بدون تکرار
+  /// (بر اساس id). حذفِ آیتم محلیِ صرفاً-Seed «خوش‌آمدگویی» وقتی اولین
+  /// دستهٔ واقعی سرور می‌رسد، لازم نیست چون id متفاوت دارد.
+  void ingestServer(List<AppNotification> serverItems) {
+    var changed = false;
+    for (final n in serverItems) {
+      _serverIds.add(n.id);
+      final idx = _items.indexWhere((e) => e.id == n.id);
+      if (idx == -1) {
+        _items.add(n);
+        changed = true;
+      } else if (_items[idx].read != n.read) {
+        // وضعیت خوانده‌شدن را از سرور (منبع حقیقت) همگام نگه دار.
+        _items[idx] = n;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
   }
 
   void markRead(String id) {
@@ -77,6 +108,7 @@ class NotificationCenter extends ChangeNotifier {
   void clear() {
     if (_items.isEmpty) return;
     _items.clear();
+    _serverIds.clear();
     notifyListeners();
   }
 }

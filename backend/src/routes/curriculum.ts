@@ -11,10 +11,22 @@
  *   GET  /students/:studentId/grade-map         (Bearer اجباری — Server-Authoritative)
  *   GET  /students/me/points                    (Bearer اجباری) خلاصهٔ امتیاز شاگرد
  *   GET  /students/:studentId/points            (Bearer اجباری — خودش/مدیر/والدِ لینک‌شده)
+ *
+ *   GET    /admin/curriculum/lessons                    (فقط مدیر — رفع اشکال تب «دروس» CMS)
+ *   POST   /admin/curriculum/lessons                    (فقط مدیر — ایجاد/ویرایش، فصل را خودکار پیدا/می‌سازد)
+ *   PATCH  /admin/curriculum/lessons/:id/status         (فقط مدیر)
+ *   DELETE /admin/curriculum/lessons/:id                (فقط مدیر)
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
-import { getSubjectProgressList, averagePercent, getChapterList, getPointsSummary, recordLessonView } from '../lib/progress';
+import {
+  getSubjectProgressList,
+  averagePercent,
+  getChapterList,
+  getPointsSummary,
+  recordLessonView,
+  getPromotionStatus,
+} from '../lib/progress';
 
 type Bindings = { DB: D1Database; JWT_SECRET: string; };
 const c11m = new Hono<{ Bindings: Bindings }>();
@@ -153,12 +165,20 @@ c11m.get('/students/:studentId/grade-map', async (c) => {
     completionPercent: r.percent,
   }));
 
+  // وضعیت واقعی ارتقا (رفع اشکال: قبلاً این عدد فقط محلی/ساختگی بود —
+  // بخش lib/progress.ts::getPromotionStatus).
+  const promotion = await getPromotionStatus(c.env.DB, uid, grade);
+
   return c.json({
     gradeNumber: grade,
     gradeLocked: false,
     gradeAveragePercent: averagePercent(subjectsProgress),
     attendanceRatePercent: 0, // در ماژول ۳ (حاضری) پر می‌شود
     subjects,
+    allSubjectsComplete: promotion.allSubjectsComplete,
+    examPassed: promotion.examPassed,
+    examBestScore: promotion.examBestScore,
+    canPromote: promotion.canPromote,
   });
 });
 
@@ -437,6 +457,135 @@ c11m.delete('/curriculum-library/books/:id', async (c) => {
 
   await c.env.DB.prepare('DELETE FROM curriculum_library_books WHERE id = ?').bind(bookId).run();
   return c.json({ success: true, deletedChapters: chapters.length });
+});
+
+// ═══════════════════ مدیریت دستیِ درس‌ها (رفع اشکال «مدیریت محتوا > دروس») ═══
+// قبلاً تب «دروس» در CMS مدیر فقط به جدول جداگانه و بی‌اثر `cms_lessons`
+// می‌نوشت که هیچ شاگردی هرگز نمی‌دید — نصاب واقعی که شاگردان می‌بینند
+// همیشه از `lessons`/`chapters` (بالا) خوانده می‌شود. این Endpointها به
+// همان جدول‌های واقعی می‌نویسند (علاوه بر مسیر اصلیِ افزودن محتوا که
+// بارگذاری/استخراج خودکار کتاب در «کتابخانهٔ نصاب» است) تا مدیر بتواند
+// یک درسِ تکی را هم سریع دستی اضافه/ویرایش/حذف کند.
+
+function lessonAdminJson(r: any) {
+  return {
+    id: r.id,
+    title: r.title_fa,
+    gradeNumber: r.grade_number,
+    subjectId: r.subject_id,
+    chapterId: r.chapter_id,
+    chapterTitle: r.chapter_title_fa,
+    durationMinutes: r.estimated_minutes,
+    content: r.content_body,
+    status: r.status,
+    updatedAt: r.updated_at,
+  };
+}
+
+const ADMIN_LESSON_SELECT = `SELECT l.id, l.title_fa, l.estimated_minutes, l.content_body, l.status, l.updated_at,
+    l.chapter_id, ch.title_fa AS chapter_title_fa, ch.grade_number, ch.subject_id
+  FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id`;
+
+c11m.get('/admin/curriculum/lessons', async (c) => {
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const { results } = await c.env.DB.prepare(`${ADMIN_LESSON_SELECT} ORDER BY l.updated_at DESC`).all<any>();
+  return c.json({ lessons: results.map(lessonAdminJson) });
+});
+
+c11m.post('/admin/curriculum/lessons', async (c) => {
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req
+    .json<{
+      id?: string;
+      gradeNumber?: number;
+      subjectId?: string;
+      chapterTitle?: string;
+      title?: string;
+      durationMinutes?: number;
+      content?: string;
+      status?: string;
+    }>()
+    .catch(() => null);
+  const gradeNumber = Number(b?.gradeNumber ?? 0);
+  const subjectId = String(b?.subjectId ?? '').trim();
+  const chapterTitle = String(b?.chapterTitle ?? '').trim();
+  const title = String(b?.title ?? '').trim();
+  if (!gradeNumber || !subjectId || !chapterTitle || !title) {
+    return c.json(fail('BAD_REQUEST', 'صنف، مضمون، عنوان فصل و عنوان درس لازم است', 'Missing fields'), 400);
+  }
+  const status = b?.status === 'published' ? 'published' : 'draft';
+  const durationMinutes = Number(b?.durationMinutes ?? 15);
+  const content = String(b?.content ?? '');
+
+  // فصل را پیدا کن یا بساز (بر اساس صنف+مضمون+عنوان — بدون کتاب مبدأ خاص).
+  let chapter = await c.env.DB.prepare(
+    'SELECT id FROM chapters WHERE grade_number = ? AND subject_id = ? AND title_fa = ?',
+  )
+    .bind(gradeNumber, subjectId, chapterTitle)
+    .first<{ id: string }>();
+  let chapterId: string;
+  if (chapter) {
+    chapterId = chapter.id;
+  } else {
+    const countRow = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM chapters WHERE grade_number = ? AND subject_id = ?',
+    )
+      .bind(gradeNumber, subjectId)
+      .first<{ n: number }>();
+    chapterId = `ch_manual_${crypto.randomUUID()}`;
+    await c.env.DB.prepare(
+      'INSERT INTO chapters (id, grade_number, subject_id, title_fa, order_index, status) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+      .bind(chapterId, gradeNumber, subjectId, chapterTitle, (countRow?.n ?? 0) + 1, 'published')
+      .run();
+  }
+
+  const id = b?.id && String(b.id).trim().length > 0 ? String(b.id).trim() : `ls_manual_${crypto.randomUUID()}`;
+  const existing = await c.env.DB.prepare('SELECT id FROM lessons WHERE id = ?').bind(id).first();
+  if (existing) {
+    await c.env.DB.prepare(
+      `UPDATE lessons SET chapter_id = ?, title_fa = ?, estimated_minutes = ?, content_body = ?, status = ?,
+         updated_at = datetime('now') WHERE id = ?`,
+    )
+      .bind(chapterId, title, durationMinutes, content, status, id)
+      .run();
+  } else {
+    const orderRow = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM lessons WHERE chapter_id = ?')
+      .bind(chapterId)
+      .first<{ n: number }>();
+    await c.env.DB.prepare(
+      `INSERT INTO lessons (id, chapter_id, title_fa, estimated_minutes, order_index, content_body, status, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    )
+      .bind(id, chapterId, title, durationMinutes, (orderRow?.n ?? 0) + 1, content, status)
+      .run();
+  }
+
+  const row = await c.env.DB.prepare(`${ADMIN_LESSON_SELECT} WHERE l.id = ?`).bind(id).first<any>();
+  return c.json({ lesson: lessonAdminJson(row) });
+});
+
+c11m.patch('/admin/curriculum/lessons/:id/status', async (c) => {
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const b = await c.req.json<{ status?: string }>().catch(() => null);
+  const status = b?.status === 'published' ? 'published' : 'draft';
+  await c.env.DB.prepare("UPDATE lessons SET status = ?, updated_at = datetime('now') WHERE id = ?")
+    .bind(status, c.req.param('id'))
+    .run();
+  return c.json({ success: true });
+});
+
+c11m.delete('/admin/curriculum/lessons/:id', async (c) => {
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM student_lesson_views WHERE lesson_id = ?').bind(id).run();
+  try {
+    await c.env.DB.prepare('DELETE FROM lesson_embeddings WHERE lesson_id = ?').bind(id).run();
+  } catch (_) {
+    // جدول ممکن است هنوز مهاجرت نشده باشد.
+  }
+  await c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
 });
 
 export default c11m;

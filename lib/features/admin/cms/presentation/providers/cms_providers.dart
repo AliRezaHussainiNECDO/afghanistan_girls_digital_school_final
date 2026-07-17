@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../../core/instructor/instructor_invite_store.dart';
 import '../../../../../core/network/network_providers.dart';
 import '../../../../../core/student/student_invite_store.dart';
 import '../../../../../core/usecase/usecase.dart';
@@ -61,11 +62,22 @@ final cmsQuestionsProvider = FutureProvider<List<CmsQuestionRow>>((ref) async {
 
 /// انبار کدهای شاگردان به‌صورت Provider — با هر تغییر (ساخت/ابطال توسط
 /// مدیر، یا مصرف کد هنگام ثبت‌نام شاگرد) لیست خودکار بازسازی می‌شود.
+/// (فقط در حالت Mock واقعاً تغییر می‌کند؛ در حالت Backend واقعی صرفاً یک
+/// شیء بی‌اثر watch می‌شود — بی‌خطر.)
 final studentInviteStoreProvider =
     ChangeNotifierProvider<StudentInviteStore>((ref) => StudentInviteStore.instance);
 
-final cmsInviteCodesProvider = FutureProvider<List<CmsInviteCodeRow>>((ref) async {
-  ref.watch(studentInviteStoreProvider); // بازسازی زنده پس از هر تغییر
-  final result = await ref.read(getInviteCodesUseCaseProvider).call(const NoParams());
+/// همتای بالا برای کدهای دعوت استاد — رفع اشکال: تب «کدهای استادان» قبلاً
+/// این را دور می‌زد و مستقیم `InstructorInviteStore` را در Widget صدا
+/// می‌زد؛ کدی که آنجا ساخته می‌شد هرگز به سرور نمی‌رسید.
+final instructorInviteStoreProvider =
+    ChangeNotifierProvider<InstructorInviteStore>((ref) => InstructorInviteStore.instance);
+
+/// کدهای دعوت — `type`: 'student' یا 'instructor'.
+final cmsInviteCodesProvider =
+    FutureProvider.family<List<CmsInviteCodeRow>, String>((ref, type) async {
+  ref.watch(studentInviteStoreProvider); // بازسازی زنده پس از هر تغییر (حالت Mock)
+  ref.watch(instructorInviteStoreProvider);
+  final result = await ref.read(getInviteCodesUseCaseProvider).call(type);
   return result.fold((f) => throw f, (v) => v);
 });

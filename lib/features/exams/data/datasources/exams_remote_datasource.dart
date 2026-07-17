@@ -53,6 +53,8 @@ class ExamsRemoteDataSource implements ExamsDataSource {
       scorePercent: (data['scorePercent'] as num?)?.toDouble() ?? 0,
       correctCount: (data['correctCount'] as num?)?.toInt() ?? 0,
       totalCount: (data['totalCount'] as num?)?.toInt() ?? 0,
+      promoted: data['promoted'] as bool? ?? false,
+      newGrade: (data['newGrade'] as num?)?.toInt(),
     );
   }
 

@@ -3,24 +3,30 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
-import '../../../../../core/instructor/instructor_invite_store.dart';
+import '../../../../../core/widgets/error_view.dart';
+import '../../../../../core/widgets/loading_view.dart';
+import '../../domain/entities/cms_entities.dart';
+import '../../domain/usecases/cms_usecases.dart';
+import '../providers/cms_providers.dart';
 import 'cms_shared.dart';
-
-/// انبار کدهای استادان به‌صورت Provider — با هر تغییر (ساخت/ابطال/مصرف کد
-/// هنگام ثبت‌نام استاد) لیست مدیر بلافاصله بازسازی می‌شود.
-final instructorInviteStoreProvider =
-    ChangeNotifierProvider<InstructorInviteStore>((ref) => InstructorInviteStore.instance);
 
 /// تب «کدهای استادان» در CMS مدیر (بخش ۲.۲ سند: افزودن استاد فقط توسط
 /// Super Admin).
 ///
 /// جریان کامل:
-/// ۱. مدیر با نام/تخصص استادِ موردنظر یک کد یک‌بارمصرف `TCH-XXXXXX`
-///    (اعتبار ۱۴ روز) می‌سازد و آن را کاپی/ارسال می‌کند.
+/// ۱. مدیر با نام/تخصص استادِ موردنظر یک کد یک‌بارمصرف `TCH-XXXXXX` می‌سازد
+///    و آن را کاپی/ارسال می‌کند.
 /// ۲. استاد در صفحهٔ راجستر ← «استاد سمینار» با همان کد حسابش را فعال
 ///    می‌کند.
-/// ۳. وضعیت کد اینجا زنده به‌روز می‌شود: استفاده‌نشده → استفاده‌شده (با نام،
-///    ایمیل و تخصص واقعی استاد) — قابلیت بازبینی کامل برای مدیر.
+/// ۳. وضعیت کد اینجا زنده به‌روز می‌شود.
+///
+/// رفع اشکال: قبلاً این تب مستقیماً یک انبار محلیِ گوشیِ مدیر
+/// (`InstructorInviteStore`) را می‌ساخت و می‌خواند — کاملاً جدا از
+/// `/api/v1/admin/invite-codes` واقعی. یعنی هر کدی که مدیر اینجا می‌ساخت،
+/// هرگز در جدول واقعی `invite_codes` سرور ثبت نمی‌شد، پس صفحهٔ راجستر
+/// استاد (که مستقیماً از همان جدول واقعی می‌خواند) همیشه می‌گفت «کد نامعتبر
+/// است». اکنون این تب دقیقاً از همان مسیر واحد و واقعی «کدهای دعوت شاگرد»
+/// عبور می‌کند، فقط با `type: 'instructor'`.
 class InstructorCodesTab extends ConsumerStatefulWidget {
   const InstructorCodesTab({super.key});
 
@@ -33,7 +39,7 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
 
   Future<void> _showGenerateDialog() async {
     final labelController = TextEditingController();
-    final created = await showDialog<InstructorInviteCode>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('کد دعوت استاد جدید'),
@@ -52,7 +58,7 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: Text(
-                'کد یک‌بارمصرف است و ۱۴ روز اعتبار دارد.',
+                'کد یک‌بارمصرف است.',
                 style: TextStyle(
                     fontSize: 11.5,
                     color: Theme.of(dialogContext).colorScheme.onSurfaceVariant),
@@ -62,26 +68,26 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('لغو')),
           FilledButton.icon(
             icon: const Icon(Icons.vpn_key_rounded, size: 18),
             label: const Text('ساخت کد'),
-            onPressed: () {
-              final invite = InstructorInviteStore.instance
-                  .issueCode(label: labelController.text.trim());
-              Navigator.pop(dialogContext, invite);
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
           ),
         ],
       ),
     );
-    if (created != null && mounted) {
-      // کد تازه‌ساخته بلافاصله برای ارسال به استاد کاپی می‌شود.
-      await Clipboard.setData(ClipboardData(text: created.code));
+    if (confirmed == true && mounted) {
+      await ref.read(generateInviteCodesUseCaseProvider).call(GenerateInviteCodesParams(
+            count: 1,
+            batchLabel: labelController.text.trim(),
+            type: 'instructor',
+          ));
+      ref.invalidate(cmsInviteCodesProvider('instructor'));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('کد «${created.code}» ساخته و کاپی شد — آن را به استاد بدهید'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('کد جدید ساخته شد — از فهرست پایین کپی و به استاد بدهید'),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -90,14 +96,7 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
 
   @override
   Widget build(BuildContext context) {
-    final store = ref.watch(instructorInviteStoreProvider);
-    final codes = store.codes
-        .where((c) =>
-            _query.isEmpty ||
-            c.code.contains(_query.toUpperCase()) ||
-            c.label.contains(_query) ||
-            c.usedByName.contains(_query))
-        .toList();
+    final codesAsync = ref.watch(cmsInviteCodesProvider('instructor'));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -107,45 +106,64 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
         icon: const Icon(Icons.person_add_alt_1_rounded),
         label: const Text('کد استاد جدید'),
       ),
-      body: Column(
-        children: [
-          CmsSearchBar(onChanged: (v) => setState(() => _query = v.trim())),
-          Expanded(
-            child: codes.isEmpty
-                ? const CmsEmptyView()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                    itemCount: codes.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, i) {
-                      final c = codes[i];
-                      return _InstructorCodeCard(
-                        invite: c,
-                        onCopy: () {
-                          Clipboard.setData(ClipboardData(text: c.code));
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text('«${c.code}» کاپی شد'),
-                            behavior: SnackBarBehavior.floating,
-                          ));
+      body: codesAsync.when(
+        loading: () => const LoadingView(),
+        error: (e, st) => ErrorView(
+          message: e.toString(),
+          onRetry: () => ref.invalidate(cmsInviteCodesProvider('instructor')),
+        ),
+        data: (allCodes) {
+          final codes = allCodes
+              .where((c) =>
+                  _query.isEmpty ||
+                  c.code.contains(_query.toUpperCase()) ||
+                  c.batchLabel.contains(_query) ||
+                  c.usedByName.contains(_query))
+              .toList();
+          return Column(
+            children: [
+              CmsSearchBar(onChanged: (v) => setState(() => _query = v.trim())),
+              Expanded(
+                child: codes.isEmpty
+                    ? const CmsEmptyView()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                        itemCount: codes.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, i) {
+                          final c = codes[i];
+                          return _InstructorCodeCard(
+                            invite: c,
+                            onCopy: () {
+                              Clipboard.setData(ClipboardData(text: c.code));
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('«${c.code}» کاپی شد'),
+                                behavior: SnackBarBehavior.floating,
+                              ));
+                            },
+                            onRevoke: c.status == 'unused'
+                                ? () async {
+                                    await ref.read(revokeInviteCodeUseCaseProvider).call(c.id);
+                                    ref.invalidate(cmsInviteCodesProvider('instructor'));
+                                  }
+                                : null,
+                          )
+                              .animate()
+                              .fadeIn(delay: (30 * i).ms, duration: 260.ms)
+                              .slideY(begin: 0.08);
                         },
-                        onRevoke: c.status == InstructorCodeStatus.unused
-                            ? () => InstructorInviteStore.instance.revoke(c.id)
-                            : null,
-                      )
-                          .animate()
-                          .fadeIn(delay: (30 * i).ms, duration: 260.ms)
-                          .slideY(begin: 0.08);
-                    },
-                  ),
-          ),
-        ],
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _InstructorCodeCard extends StatelessWidget {
-  final InstructorInviteCode invite;
+  final CmsInviteCodeRow invite;
   final VoidCallback onCopy;
   final VoidCallback? onRevoke;
   const _InstructorCodeCard({required this.invite, required this.onCopy, this.onRevoke});
@@ -154,10 +172,10 @@ class _InstructorCodeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (statusLabel, statusColor) = switch (invite.status) {
-      InstructorCodeStatus.used => ('استفاده‌شده', AppColors.green600),
-      InstructorCodeStatus.revoked => ('باطل‌شده', scheme.error),
-      InstructorCodeStatus.unused =>
-        invite.expired ? ('منقضی', AppColors.ink500) : ('فعال', AppColors.info),
+      'used' => ('استفاده‌شده', AppColors.green600),
+      'revoked' => ('باطل‌شده', scheme.error),
+      'expired' => ('منقضی', AppColors.ink500),
+      _ => ('فعال', AppColors.info),
     };
 
     return Container(
@@ -190,8 +208,8 @@ class _InstructorCodeCard extends StatelessWidget {
                         textDirection: TextDirection.ltr,
                         style: const TextStyle(
                             fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1)),
-                    if (invite.label.isNotEmpty)
-                      Text(invite.label,
+                    if (invite.batchLabel.isNotEmpty)
+                      Text(invite.batchLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
@@ -213,7 +231,7 @@ class _InstructorCodeCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           // ── جزئیات: چه کسی استفاده کرد / چند روز اعتبار مانده ──
-          if (invite.status == InstructorCodeStatus.used) ...[
+          if (invite.status == 'used' && invite.usedByName.isNotEmpty) ...[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),
@@ -221,20 +239,10 @@ class _InstructorCodeCard extends StatelessWidget {
                 color: AppColors.green600.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(AppRadii.md),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('فعال‌شده توسط: ${invite.usedByName}',
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${invite.usedByEmail}${invite.usedSpecialty.isEmpty ? '' : ' · تخصص: ${invite.usedSpecialty}'}',
-                    style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
+              child: Text('فعال‌شده توسط: ${invite.usedByName}',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
             ),
-          ] else if (invite.status == InstructorCodeStatus.unused && !invite.expired)
+          ] else if (invite.status == 'unused' && invite.expiresAt != null)
             Text('اعتبار: ${invite.remainingDays} روز دیگر',
                 style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 8),

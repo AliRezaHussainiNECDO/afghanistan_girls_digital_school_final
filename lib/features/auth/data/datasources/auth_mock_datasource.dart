@@ -192,6 +192,44 @@ class AuthMockDataSource implements AuthDataSource {
   Future<String?> uploadAvatar(List<int> bytes, String contentType) async => null;
 
   @override
+  Future<AppUserModel> updateProfile({required String firstName, required String lastName}) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    final current = _currentUser;
+    if (current == null) throw const ServerFailure('وارد نشده‌اید', code: 'UNAUTHORIZED');
+    final fullName = [firstName, lastName].where((s) => s.trim().isNotEmpty).join(' ').trim();
+    final updated = AppUserModel(
+      id: current.id,
+      email: current.email,
+      displayName: fullName.isEmpty ? current.displayName : fullName,
+      firstName: firstName,
+      lastName: lastName,
+      currentGrade: current.currentGrade,
+      role: current.role,
+      preferredLanguage: current.preferredLanguage,
+      awaitingParentLink: current.awaitingParentLink,
+      avatarUrl: current.avatarUrl,
+      emailVerified: current.emailVerified,
+    );
+    _currentUser = updated;
+    return updated;
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final current = _currentUser;
+    if (current == null) throw const ServerFailure('وارد نشده‌اید', code: 'UNAUTHORIZED');
+    final account = _accounts[current.email.trim().toLowerCase()];
+    if (account == null || account.password != currentPassword) {
+      throw const ServerFailure('رمز عبور فعلی نادرست است', code: 'INVALID_CREDENTIALS');
+    }
+    if (newPassword.length < 8) {
+      throw const ServerFailure('رمز عبور جدید باید حداقل ۸ کاراکتر باشد', code: 'WEAK_PASSWORD');
+    }
+    _accounts[current.email.trim().toLowerCase()] = (password: newPassword, user: account.user);
+  }
+
+  @override
   Future<void> logout() async {
     _currentUser = null;
   }

@@ -3,10 +3,16 @@
  *
  * Endpointها (زیر `/api/v1`):
  *   GET  /seminars?audience=students|parents&instructor=<id>
+ *   GET  /seminars/live
  *   GET  /seminars/:id
+ *   GET  /seminars/:id/registrations    (استاد/مدیر) فهرست ثبت‌نامی‌ها
  *   POST /seminars                      (استاد/مدیر) ساخت
+ *   PUT  /seminars/:id                  (استاد/مدیر) ویرایش
+ *   DELETE /seminars/:id                (استاد/مدیر)
  *   POST /seminars/:id/register         (کاربر) ثبت‌نام یک‌بار
  *   PATCH /seminars/:id/status          (استاد/مدیر) تغییر وضعیت
+ *   POST /seminars/:id/go-live          (استاد/مدیر) شروع پخش زنده
+ *   POST /seminars/:id/end-live         (استاد/مدیر) پایان پخش زنده
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -34,7 +40,29 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
 }
 
-async function toSeminarJson(c: any, row: any): Promise<any> {
+/**
+ * رفع اشکال امنیتیِ کنترل دسترسی (IDOR): قبلاً PUT/DELETE/status/go-live/
+ * end-live فقط نقش «استاد سمینار» را چک می‌کردند، نه مالکیت واقعیِ همان
+ * سمینار — یعنی هر استادی می‌توانست سمینار استاد دیگری را ویرایش/حذف کند
+ * یا حتی به‌جای او پخش زنده شروع کند. اکنون فقط مالک واقعی (instructor_id)
+ * یا Super Admin اجازه دارند.
+ */
+async function loadOwnedSeminar(
+  c: any,
+  id: string,
+  me: { sub: string; role: string },
+): Promise<{ ok: true; row: any } | { ok: false; response: Response }> {
+  const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?').bind(id).first<any>();
+  if (!row) {
+    return { ok: false, response: c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404) };
+  }
+  if (me.role !== 'super_admin' && row.instructor_id !== me.sub) {
+    return { ok: false, response: c.json(fail('FORBIDDEN', 'شما مالک این سمینار نیستید', 'Not the owner'), 403) };
+  }
+  return { ok: true, row };
+}
+
+async function toSeminarJson(c: { env: Bindings }, row: any): Promise<any> {
   const { results } = await c.env.DB.prepare(
     'SELECT user_id FROM seminar_registrations WHERE seminar_id = ?',
   )
@@ -142,6 +170,8 @@ seminars.get('/seminars/:id/registrations', async (c) => {
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
+  const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
+  if (!owned.ok) return owned.response;
   const { results } = await c.env.DB.prepare(
     `SELECT r.user_id AS userId,
             TRIM(COALESCE(u.first_name,'') || ' ' || COALESCE(u.last_name,'')) AS name,
@@ -268,8 +298,8 @@ seminars.put('/seminars/:id', async (c) => {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
   const id = c.req.param('id');
-  const existing = await c.env.DB.prepare('SELECT id FROM seminars WHERE id = ?').bind(id).first();
-  if (!existing) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404);
+  const owned = await loadOwnedSeminar(c, id, me);
+  if (!owned.ok) return owned.response;
   const b = await c.req.json<any>().catch(() => null);
   if (!b) return c.json(fail('BAD_REQUEST', 'بدنهٔ نامعتبر', 'Invalid body'), 400);
 
@@ -322,6 +352,8 @@ seminars.delete('/seminars/:id', async (c) => {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
   const id = c.req.param('id');
+  const owned = await loadOwnedSeminar(c, id, me);
+  if (!owned.ok) return owned.response;
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM seminar_registrations WHERE seminar_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM seminars WHERE id = ?').bind(id),
@@ -336,6 +368,8 @@ seminars.patch('/seminars/:id/status', async (c) => {
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
+  const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
+  if (!owned.ok) return owned.response;
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const valid = ['draft', 'published', 'registrationClosed', 'live', 'ended', 'archived'];
   if (!b?.status || !valid.includes(b.status)) {
@@ -357,10 +391,9 @@ seminars.post('/seminars/:id/go-live', async (c) => {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
   const id = c.req.param('id');
-  const sem = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?').bind(id).first<any>();
-  if (!sem) {
-    return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404);
-  }
+  const owned = await loadOwnedSeminar(c, id, me);
+  if (!owned.ok) return owned.response;
+  const sem = owned.row;
   if (!streamConfigured(c)) {
     return c.json(
       fail(
@@ -438,6 +471,8 @@ seminars.post('/seminars/:id/end-live', async (c) => {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
   const id = c.req.param('id');
+  const owned = await loadOwnedSeminar(c, id, me);
+  if (!owned.ok) return owned.response;
   await c.env.DB.prepare("UPDATE seminars SET status = 'ended' WHERE id = ?").bind(id).run();
   return c.json({ success: true });
 });

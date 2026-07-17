@@ -11,6 +11,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { promoteIfEligible } from '../lib/progress';
 
 type Bindings = {
   DB: D1Database;
@@ -118,9 +119,9 @@ exams.post('/exams/:examId/submit', async (c) => {
 
   const roundedScore = Math.round(score * 10) / 10;
   // ثبت تلاش + یک اعلان نتیجه (تا اعلان‌ها از رویداد واقعی پر شوند — بخش ۱۳.۱).
-  const examRow = await c.env.DB.prepare('SELECT title FROM exams WHERE id = ?')
+  const examRow = await c.env.DB.prepare('SELECT title, type, grade_number FROM exams WHERE id = ?')
     .bind(examId)
-    .first<{ title: string }>();
+    .first<{ title: string; type: string; grade_number: number }>();
   await c.env.DB.batch([
     c.env.DB.prepare(
       'INSERT INTO exam_attempts (id, exam_id, user_id, score_percent, correct_count, total_count) VALUES (?, ?, ?, ?, ?, ?)',
@@ -135,10 +136,20 @@ exams.post('/exams/:examId/submit', async (c) => {
     ),
   ]);
 
+  // رفع اشکال ارتقای صنف: قبلاً ارتقا فقط در ذخیرهٔ محلی گوشی شبیه‌سازی
+  // می‌شد. اکنون اگر این یک امتحانِ «نهایی» بود، بلافاصله شرایط ارتقای
+  // واقعی (تکمیل تمام مضامین + کامیابی در امتحان) روی سرور بررسی می‌شود.
+  let promotion: { promoted: boolean; newGrade: number | null } = { promoted: false, newGrade: null };
+  if (examRow?.type === 'final') {
+    promotion = await promoteIfEligible(c.env.DB, me.sub);
+  }
+
   return c.json({
     scorePercent: Math.round(score * 10) / 10,
     correctCount: correct,
     totalCount: total,
+    promoted: promotion.promoted,
+    newGrade: promotion.newGrade,
   });
 });
 

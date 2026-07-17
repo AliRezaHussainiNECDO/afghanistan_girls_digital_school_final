@@ -1,13 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import '../../../core/network/api_client.dart';
 import '../domain/advisor_entities.dart';
+import 'advisor_remote_datasource.dart';
 
 /// انبار گفتگوهای «مشاور هوشمند» — تاریخچهٔ هر شاگرد به‌صورت جداگانه نگه
 /// داشته می‌شود تا هم شاگرد گفتگوی خود را ادامه دهد و هم مدیر بتواند در
 /// جزئیات شاگرد آن را بازبینی/تعقیب کند.
 ///
 /// یک [ChangeNotifier] singleton است؛ هر صفحه‌ای که گوش می‌دهد بلافاصله
-/// به‌روزرسانی می‌شود. در فاز اتصال به Backend، همین منبع با API جایگزین
-/// می‌شود بدون تغییر در UI.
+/// به‌روزرسانی می‌شود.
+///
+/// رفع اشکال حیاتی امنیتی: قبلاً این گفتگو *فقط* در همین حافظهٔ محلی می‌ماند
+/// و هرگز به سرور نمی‌رسید — یعنی پیام‌های پرچم‌شده (نشانهٔ خودآزاری/آزار/
+/// ازدواج اجباری) هرگز به مدیر واقعی مکتب نمی‌رسید، با اینکه به شاگرد گفته
+/// می‌شد «مدیریت بازبینی می‌کند». اکنون در حالت Live، هر پیام پس از افزودن
+/// محلی (برای فوریتِ UX) هم‌زمان روی سرور نیز ثبت می‌شود (Write-through)، و
+/// [hydrateForStudent]/[hydrateForAdmin] تاریخچهٔ واقعی را از سرور می‌خوانند.
 class AdvisorStore extends ChangeNotifier {
   AdvisorStore._() {
     _seed();
@@ -17,6 +27,46 @@ class AdvisorStore extends ChangeNotifier {
   final Map<String, List<AdvisorMessage>> _byStudent = {};
   final Map<String, String> _names = {};
   int _seq = 0;
+
+  // ───────────────────── همگام‌سازی با سرور (Write-through) ─────────────────
+  AdvisorRemoteDataSource? _remote;
+  final Set<String> _hydratedStudents = {};
+
+  /// اتصال به سرور (فقط در حالت Live صدا زده می‌شود).
+  void configure(ApiClient api) {
+    _remote ??= AdvisorRemoteDataSource(api);
+  }
+
+  bool get isLive => _remote != null;
+
+  /// بارگذاری تاریخچهٔ واقعیِ شاگرد جاری از سرور (جایگزین دادهٔ نمونه).
+  Future<void> hydrateForStudent(String studentId) async {
+    final r = _remote;
+    if (r == null || _hydratedStudents.contains(studentId)) return;
+    try {
+      final msgs = await r.fetchOwnMessages();
+      _byStudent[studentId] = msgs;
+      _hydratedStudents.add(studentId);
+      notifyListeners();
+    } catch (_) {
+      // خطای شبکه: دادهٔ محلی فعلی حفظ می‌شود تا UI خالی نماند.
+    }
+  }
+
+  /// بارگذاری تاریخچهٔ یک شاگرد مشخص برای نمای مدیر.
+  Future<void> hydrateForAdmin(String studentId) async {
+    final r = _remote;
+    if (r == null) return;
+    try {
+      final msgs = await r.fetchStudentMessages(studentId);
+      _byStudent[studentId] = msgs;
+      if (msgs.isNotEmpty) _names[studentId] = msgs.first.studentName;
+      _hydratedStudents.add(studentId);
+      notifyListeners();
+    } catch (_) {
+      // خطای شبکه: فهرست فعلی (احتمالاً خالی) حفظ می‌شود.
+    }
+  }
 
   void _seed() {
     // نمونه‌های واقع‌گرایانه برای چند شاگرد فهرست مدیر (stu-1000..).
@@ -89,6 +139,13 @@ class AdvisorStore extends ChangeNotifier {
     _byStudent.putIfAbsent(studentId, () => []).add(msg);
     _names[studentId] = studentName;
     notifyListeners();
+
+    final r = _remote;
+    if (r != null) {
+      unawaited(r
+          .postMessage(role: role, text: text, topic: topic, flagged: flagged, studentName: studentName)
+          .catchError((_) {}));
+    }
     return msg;
   }
 

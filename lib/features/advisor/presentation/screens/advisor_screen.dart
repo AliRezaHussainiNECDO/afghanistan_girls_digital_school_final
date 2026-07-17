@@ -73,7 +73,9 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         topic: reply.topic,
       );
       if (reply.flagged) {
-        // اطلاع به مدیر برای بازبینی و حمایت.
+        // اطلاع واقعی به همهٔ مدیران از سرور می‌رسد (داخل POST
+        // /advisor/messages که `store.add(...)` بالا آن را صدا می‌زند).
+        // این یکی فقط برای بازخورد آنیِ محلی/همین‌نشست به خودِ شاگرد است.
         NotificationCenter.instance.push(
           title: 'گفتگوی مشاور نیاز به توجه دارد 💙',
           body: '$_studentName پیامی حساس ارسال کرد — لطفاً در جزئیات شاگرد بازبینی شود.',
@@ -97,6 +99,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
   @override
   Widget build(BuildContext context) {
     final store = ref.watch(advisorStoreProvider);
+    final hydration = ref.watch(advisorStudentHydrationProvider);
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
@@ -106,22 +109,24 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         children: [
           _MonitoredNotice(),
           Expanded(
-            child: AnimatedBuilder(
-              animation: store,
-              builder: (context, _) {
-                final msgs = store.messagesFor(_studentId);
-                if (msgs.isEmpty) return _intro(context);
-                return ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  itemCount: msgs.length,
-                  itemBuilder: (context, i) => _Bubble(msg: msgs[i])
-                      .animate()
-                      .fadeIn(duration: 220.ms)
-                      .slideY(begin: 0.1),
-                );
-              },
-            ),
+            child: hydration.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : AnimatedBuilder(
+                    animation: store,
+                    builder: (context, _) {
+                      final msgs = store.messagesFor(_studentId);
+                      if (msgs.isEmpty) return _intro(context);
+                      return ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        itemCount: msgs.length,
+                        itemBuilder: (context, i) => _Bubble(msg: msgs[i])
+                            .animate()
+                            .fadeIn(duration: 220.ms)
+                            .slideY(begin: 0.1),
+                      );
+                    },
+                  ),
           ),
           if (_sending)
             Padding(

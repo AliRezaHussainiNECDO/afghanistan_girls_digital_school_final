@@ -60,6 +60,82 @@ export function averagePercent(list: SubjectProgress[]): number {
   return Math.round((sum / list.length) * 10) / 10;
 }
 
+// ═══════════════════ ارتقای واقعی صنف (Server-Authoritative) ═══════════════
+// رفع اشکال: قبلاً «تکمیل مضامین + کامیابی در امتحان» و ارتقای صنف فقط در
+// یک ذخیرهٔ محلی روی گوشی (ProgressionStore) شبیه‌سازی می‌شد و هرگز به
+// دیتابیس واقعی نمی‌رسید — یعنی با نصب مجدد یا روی گوشی دیگر از بین
+// می‌رفت و با نصاب واقعی (همینجا محاسبه‌شده) هماهنگ نبود. از این پس صنف
+// فعال (`users.current_grade`) فقط از همین‌جا و بر پایهٔ دادهٔ واقعی
+// تغییر می‌کند.
+
+/** حداقل نمرهٔ امتحان «نهایی» برای کامیابی و ارتقا (هماهنگ با kPromoteExamMark کلاینت). */
+export const PROMOTION_EXAM_PASS_PERCENT = 80;
+
+export type PromotionStatus = {
+  allSubjectsComplete: boolean;
+  examPassed: boolean;
+  examBestScore: number | null;
+  canPromote: boolean;
+};
+
+/**
+ * وضعیت واجد شرایط بودن برای ارتقا — «همان دو شرط» که قبلاً فقط محلی
+ * بررسی می‌شد، اکنون از دادهٔ واقعی سرور:
+ *   ۱) تمام مضامینی که در این صنف محتوا دارند، ۱۰۰٪ دیده شده باشند.
+ *   ۲) شاگرد حداقل یک امتحانِ «نهایی» منتشرشدهٔ همین صنف را با نمرهٔ
+ *      ≥۸۰٪ داده باشد (هر مضمونی — طبق طراحی فاز ۱).
+ */
+export async function getPromotionStatus(
+  db: D1Database,
+  studentId: string,
+  grade: number,
+): Promise<PromotionStatus> {
+  const subjectsProgress = await getSubjectProgressList(db, studentId, grade);
+  const withContent = subjectsProgress.filter((s) => s.totalLessons > 0);
+  const allSubjectsComplete = withContent.length > 0 && withContent.every((s) => s.percent >= 100);
+
+  const bestRow = await db
+    .prepare(
+      `SELECT MAX(a.score_percent) AS best FROM exam_attempts a
+       JOIN exams e ON e.id = a.exam_id
+       WHERE a.user_id = ? AND e.grade_number = ? AND e.type = 'final' AND e.status = 'published'`,
+    )
+    .bind(studentId, grade)
+    .first<{ best: number | null }>();
+  const examBestScore = bestRow?.best ?? null;
+  const examPassed = (examBestScore ?? 0) >= PROMOTION_EXAM_PASS_PERCENT;
+
+  return {
+    allSubjectsComplete,
+    examPassed,
+    examBestScore,
+    canPromote: allSubjectsComplete && examPassed,
+  };
+}
+
+/**
+ * اگر شاگرد واجد شرایط باشد، صنف فعال را واقعاً (روی دیتابیس) یک پله بالا
+ * می‌برد. Idempotent و بی‌خطر است — اگر واجد شرایط نباشد یا در بالاترین
+ * صنف (۱۲) باشد، کاری نمی‌کند.
+ */
+export async function promoteIfEligible(
+  db: D1Database,
+  studentId: string,
+): Promise<{ promoted: boolean; newGrade: number | null }> {
+  const student = await db.prepare('SELECT current_grade FROM users WHERE id = ?').bind(studentId).first<{
+    current_grade: number | null;
+  }>();
+  const grade = student?.current_grade ?? 7;
+  if (grade >= 12) return { promoted: false, newGrade: null };
+
+  const status = await getPromotionStatus(db, studentId, grade);
+  if (!status.canPromote) return { promoted: false, newGrade: null };
+
+  const newGrade = grade + 1;
+  await db.prepare('UPDATE users SET current_grade = ? WHERE id = ?').bind(newGrade, studentId).run();
+  return { promoted: true, newGrade };
+}
+
 export type ChapterProgress = {
   id: string;
   titleFa: string;

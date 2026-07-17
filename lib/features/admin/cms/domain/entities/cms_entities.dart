@@ -93,21 +93,31 @@ class CmsBookRow extends Equatable {
   List<Object?> get props => [id, title, category, author, grade, chaptersCount, description, status, updatedAt];
 }
 
+/// درسِ واقعیِ نصاب — بخش ۶ سند (جدول‌های `lessons`/`chapters`).
+///
+/// رفع اشکال: قبلاً این ردیف فقط برای جدول جداگانه و بی‌اثر `cms_lessons`
+/// بود (بدون هیچ رابطه‌ای با صنف/مضمون/فصل واقعی) و هیچ شاگردی هرگز آن را
+/// نمی‌دید. اکنون `gradeNumber`/`subjectId` اضافه شده تا مستقیماً به فصل
+/// واقعیِ نصاب (پیدا/ساخته‌شده روی سرور) وصل شود؛ `bookTitle` حذف شد چون در
+/// نصاب واقعی معنایی ندارد (کتاب مبدأ اختیاری است و از «کتابخانهٔ نصاب»
+/// می‌آید، نه از این فرم).
 class CmsLessonRow extends Equatable {
   final String id;
   final String title;
+  final int gradeNumber; // ۷..۱۲
+  final String subjectId; // مثلاً math, physics, ...
   final String chapterTitle;
-  final String bookTitle;
   final int durationMinutes;
-  final String content; // خلاصهٔ متن درس
+  final String content; // متن درس
   final ContentStatus status;
   final DateTime updatedAt;
 
   const CmsLessonRow({
     required this.id,
     required this.title,
+    this.gradeNumber = 7,
+    this.subjectId = '',
     required this.chapterTitle,
-    this.bookTitle = '',
     this.durationMinutes = 0,
     this.content = '',
     this.status = ContentStatus.draft,
@@ -116,8 +126,9 @@ class CmsLessonRow extends Equatable {
 
   CmsLessonRow copyWith({
     String? title,
+    int? gradeNumber,
+    String? subjectId,
     String? chapterTitle,
-    String? bookTitle,
     int? durationMinutes,
     String? content,
     ContentStatus? status,
@@ -126,8 +137,9 @@ class CmsLessonRow extends Equatable {
       CmsLessonRow(
         id: id,
         title: title ?? this.title,
+        gradeNumber: gradeNumber ?? this.gradeNumber,
+        subjectId: subjectId ?? this.subjectId,
         chapterTitle: chapterTitle ?? this.chapterTitle,
-        bookTitle: bookTitle ?? this.bookTitle,
         durationMinutes: durationMinutes ?? this.durationMinutes,
         content: content ?? this.content,
         status: status ?? this.status,
@@ -136,7 +148,7 @@ class CmsLessonRow extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, title, chapterTitle, bookTitle, durationMinutes, content, status, updatedAt];
+      [id, title, gradeNumber, subjectId, chapterTitle, durationMinutes, content, status, updatedAt];
 }
 
 class CmsQuestionRow extends Equatable {

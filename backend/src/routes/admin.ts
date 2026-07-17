@@ -16,6 +16,8 @@
  *   GET    /students/:id/ai-report          گزارش معلم هوشمند (محاسبه‌شده از داده واقعی)
  *   PATCH  /students/:id/status             body {status, reason}
  *   POST   /students/:id/password-reset-link ارسال کد بازیابی به ایمیل شاگرد
+ *   POST   /students/:id/promote             ارتقای دستی صنف (تصمیم مدیریتی — بدون شرط تکمیل)
+ *   POST   /students/:id/demote              کاهش دستی صنف (تصمیم مدیریتی)
  *   ── نصاب هوشمند (بخش شناسایی فصل از کتاب) ──
  *   POST   /curriculum/subjects/:subjectId/publish-chapters   انتشار فصل‌های شناسایی‌شده از یک کتاب (کلاینت)
  *   POST   /curriculum-library/books/:id/auto-structure       ساختاربندی خودکار سمت سرور (وقتی تشخیص کلاینت ناموفق بود)
@@ -39,7 +41,7 @@ import {
   sha256B64Url,
   randomSixDigitCode,
 } from '../lib/email';
-import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
+import { getSubjectProgressList, averagePercent, getPointsSummary, getPromotionStatus } from '../lib/progress';
 import { embedText } from '../lib/embeddings';
 import { structureBookText, aiRenameFallbackChapters, smartFixRtlText } from '../lib/curriculumStructuring';
 
@@ -711,6 +713,10 @@ admin.get('/students/:id', async (c) => {
   // امتیاز فعالیت (Gamification) — همان امتیازی که در خانهٔ شاگرد نمایش داده می‌شود.
   const points = await getPointsSummary(c.env.DB, id);
 
+  // وضعیت واقعی ارتقا — همان منبعی که «نصاب درسی» شاگرد و بخش ارتقا/کاهش
+  // این پنل از آن استفاده می‌کنند (رفع اشکال ناهماهنگی قبلی با ProgressionStore محلی).
+  const promotion = await getPromotionStatus(c.env.DB, id, grade);
+
   return c.json({
     summary,
     email: u.email,
@@ -734,7 +740,42 @@ admin.get('/students/:id', async (c) => {
     points_total: points.totalPoints,
     points_level: points.level,
     points_level_title_fa: points.levelTitleFa,
+    all_subjects_complete: promotion.allSubjectsComplete,
+    exam_passed: promotion.examPassed,
+    exam_best_score: promotion.examBestScore,
+    can_promote: promotion.canPromote,
   });
+});
+
+// ارتقا/کاهش دستی صنف — تصمیم مدیریتی مستقل از شرط تکمیل خودکار (بخش
+// ۱۵.۲). رفع اشکال: قبلاً این اقدام فقط در ProgressionStore محلی روی
+// گوشی مدیر انجام می‌شد و هرگز روی دیتابیس واقعی اثر نمی‌گذاشت.
+admin.post('/students/:id/promote', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const id = c.req.param('id');
+  const u = await c.env.DB.prepare("SELECT current_grade FROM users WHERE id = ? AND role='student'")
+    .bind(id)
+    .first<{ current_grade: number | null }>();
+  if (!u) return c.json(fail('NOT_FOUND', 'شاگرد یافت نشد', 'Student not found'), 404);
+  const current = u.current_grade ?? 7;
+  if (current >= 12) return c.json(fail('BAD_REQUEST', 'شاگرد در بالاترین صنف است', 'Already at top grade'), 400);
+  const newGrade = current + 1;
+  await c.env.DB.prepare('UPDATE users SET current_grade = ? WHERE id = ?').bind(newGrade, id).run();
+  return c.json({ success: true, newGrade });
+});
+
+admin.post('/students/:id/demote', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  const id = c.req.param('id');
+  const u = await c.env.DB.prepare("SELECT current_grade FROM users WHERE id = ? AND role='student'")
+    .bind(id)
+    .first<{ current_grade: number | null }>();
+  if (!u) return c.json(fail('NOT_FOUND', 'شاگرد یافت نشد', 'Student not found'), 404);
+  const current = u.current_grade ?? 7;
+  if (current <= 7) return c.json(fail('BAD_REQUEST', 'شاگرد در پایین‌ترین صنف است', 'Already at lowest grade'), 400);
+  const newGrade = current - 1;
+  await c.env.DB.prepare('UPDATE users SET current_grade = ? WHERE id = ?').bind(newGrade, id).run();
+  return c.json({ success: true, newGrade });
 });
 
 admin.get('/students/:id/ai-report', async (c) => {

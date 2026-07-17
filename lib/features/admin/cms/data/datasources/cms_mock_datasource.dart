@@ -1,3 +1,4 @@
+import '../../../../../core/instructor/instructor_invite_store.dart';
 import '../../../../../core/student/student_invite_store.dart';
 import '../../domain/entities/cms_entities.dart';
 import 'cms_remote_datasource.dart' show CmsDataSource;
@@ -51,8 +52,9 @@ class CmsMockDataSource implements CmsDataSource {
     CmsLessonRow(
       id: 'l1',
       title: 'معادلات درجهٔ دوم',
-      chapterTitle: 'فصل ۳',
-      bookTitle: 'ریاضی صنف نهم',
+      gradeNumber: 9,
+      subjectId: 'math',
+      chapterTitle: 'فصل ۳: معادلات',
       durationMinutes: 35,
       content: 'تعریف معادلهٔ درجهٔ دوم، روش‌های حل (فاکتورگیری، فرمول عمومی) و مثال‌های کاربردی.',
       status: ContentStatus.published,
@@ -61,8 +63,9 @@ class CmsMockDataSource implements CmsDataSource {
     CmsLessonRow(
       id: 'l2',
       title: 'حرکت نیوتنی',
-      chapterTitle: 'فصل ۲',
-      bookTitle: 'فزیک صنف نهم',
+      gradeNumber: 9,
+      subjectId: 'physics',
+      chapterTitle: 'فصل ۲: حرکت',
       durationMinutes: 40,
       content: 'قوانین سه‌گانهٔ نیوتن و کاربرد آن‌ها در حل مسائل حرکت.',
       status: ContentStatus.draft,
@@ -153,8 +156,9 @@ class CmsMockDataSource implements CmsDataSource {
       final created = CmsLessonRow(
         id: _newId('l'),
         title: saved.title,
+        gradeNumber: saved.gradeNumber,
+        subjectId: saved.subjectId,
         chapterTitle: saved.chapterTitle,
-        bookTitle: saved.bookTitle,
         durationMinutes: saved.durationMinutes,
         content: saved.content,
         status: saved.status,
@@ -225,6 +229,23 @@ class CmsMockDataSource implements CmsDataSource {
   // می‌سازد واقعاً در راجستر کار می‌کند، مصرفش اینجا «استفاده‌شده» می‌شود
   // (با نام شاگرد)، و ابطال مدیر بلافاصله کد را در راجستر بی‌اعتبار می‌کند.
 
+  /// نگاشت کد دعوت استاد (`InstructorInviteStore`) به همان شکل عمومی —
+  /// تا تب «کدهای استادان» از همین مسیر واحد (repository → usecase →
+  /// provider) بگذرد و دیگر مستقیماً Store را در Widget صدا نزند.
+  CmsInviteCodeRow _instructorRow(InstructorInviteCode c) => CmsInviteCodeRow(
+        id: c.id,
+        code: c.code,
+        batchLabel: c.label,
+        status: switch (c.status) {
+          InstructorCodeStatus.used => 'used',
+          InstructorCodeStatus.revoked => 'revoked',
+          InstructorCodeStatus.unused => c.expired ? 'expired' : 'unused',
+        },
+        createdAt: c.createdAt,
+        usedByName: c.usedByName,
+        expiresAt: c.expiresAt,
+      );
+
   CmsInviteCodeRow _toRow(StudentInviteCode c) => CmsInviteCodeRow(
         id: c.id,
         code: c.code,
@@ -239,21 +260,37 @@ class CmsMockDataSource implements CmsDataSource {
         expiresAt: c.expiresAt,
       );
 
-  Future<List<CmsInviteCodeRow>> getInviteCodes() async {
+  @override
+  Future<List<CmsInviteCodeRow>> getInviteCodes({String type = 'student'}) async {
     await Future.delayed(const Duration(milliseconds: 250));
+    if (type == 'instructor') {
+      return InstructorInviteStore.instance.codes.map(_instructorRow).toList();
+    }
     return StudentInviteStore.instance.codes.map(_toRow).toList();
   }
 
   /// طبق بخش ۳ب.۳ سند: صدور دسته‌ای Invite Code با `batch_label`.
   /// تولید کد در Store با `Random.secure()` و الفبای بدون ابهام انجام
   /// می‌شود؛ اعتبار پیش‌فرض هر کد ۳۰ روز است.
-  Future<void> generateInviteCodes(int count, String batchLabel) async {
+  @override
+  Future<void> generateInviteCodes(int count, String batchLabel, {String type = 'student'}) async {
     await Future.delayed(const Duration(milliseconds: 350));
+    if (type == 'instructor') {
+      // کد استاد یکی‌یکی و برای یک شخص مشخص ساخته می‌شود (برچسب = نام/تخصص).
+      for (var i = 0; i < count; i++) {
+        InstructorInviteStore.instance.issueCode(label: batchLabel);
+      }
+      return;
+    }
     StudentInviteStore.instance.generateBatch(count, batchLabel);
   }
 
+  @override
   Future<void> revokeInviteCode(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
+    // شناسهٔ کد استاد و شاگرد فضای نام جداگانه دارند («inst-» / معمولاً غیرِآن)،
+    // پس امتحان هر دو انبار بی‌خطر است — فقط همان‌جایی که واقعاً وجود دارد اثر می‌کند.
     StudentInviteStore.instance.revoke(id);
+    InstructorInviteStore.instance.revoke(id);
   }
 }

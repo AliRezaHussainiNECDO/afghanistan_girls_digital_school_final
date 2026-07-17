@@ -7,6 +7,10 @@ class GradeMapModel extends GradeMap {
     required super.gradeAveragePercent,
     required super.attendanceRatePercent,
     required super.subjects,
+    super.allSubjectsComplete,
+    super.examPassed,
+    super.examBestScore,
+    super.canPromote,
   });
 
   factory GradeMapModel.fromJson(Map<String, dynamic> json) => GradeMapModel(
@@ -23,5 +27,9 @@ class GradeMapModel extends GradeMap {
                   completionPercent: (e['completionPercent'] as num? ?? 0).toDouble(),
                 ))
             .toList(),
+        allSubjectsComplete: json['allSubjectsComplete'] as bool? ?? false,
+        examPassed: json['examPassed'] as bool? ?? false,
+        examBestScore: (json['examBestScore'] as num?)?.toDouble(),
+        canPromote: json['canPromote'] as bool? ?? false,
       );
 }

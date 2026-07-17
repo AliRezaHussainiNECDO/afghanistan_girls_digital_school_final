@@ -168,6 +168,14 @@ class StudentDetail {
   final int classRank; // رتبه در صنف (بخش ۸.۱ — محاسبهٔ سرور)
   final int classSize;
 
+  /// وضعیت واقعی ارتقا — همان منبعی که خودِ شاگرد در «نصاب درسی» می‌بیند
+  /// (رفع اشکال: قبلاً این بخش پنل مدیر از ProgressionStore محلی می‌خواند
+  /// که هرگز با دیتابیس واقعی هماهنگ نبود).
+  final bool allSubjectsComplete;
+  final bool examPassed;
+  final double? examBestScore;
+  final bool canPromote;
+
   const StudentDetail({
     required this.summary,
     required this.email,
@@ -182,6 +190,10 @@ class StudentDetail {
     required this.examsTaken,
     required this.classRank,
     required this.classSize,
+    this.allSubjectsComplete = false,
+    this.examPassed = false,
+    this.examBestScore,
+    this.canPromote = false,
   });
 }
 

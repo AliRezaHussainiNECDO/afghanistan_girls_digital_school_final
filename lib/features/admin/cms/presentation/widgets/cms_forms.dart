@@ -1,8 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/localization/app_localizations.dart';
+import '../../../../../shared_models/subject.dart';
 import '../../domain/entities/cms_entities.dart';
 import '../providers/cms_providers.dart';
+
+/// ۶ صنفِ ثابت مکتب — هماهنگ با جدول واقعی `grades` سرور (۷ تا ۱۲).
+const List<int> _kGrades = [7, 8, 9, 10, 11, 12];
+
+Widget _gradeDropdown(int value, ValueChanged<int> onChanged) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: DropdownButtonFormField<int>(
+      initialValue: _kGrades.contains(value) ? value : _kGrades.first,
+      decoration: const InputDecoration(labelText: 'صنف', border: OutlineInputBorder(), isDense: true),
+      items: _kGrades.map((g) => DropdownMenuItem(value: g, child: Text('صنف $g'))).toList(),
+      onChanged: (v) => onChanged(v ?? _kGrades.first),
+    ),
+  );
+}
+
+Widget _subjectDropdown(String value, ValueChanged<String> onChanged) {
+  final valid = mockSubjects.any((s) => s.id == value) ? value : mockSubjects.first.id;
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: DropdownButtonFormField<String>(
+      initialValue: valid,
+      decoration: const InputDecoration(labelText: 'مضمون', border: OutlineInputBorder(), isDense: true),
+      items: mockSubjects.map((s) => DropdownMenuItem(value: s.id, child: Text(s.nameFa))).toList(),
+      onChanged: (v) => onChanged(v ?? mockSubjects.first.id),
+    ),
+  );
+}
 
 // ─────────────────────── Shared form pieces ───────────────────────
 class _FormScaffold extends StatelessWidget {
@@ -185,22 +214,23 @@ class LessonFormSheet extends ConsumerStatefulWidget {
 
 class _LessonFormSheetState extends ConsumerState<LessonFormSheet> {
   late final _title = TextEditingController(text: widget.existing?.title ?? '');
-  late final _book = TextEditingController(text: widget.existing?.bookTitle ?? '');
   late final _chapter = TextEditingController(text: widget.existing?.chapterTitle ?? '');
   late final _duration = TextEditingController(text: (widget.existing?.durationMinutes ?? '').toString());
   late final _content = TextEditingController(text: widget.existing?.content ?? '');
+  late int _grade = widget.existing?.gradeNumber ?? 7;
+  late String _subjectId = widget.existing?.subjectId ?? mockSubjects.first.id;
   late ContentStatus _status = widget.existing?.status ?? ContentStatus.draft;
 
   @override
   void dispose() {
-    for (final c in [_title, _book, _chapter, _duration, _content]) {
+    for (final c in [_title, _chapter, _duration, _content]) {
       c.dispose();
     }
     super.dispose();
   }
 
   Future<void> _save() async {
-    if (_title.text.trim().isEmpty) {
+    if (_title.text.trim().isEmpty || _chapter.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.tr('admin.requiredField')), behavior: SnackBarBehavior.floating),
       );
@@ -209,7 +239,8 @@ class _LessonFormSheetState extends ConsumerState<LessonFormSheet> {
     final row = CmsLessonRow(
       id: widget.existing?.id ?? 'new',
       title: _title.text.trim(),
-      bookTitle: _book.text.trim(),
+      gradeNumber: _grade,
+      subjectId: _subjectId,
       chapterTitle: _chapter.text.trim(),
       durationMinutes: int.tryParse(_duration.text.trim()) ?? 0,
       content: _content.text.trim(),
@@ -231,7 +262,8 @@ class _LessonFormSheetState extends ConsumerState<LessonFormSheet> {
       onSave: _save,
       children: [
         _field(_title, context.tr('admin.fTitle')),
-        _field(_book, context.tr('admin.fBook')),
+        _gradeDropdown(_grade, (v) => setState(() => _grade = v)),
+        _subjectDropdown(_subjectId, (v) => setState(() => _subjectId = v)),
         _field(_chapter, context.tr('admin.fChapter')),
         _field(_duration, context.tr('admin.fDuration'), keyboard: TextInputType.number),
         _field(_content, context.tr('admin.fContent'), maxLines: 4),

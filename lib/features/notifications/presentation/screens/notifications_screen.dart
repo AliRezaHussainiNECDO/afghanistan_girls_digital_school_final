@@ -7,6 +7,7 @@ import '../../../../core/notifications/notification_center.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/app_notification.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../providers/notifications_providers.dart';
 
 IconData _kindIcon(NotificationKind k) {
   switch (k) {
@@ -61,12 +62,53 @@ String _bucketFor(DateTime d) {
   return 'قدیمی‌تر';
 }
 
-class NotificationsScreen extends ConsumerWidget {
+/// صفحهٔ اعلان‌ها.
+///
+/// رفع اشکال: قبلاً این صفحه فقط `NotificationCenter.instance` (حافظهٔ
+/// محلی/همین نشست، بدون اتصال به سرور) را نمایش می‌داد؛ اعلان‌های واقعیِ
+/// سرور (مثلاً نمرهٔ امتحان از `exams.ts`، اعلان والدین از `parents.ts`، که
+/// در جدول واقعی `notifications` ذخیره می‌شوند) هرگز دیده نمی‌شدند. اکنون
+/// این صفحه ابتدا فهرست واقعی سرور را می‌گیرد (`notificationsProvider`) و
+/// با `NotificationCenter.ingestServer` با فهرست محلی ادغام می‌کند — هم
+/// صحت داده‌های سرور و هم فوریتِ toastهای همین‌نشست (مثل ارتقای صنف) حفظ
+/// می‌شود. علامت «خوانده‌شد» برای آیتم‌های با منشأ سرور به backend هم اعلام
+/// می‌شود.
+class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  Future<void> _markRead(String id) async {
     final center = NotificationCenter.instance;
+    final wasServerSourced = center.isServerSourced(id);
+    center.markRead(id);
+    if (wasServerSourced) {
+      await ref.read(markNotificationReadUseCaseProvider).call(id);
+    }
+  }
+
+  Future<void> _markAllRead(List<AppNotification> items) async {
+    final center = NotificationCenter.instance;
+    final unreadServerIds = items.where((n) => !n.read && center.isServerSourced(n.id)).map((n) => n.id).toList();
+    center.markAllRead();
+    for (final id in unreadServerIds) {
+      await ref.read(markNotificationReadUseCaseProvider).call(id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final center = NotificationCenter.instance;
+
+    ref.listen<AsyncValue<List<AppNotification>>>(notificationsProvider, (previous, next) {
+      next.whenData((list) => center.ingestServer(list));
+    });
+    // اگر داده‌های سرور از قبل حاضر است (کش شده)، همین حالا هم ادغام کن.
+    ref.watch(notificationsProvider).whenData((list) => center.ingestServer(list));
+
     return AppScaffold(
       title: context.tr('notifications.title'),
       role: AppUserRole.student,
@@ -79,7 +121,7 @@ class NotificationsScreen extends ConsumerWidget {
                   tooltip: 'خواندن همه',
                   icon: const Icon(Icons.done_all_rounded, color: Colors.white),
                   onPressed: () {
-                    center.markAllRead();
+                    _markAllRead(center.items);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('همهٔ اعلان‌ها خوانده شد'), behavior: SnackBarBehavior.floating),
                     );
@@ -117,7 +159,7 @@ class NotificationsScreen extends ConsumerWidget {
                 ),
                 ...buckets[s]!.asMap().entries.map((e) => _NotificationCard(
                       n: e.value,
-                      onTap: () => center.markRead(e.value.id),
+                      onTap: () => _markRead(e.value.id),
                     ).animate().fadeIn(delay: (30 * e.key).ms, duration: 240.ms).slideX(begin: 0.06)),
               ],
             ],

@@ -14,6 +14,8 @@ abstract class StudentManagementRemoteDataSource {
   Future<void> patchStatus(String studentId, AccountStatus status, String reason);
   Future<void> softDelete(String studentId, String reason);
   Future<void> sendPasswordResetLink(String studentId);
+  Future<int> promoteGrade(String studentId);
+  Future<int> demoteGrade(String studentId);
 }
 
 class StudentManagementRemoteDataSourceImpl
@@ -63,6 +65,18 @@ class StudentManagementRemoteDataSourceImpl
   @override
   Future<void> sendPasswordResetLink(String studentId) async {
     await _api.post('/admin/students/$studentId/password-reset-link');
+  }
+
+  @override
+  Future<int> promoteGrade(String studentId) async {
+    final data = await _api.post('/admin/students/$studentId/promote');
+    return (_asMap(data)['newGrade'] as num).toInt();
+  }
+
+  @override
+  Future<int> demoteGrade(String studentId) async {
+    final data = await _api.post('/admin/students/$studentId/demote');
+    return (_asMap(data)['newGrade'] as num).toInt();
   }
 
   Map<String, dynamic> _asMap(dynamic data) =>

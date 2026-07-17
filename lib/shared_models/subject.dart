@@ -33,5 +33,9 @@ const List<Subject> mockSubjects = [
   Subject(id: 'history', nameFa: 'تاریخ', nameEn: 'History', namePs: 'تاریخ', icon: 'history_edu', colorValue: 0xFFA1887F),
   Subject(id: 'geography', nameFa: 'جغرافیه', nameEn: 'Geography', namePs: 'جغرافیه', icon: 'public', colorValue: 0xFF00897B),
   Subject(id: 'islamic', nameFa: 'تعلیمات اسلامی', nameEn: 'Islamic Studies', namePs: 'اسلامي زده‌کړې', icon: 'mosque', colorValue: 0xFF6A1B9A),
-  Subject(id: 'cs', nameFa: 'کمپیوتر ساینس', nameEn: 'Computer Science', namePs: 'کمپیوټر ساینس', icon: 'computer', colorValue: 0xFF00ACC1),
+  // رفع اشکال: قبلاً id این مضمون 'cs' بود، اما جدول واقعی `subjects` سرور
+  // (backend/migrations/0003_curriculum.sql) از id 'computer' استفاده
+  // می‌کند؛ این ناهماهنگی باعث می‌شد آیکون/رنگ این مضمون هنگام تطبیق با
+  // subjectId واقعی سرور (مثلاً در GradeSubjectsGrid) پیدا نشود.
+  Subject(id: 'computer', nameFa: 'کمپیوتر ساینس', nameEn: 'Computer Science', namePs: 'کمپیوټر ساینس', icon: 'computer', colorValue: 0xFF00ACC1),
 ];

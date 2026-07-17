@@ -193,11 +193,56 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
     ref.read(profilePhotoProvider.notifier).state = null;
   }
 
-  /// ویرایش محلی معلومات پروفایل (فاز ۱: بدون بک‌اند واقعی، فقط وضعیت نشست).
-  void updateDisplayName(String newName) {
+  /// تغییر رمز عبور — رفع اشکال: قبلاً دیالوگ «تغییر رمز» در UI هیچ
+  /// درخواستی به سرور نمی‌فرستاد و صرفاً پیام موفقیت ساختگی نشان می‌داد.
+  /// چون سرور پس از تغییر موفق همهٔ نشست‌ها (این دستگاه هم) را باطل می‌کند،
+  /// در صورت موفقیت بلافاصله `logout()` محلی هم انجام می‌شود تا کاربر با
+  /// رمز تازه دوباره وارد شود.
+  Future<bool> changePassword({required String currentPassword, required String newPassword}) async {
+    final result = await ref
+        .read(authRepositoryProvider)
+        .changePassword(currentPassword: currentPassword, newPassword: newPassword);
+    return result.fold((failure) {
+      lastError = failure.message;
+      return false;
+    }, (_) {
+      logout();
+      return true;
+    });
+  }
+
+  /// ویرایش نام کاربر فعلی — رفع اشکال: قبلاً فقط `state` محلی نشست تغییر
+  /// می‌کرد و هرگز روی سرور ذخیره نمی‌شد، پس با ورود مجدد یا در سایر
+  /// داشبوردها (فهرست شاگردان مدیر، هم‌صنفی‌های چت، ثبت‌نامی سمینار و...) نام
+  /// قدیمی همچنان دیده می‌شد. اکنون واقعاً `PATCH /auth/me` را صدا می‌زند.
+  /// نام کامل روی اولین فاصله به نام/تخلص تقسیم می‌شود (هماهنگ با ساختار
+  /// `first_name`/`last_name` جدول `users`).
+  Future<bool> updateDisplayName(String newName) async {
     final current = state;
-    if (current == null || newName.trim().isEmpty) return;
-    state = current.copyWith(displayName: newName.trim());
+    final trimmed = newName.trim();
+    if (current == null || trimmed.isEmpty) return false;
+    final parts = trimmed.split(RegExp(r'\s+'));
+    final firstName = parts.first;
+    final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    final result = await ref
+        .read(authRepositoryProvider)
+        .updateProfile(firstName: firstName, lastName: lastName);
+    return result.fold((failure) {
+      lastError = failure.message;
+      return false;
+    }, (updated) {
+      state = updated;
+      return true;
+    });
+  }
+
+  /// پس از ارتقای واقعی صنف روی سرور (پیروزی در امتحان نهایی یا اقدام
+  /// مدیر)، صنف فعال نشست را بلافاصله به‌روز می‌کند — بدون نیاز به ورود
+  /// مجدد — تا «نصاب درسی» و بقیهٔ صفحه‌ها فوراً صنف تازه را نشان دهند.
+  void updateCurrentGrade(int newGrade) {
+    final current = state;
+    if (current == null) return;
+    state = current.copyWith(currentGrade: newGrade);
   }
 }
 

@@ -10,6 +10,7 @@ import '../../../../../core/widgets/app_drawer.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/language_theme_menu.dart';
 import '../../../../../core/widgets/loading_view.dart';
+import '../../../../../shared_models/subject.dart';
 import '../../../../auth/domain/entities/app_user.dart';
 import '../../../../academy/domain/academy_entities.dart';
 import '../../../../academy/presentation/academy_providers.dart';
@@ -293,6 +294,10 @@ class _BookCard extends StatelessWidget {
 }
 
 // ══════════════════════════ LESSONS ══════════════════════════
+String _subjectNameFa(String subjectId) => mockSubjects
+    .firstWhere((s) => s.id == subjectId, orElse: () => mockSubjects.first)
+    .nameFa;
+
 class _LessonsTab extends ConsumerStatefulWidget {
   const _LessonsTab();
   @override
@@ -322,7 +327,7 @@ class _LessonsTabState extends ConsumerState<_LessonsTab> {
                   _query.isEmpty ||
                   l.title.contains(_query) ||
                   l.chapterTitle.contains(_query) ||
-                  l.bookTitle.contains(_query))
+                  _subjectNameFa(l.subjectId).contains(_query))
               .toList();
           return Column(
             children: [
@@ -340,7 +345,7 @@ class _LessonsTabState extends ConsumerState<_LessonsTab> {
                           return CmsCard(
                             icon: Icons.article_rounded,
                             title: l.title,
-                            subtitle: '${l.bookTitle} · ${l.chapterTitle}',
+                            subtitle: 'صنف ${l.gradeNumber} · ${_subjectNameFa(l.subjectId)} · ${l.chapterTitle}',
                             status: l.status,
                             onTap: () => _openDetail(context, ref, l),
                           ).animate().fadeIn(delay: (30 * i).ms, duration: 260.ms).slideY(begin: 0.08);
@@ -366,7 +371,8 @@ class _LessonsTabState extends ConsumerState<_LessonsTab> {
         icon: Icons.article_rounded,
         status: l.status,
         rows: [
-          DetailRow(context.tr('admin.fBook'), l.bookTitle),
+          DetailRow('صنف', 'صنف ${l.gradeNumber}'),
+          DetailRow('مضمون', _subjectNameFa(l.subjectId)),
           DetailRow(context.tr('admin.fChapter'), l.chapterTitle),
           DetailRow(context.tr('admin.fDuration'), '${l.durationMinutes}'),
           DetailRow(context.tr('admin.fContent'), l.content),
@@ -565,16 +571,18 @@ class _InviteCodesTabState extends ConsumerState<_InviteCodesTab> {
     );
     if (confirmed == true) {
       final count = int.tryParse(countController.text) ?? 0;
-      await ref
-          .read(generateInviteCodesUseCaseProvider)
-          .call(GenerateInviteCodesParams(count: count, batchLabel: batchController.text.trim()));
-      ref.invalidate(cmsInviteCodesProvider);
+      await ref.read(generateInviteCodesUseCaseProvider).call(GenerateInviteCodesParams(
+            count: count,
+            batchLabel: batchController.text.trim(),
+            type: 'student',
+          ));
+      ref.invalidate(cmsInviteCodesProvider('student'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final codesAsync = ref.watch(cmsInviteCodesProvider);
+    final codesAsync = ref.watch(cmsInviteCodesProvider('student'));
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
@@ -613,7 +621,7 @@ class _InviteCodesTabState extends ConsumerState<_InviteCodesTab> {
                             onRevoke: c.status == 'unused'
                                 ? () async {
                                     await ref.read(revokeInviteCodeUseCaseProvider).call(c.id);
-                                    ref.invalidate(cmsInviteCodesProvider);
+                                    ref.invalidate(cmsInviteCodesProvider('student'));
                                   }
                                 : null,
                           ).animate().fadeIn(delay: (30 * i).ms, duration: 260.ms).slideY(begin: 0.08);

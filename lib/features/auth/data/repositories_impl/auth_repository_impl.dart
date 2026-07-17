@@ -153,6 +153,31 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, AppUser>> updateProfile({
+    required String firstName,
+    required String lastName,
+  }) {
+    return _guard(() => dataSource.updateProfile(firstName: firstName, lastName: lastName));
+  }
+
+  @override
+  Future<Either<Failure, Unit>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      await dataSource.changePassword(currentPassword: currentPassword, newPassword: newPassword);
+      return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
+    } on Failure catch (f) {
+      return Left(f);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, Unit>> logout() async {
     try {
       await dataSource.logout();

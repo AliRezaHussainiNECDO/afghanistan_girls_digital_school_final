@@ -16,6 +16,7 @@ import '../../domain/repositories/student_management_repository.dart';
 import '../../domain/usecases/get_ai_report_usecase.dart';
 import '../../domain/usecases/get_student_detail_usecase.dart';
 import '../../domain/usecases/get_students_usecase.dart';
+import '../../domain/usecases/promote_student_usecase.dart';
 import '../../domain/usecases/send_password_reset_usecase.dart';
 import '../../domain/usecases/soft_delete_student_usecase.dart';
 import '../../domain/usecases/update_student_status_usecase.dart';
@@ -46,6 +47,10 @@ final softDeleteUseCaseProvider = Provider(
     (ref) => SoftDeleteStudentUseCase(ref.read(studentMgmtRepositoryProvider)));
 final sendPasswordResetUseCaseProvider = Provider(
     (ref) => SendPasswordResetUseCase(ref.read(studentMgmtRepositoryProvider)));
+final promoteStudentUseCaseProvider = Provider(
+    (ref) => PromoteStudentUseCase(ref.read(studentMgmtRepositoryProvider)));
+final demoteStudentUseCaseProvider = Provider(
+    (ref) => DemoteStudentUseCase(ref.read(studentMgmtRepositoryProvider)));
 
 // ── State ──────────────────────────────────────────────────────────────────
 final studentListFilterProvider =
@@ -119,6 +124,28 @@ class StudentActionsController extends AsyncNotifier<void> {
 
   Future<String?> sendPasswordReset(String id) =>
       _run(ref.read(sendPasswordResetUseCaseProvider)(id));
+
+  /// ارتقای دستی صنف (اقدام مدیر) — روی سرور واقعی اعمال می‌شود (رفع اشکال:
+  /// قبلاً فقط در انبار محلی گوشی شبیه‌سازی می‌شد). خروجی: صنف جدید، یا
+  /// null در صورت خطا (پیام خطا در `state` قابل بررسی است).
+  Future<int?> promote(String id) async {
+    state = const AsyncLoading();
+    final result = await ref.read(promoteStudentUseCaseProvider)(id);
+    state = const AsyncData(null);
+    ref.invalidate(studentDetailProvider(id));
+    ref.invalidate(studentsProvider);
+    return result.fold((f) => null, (newGrade) => newGrade);
+  }
+
+  /// کاهش دستی صنف (اقدام مدیر) — روی سرور واقعی اعمال می‌شود.
+  Future<int?> demote(String id) async {
+    state = const AsyncLoading();
+    final result = await ref.read(demoteStudentUseCaseProvider)(id);
+    state = const AsyncData(null);
+    ref.invalidate(studentDetailProvider(id));
+    ref.invalidate(studentsProvider);
+    return result.fold((f) => null, (newGrade) => newGrade);
+  }
 }
 
 final studentActionsProvider =

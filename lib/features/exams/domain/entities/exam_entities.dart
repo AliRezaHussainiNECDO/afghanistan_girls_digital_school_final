@@ -44,7 +44,19 @@ class ExamResult extends Equatable {
   final int correctCount;
   final int totalCount;
 
-  const ExamResult({required this.scorePercent, required this.correctCount, required this.totalCount});
+  /// رفع اشکال ارتقای صنف: اگر این امتحان «نهایی» بود و شاگرد بلافاصله
+  /// روی سرور واقعاً ارتقا یافت (بخش lib/progress.ts::promoteIfEligible)،
+  /// این دو فیلد پر می‌شوند تا رابط کاربری بدون تأخیر خبر بدهد.
+  final bool promoted;
+  final int? newGrade;
+
+  const ExamResult({
+    required this.scorePercent,
+    required this.correctCount,
+    required this.totalCount,
+    this.promoted = false,
+    this.newGrade,
+  });
 
   @override
   List<Object?> get props => [scorePercent];

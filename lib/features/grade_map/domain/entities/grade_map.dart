@@ -41,14 +41,26 @@ class GradeMap extends Equatable {
   final double attendanceRatePercent;
   final List<GradeMapSubjectEntry> subjects;
 
+  /// وضعیت واقعی ارتقا — محاسبه‌شدهٔ سرور (رفع اشکال: قبلاً این وضعیت فقط
+  /// در «انبار ارتقای» محلی گوشی شبیه‌سازی می‌شد و با نصاب واقعی هماهنگ
+  /// نبود). طبق اصل بخش ۴: کلاینت فقط این مقادیر را نمایش می‌دهد.
+  final bool allSubjectsComplete;
+  final bool examPassed;
+  final double? examBestScore;
+  final bool canPromote;
+
   const GradeMap({
     required this.gradeNumber,
     required this.gradeLocked,
     required this.gradeAveragePercent,
     required this.attendanceRatePercent,
     required this.subjects,
+    this.allSubjectsComplete = false,
+    this.examPassed = false,
+    this.examBestScore,
+    this.canPromote = false,
   });
 
   @override
-  List<Object?> get props => [gradeNumber, gradeLocked, subjects];
+  List<Object?> get props => [gradeNumber, gradeLocked, subjects, canPromote];
 }

@@ -169,6 +169,10 @@ class StudentDetailModel extends StudentDetail {
     required super.examsTaken,
     required super.classRank,
     required super.classSize,
+    super.allSubjectsComplete,
+    super.examPassed,
+    super.examBestScore,
+    super.canPromote,
   });
 
   factory StudentDetailModel.fromJson(Map<String, dynamic> json) =>
@@ -198,6 +202,10 @@ class StudentDetailModel extends StudentDetail {
         examsTaken: json['exams_taken'] as int? ?? 0,
         classRank: json['class_rank'] as int? ?? 0,
         classSize: json['class_size'] as int? ?? 0,
+        allSubjectsComplete: json['all_subjects_complete'] as bool? ?? false,
+        examPassed: json['exam_passed'] as bool? ?? false,
+        examBestScore: (json['exam_best_score'] as num?)?.toDouble(),
+        canPromote: json['can_promote'] as bool? ?? false,
       );
 }
 
