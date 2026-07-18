@@ -44,8 +44,39 @@ class ChatRemoteDataSource implements ChatDataSource {
     return '$kApiBaseUrl$url';
   }
   int get _grade => currentUser?.currentGrade ?? 0;
-  String get _classId => 'grade-$_grade';
-  String get _className => 'صنف $_grade';
+
+  /// رفع اشکال: قبلاً این مقادیر همیشه بر اساس صنف محاسبه می‌شدند
+  /// (`grade-0`/`صنف 0` برای والد/استاد که صنف ندارند) — چون «ارتباط با
+  /// مدیریت» قبلاً فقط از داشبورد شاگرد در دسترس بود. حالا هر نقشی می‌تواند
+  /// گفتگوی مدیریت را شروع کند، پس این دو مقدار بر اساس نقش واقعی کاربر
+  /// محاسبه می‌شوند (فقط برای شاگرد واقعاً به صنف نیاز است).
+  String get _classId {
+    switch (currentUser?.role) {
+      case AppUserRole.student:
+        return 'grade-$_grade';
+      case AppUserRole.parent:
+        return 'parents';
+      case AppUserRole.seminarInstructor:
+        return 'instructors';
+      case AppUserRole.superAdmin:
+      case null:
+        return 'admin-support';
+    }
+  }
+
+  String get _className {
+    switch (currentUser?.role) {
+      case AppUserRole.student:
+        return 'صنف $_grade';
+      case AppUserRole.parent:
+        return 'والدین';
+      case AppUserRole.seminarInstructor:
+        return 'استادان';
+      case AppUserRole.superAdmin:
+      case null:
+        return '';
+    }
+  }
 
   // ─────────────────────────── هم‌صنفی‌ها ──────────────────────────────
 

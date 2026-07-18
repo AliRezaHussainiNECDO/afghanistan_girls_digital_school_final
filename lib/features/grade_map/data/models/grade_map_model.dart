@@ -3,6 +3,7 @@ import '../../domain/entities/grade_map.dart';
 class GradeMapModel extends GradeMap {
   const GradeMapModel({
     required super.gradeNumber,
+    super.activeGradeNumber,
     required super.gradeLocked,
     required super.gradeAveragePercent,
     required super.attendanceRatePercent,
@@ -15,6 +16,7 @@ class GradeMapModel extends GradeMap {
 
   factory GradeMapModel.fromJson(Map<String, dynamic> json) => GradeMapModel(
         gradeNumber: json['gradeNumber'] as int,
+        activeGradeNumber: json['activeGradeNumber'] as int?,
         gradeLocked: json['gradeLocked'] as bool,
         gradeAveragePercent: (json['gradeAveragePercent'] as num).toDouble(),
         attendanceRatePercent: (json['attendanceRatePercent'] as num).toDouble(),

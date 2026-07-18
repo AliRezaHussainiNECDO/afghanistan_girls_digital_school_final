@@ -14,6 +14,7 @@ import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/exam_entities.dart';
 import '../../domain/usecases/exams_usecases.dart';
 import '../providers/exams_providers.dart';
@@ -54,11 +55,14 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
     if (r != null && r.promoted && r.newGrade != null) {
       ref.read(authSessionProvider.notifier).updateCurrentGrade(r.newGrade!);
       ref.read(selectedGradeProvider.notifier).select(r.newGrade!);
+      // صنف فعال عوض شده — کش نقشهٔ صنوف برای **همهٔ** صنوف قبلاً واکشی‌شده
+      // باطل می‌شود (نه فقط یک صنف خاص) تا وضعیت ارتقا/تکمیل همه‌جا هماهنگ باشد.
+      ref.invalidate(gradeMapProvider);
       final studentId = ref.read(authSessionProvider)?.id;
-      if (studentId != null) ref.invalidate(gradeMapProvider(studentId));
+      if (studentId != null) ref.invalidate(dashboardSummaryProvider(studentId));
       NotificationCenter.instance.push(
-        title: 'ارتقا به صنف بعدی 🎓',
-        body: 'تبریک! تمام مضامین را کامل کردی و امتحان نهایی را کامیاب شدی — به صنف ${r.newGrade} ارتقا یافتی.',
+        title: context.tr('exams.promotedNotifTitle'),
+        body: context.tr('exams.promotedNotifBody', {'grade': '${r.newGrade}'}),
         kind: NotificationKind.grade,
         priority: NotificationPriority.high,
       );
@@ -75,7 +79,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
       appBar: AppBar(title: Text(context.tr('exams.start'))),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (questions) {
           if (_result != null) {
             return _ResultView(result: _result!);
@@ -236,7 +240,8 @@ class _ResultView extends StatelessWidget {
             ).animate().fadeIn(delay: 150.ms, duration: 300.ms),
             const SizedBox(height: 8),
             Text(
-              'پاسخ‌های درست: ${result.correctCount}/${result.totalCount}',
+              context.tr('exams.correctAnswersCount',
+                  {'correct': '${result.correctCount}', 'total': '${result.totalCount}'}),
               style: TextStyle(color: scheme.onSurfaceVariant),
             ).animate().fadeIn(delay: 220.ms, duration: 300.ms),
             const SizedBox(height: 28),

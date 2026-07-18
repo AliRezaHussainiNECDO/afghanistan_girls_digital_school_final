@@ -9,6 +9,7 @@ import '../../../../chat/domain/usecases/chat_usecases.dart';
 import '../../../../chat/presentation/providers/chat_providers.dart';
 import '../../../../chat/presentation/screens/chat_thread_screen.dart' show VoiceBubble;
 import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
+import '../../../../../core/localization/app_localizations.dart';
 
 /// نمای نظارتی یک گفتگو برای مدیر — بخش ۱۰.۴ سند:
 ///   • هر پیام با هویت واقعی فرستنده (نام + صنف + ساعت) نمایش داده می‌شود.
@@ -48,8 +49,8 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
     _refresh();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(approve
-          ? 'پیام تأیید شد و به گیرنده تحویل داده می‌شود.'
-          : 'پیام رد شد و به گیرنده نمی‌رسد.'),
+          ? context.tr('adminChatThread.approvedSnack')
+          : context.tr('adminChatThread.rejectedSnack')),
     ));
   }
 
@@ -99,13 +100,15 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(info?.title ?? 'بازبینی گفتگو',
+                  Text(info?.title ?? context.tr('adminChatThread.reviewFallbackTitle'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
                   if (info != null)
                     Text(
-                      isSupport ? '${info.className} • پیام به مدیریت' : info.className,
+                      isSupport
+                          ? context.tr('adminChatThread.classWithAdminNote', {'className': info.className})
+                          : info.className,
                       style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                     ),
                 ],
@@ -130,8 +133,8 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
                 Flexible(
                   child: Text(
                     isSupport
-                        ? 'شما به‌عنوان مدیریت پاسخ می‌دهید'
-                        : 'حالت نظارت — فقط خواندنی؛ هویت واقعی فرستنده‌ها نمایش داده می‌شود',
+                        ? context.tr('adminChatThread.respondingAsAdmin')
+                        : context.tr('adminChatThread.readOnlyNotice'),
                     style: TextStyle(
                         fontSize: 10.5,
                         color: isSupport ? AppColors.green700 : AppColors.orange700),
@@ -143,7 +146,7 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(message: e.toString()),
+              error: (e, st) => ErrorView(error: e),
               data: (messages) => ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
@@ -151,12 +154,12 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
                 itemBuilder: (context, i) {
                   final m = messages[i];
                   final showDate = i == 0 ||
-                      dateLabelFa(messages[i - 1].timestamp) != dateLabelFa(m.timestamp);
+                      dateLabelFa(context, messages[i - 1].timestamp) != dateLabelFa(context, m.timestamp);
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (showDate) DateSeparator(date: m.timestamp),
-                      _AdminMessageCard(
+                      AdminMessageCard(
                         message: m,
                         onReview: m.isPendingReview ? (approve) => _review(m, approve) : null,
                       ),
@@ -177,7 +180,7 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
                         controller: _controller,
                         textInputAction: TextInputAction.send,
                         decoration:
-                            const InputDecoration(hintText: 'پاسخ مدیریت را بنویسید...'),
+                            InputDecoration(hintText: context.tr('adminChatThread.replyHint')),
                         onSubmitted: (_) => _sendReply(),
                       ),
                     ),
@@ -201,10 +204,10 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
 }
 
 /// کارت پیام در نمای نظارتی — همیشه با هویت واقعی فرستنده.
-class _AdminMessageCard extends StatelessWidget {
+class AdminMessageCard extends StatelessWidget {
   final PeerMessage message;
   final void Function(bool approve)? onReview;
-  const _AdminMessageCard({required this.message, this.onReview});
+  const AdminMessageCard({required this.message, this.onReview});
 
   @override
   Widget build(BuildContext context) {
@@ -268,9 +271,9 @@ class _AdminMessageCard extends StatelessWidget {
                 Text(
                   switch (m.reviewStatus) {
                     MessageReviewStatus.pending =>
-                      'فیلتر محتوا این پیام را نگه داشته — تا تصمیم شما به گیرنده نمی‌رسد',
-                    MessageReviewStatus.approved => 'بازبینی‌شده: تأیید و تحویل داده شد',
-                    MessageReviewStatus.rejected => 'بازبینی‌شده: رد شد و تحویل داده نشد',
+                      context.tr('adminChatThread.pendingReviewNotice'),
+                    MessageReviewStatus.approved => context.tr('adminChatThread.approvedNotice'),
+                    MessageReviewStatus.rejected => context.tr('adminChatThread.rejectedNotice'),
                     _ => '',
                   },
                   style: const TextStyle(fontSize: 10.5, color: AppColors.danger),
@@ -290,7 +293,7 @@ class _AdminMessageCard extends StatelessWidget {
                     ),
                     onPressed: () => onReview!(true),
                     icon: const Icon(Icons.check_rounded, size: 16),
-                    label: const Text('تأیید و تحویل', style: TextStyle(fontSize: 12)),
+                    label: Text(context.tr('adminChatThread.approveAndDeliver'), style: const TextStyle(fontSize: 12)),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -302,7 +305,7 @@ class _AdminMessageCard extends StatelessWidget {
                     ),
                     onPressed: () => onReview!(false),
                     icon: const Icon(Icons.block_rounded, size: 16),
-                    label: const Text('رد پیام', style: TextStyle(fontSize: 12)),
+                    label: Text(context.tr('adminChatThread.rejectMessage'), style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ],

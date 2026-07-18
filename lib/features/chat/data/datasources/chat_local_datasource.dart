@@ -94,6 +94,7 @@ class ChatLocalDataSource implements ChatDataSource {
     return entry;
   }
 
+  @override
   Future<List<Classmate>> getClassmates() async {
     final me = await _ensureInRoster();
     final roster = await _fullRoster();
@@ -176,6 +177,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// شروع (یا بازیابی) گفتگوی دو نفره با یک هم‌صنفی — شناسه را برمی‌گرداند.
+  @override
   Future<String> startConversationWith(String classmateId) async {
     final me = await _ensureInRoster();
     final roster = await _fullRoster();
@@ -229,6 +231,7 @@ class ChatLocalDataSource implements ChatDataSource {
   // فهرست گفتگوها و پیام‌ها (دید شاگرد)
   // -------------------------------------------------------------------------
 
+  @override
   Future<List<PeerConversation>> getConversations() async {
     await Future.delayed(const Duration(milliseconds: 150));
     final me = await _ensureInRoster();
@@ -304,6 +307,7 @@ class ChatLocalDataSource implements ChatDataSource {
 
   /// پیام‌های یک گفتگو از دید کاربر فعلی. پیام flag‌شدهٔ در انتظار بازبینی
   /// فقط برای فرستنده‌اش نمایش داده می‌شود (بخش ۱۰.۱الف).
+  @override
   Future<List<PeerMessage>> getMessages(String conversationId) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final me = await _ensureInRoster();
@@ -362,6 +366,7 @@ class ChatLocalDataSource implements ChatDataSource {
     }
   }
 
+  @override
   Future<void> sendMessage(String conversationId, String text) async {
     final me = await _ensureInRoster();
     final flagged = _bannedWords.any((w) => text.contains(w));
@@ -375,6 +380,7 @@ class ChatLocalDataSource implements ChatDataSource {
     );
   }
 
+  @override
   Future<void> sendVoiceMessage(String conversationId, String audioUrl, int durationMs) async {
     final me = await _ensureInRoster();
     await _appendMessage(
@@ -390,6 +396,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// ذخیرهٔ گزارش تخلف با هویت گزارش‌دهنده — به صف بازبینی مدیر می‌رود.
+  @override
   Future<void> reportMessage(String messageId, String reason) async {
     final me = await _ensureInRoster();
     final prefs = await SharedPreferences.getInstance();
@@ -410,6 +417,7 @@ class ChatLocalDataSource implements ChatDataSource {
   // دید مدیر — نظارت صنف‌به‌صنف با هویت واقعی (بخش ۱۰.۴)
   // -------------------------------------------------------------------------
 
+  @override
   Future<List<ClassChatSummary>> getClassChatSummaries() async {
     await Future.delayed(const Duration(milliseconds: 150));
     await _seedIfNeeded();
@@ -445,6 +453,7 @@ class ChatLocalDataSource implements ChatDataSource {
     return result;
   }
 
+  @override
   Future<List<AdminConversationSummary>> getClassConversations(String classId) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final convs = await _readConvsRaw();
@@ -478,6 +487,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// همهٔ گفتگوهای «شاگرد ↔ مدیریت» از تمام صنف‌ها — صندوق پیام مدیر.
+  @override
   Future<List<AdminConversationSummary>> getAdminInbox() async {
     await Future.delayed(const Duration(milliseconds: 150));
     await _seedIfNeeded();
@@ -510,6 +520,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// مشخصات یک گفتگو برای هدر صفحهٔ نظارتی مدیر.
+  @override
   Future<AdminConversationSummary> getConversationInfo(String conversationId) async {
     final convs = await _readConvsRaw();
     final c = convs.firstWhere((c) => c['id'] == conversationId,
@@ -539,6 +550,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// همهٔ پیام‌های یک گفتگو برای مدیر — شامل flag‌شده‌های در انتظار بازبینی.
+  @override
   Future<List<PeerMessage>> getMessagesForAdmin(String conversationId) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final msgs = await _readMsgsRaw(conversationId);
@@ -546,6 +558,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// تصمیم مدیر دربارهٔ پیام flag‌شده: تأیید (تحویل به گیرنده) یا رد.
+  @override
   Future<void> reviewMessage(String conversationId, String messageId, bool approve) async {
     final msgs = await _readMsgsRaw(conversationId);
     final idx = msgs.indexWhere((m) => m['id'] == messageId);
@@ -563,6 +576,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   /// پاسخ مدیر در گفتگوی «شاگرد ↔ مدیریت».
+  @override
   Future<void> sendAdminReply(String conversationId, String text) async {
     await _appendMessage(
       conversationId: conversationId,

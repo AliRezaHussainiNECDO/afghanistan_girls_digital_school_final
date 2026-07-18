@@ -7,6 +7,7 @@ import '../../../../core/notifications/notification_center.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/app_notification.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/notifications_providers.dart';
 
 IconData _kindIcon(NotificationKind k) {
@@ -23,6 +24,8 @@ IconData _kindIcon(NotificationKind k) {
       return Icons.shield_rounded;
     case NotificationKind.general:
       return Icons.notifications_rounded;
+    case NotificationKind.chat:
+      return Icons.chat_bubble_rounded;
   }
 }
 
@@ -40,26 +43,45 @@ Color _kindColor(NotificationKind k) {
       return AppColors.danger;
     case NotificationKind.general:
       return AppColors.gold600;
+    case NotificationKind.chat:
+      return AppColors.orange600;
   }
 }
 
-String _timeAgo(DateTime d) {
+String _timeAgo(BuildContext context, DateTime d) {
   final diff = DateTime.now().difference(d);
-  if (diff.inMinutes < 1) return 'همین حالا';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} دقیقه پیش';
-  if (diff.inHours < 24) return '${diff.inHours} ساعت پیش';
-  if (diff.inDays < 7) return '${diff.inDays} روز پیش';
+  if (diff.inMinutes < 1) return context.tr('notifications.justNow');
+  if (diff.inMinutes < 60) return context.tr('notifications.minutesAgo', {'count': '${diff.inMinutes}'});
+  if (diff.inHours < 24) return context.tr('notifications.hoursAgo', {'count': '${diff.inHours}'});
+  if (diff.inDays < 7) return context.tr('notifications.daysAgo', {'count': '${diff.inDays}'});
   return '${d.year}/${d.month}/${d.day}';
 }
+
+// کلیدهای داخلیِ گروه‌بندی (پایدار، مستقل از زبان) — برچسبِ نمایشی از
+// `_bucketLabel` گرفته می‌شود تا با تغییر زبان هماهنگ بماند.
+const _kBucketToday = 'today';
+const _kBucketYesterday = 'yesterday';
+const _kBucketOlder = 'older';
 
 String _bucketFor(DateTime d) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(d.year, d.month, d.day);
   final diff = today.difference(day).inDays;
-  if (diff <= 0) return 'امروز';
-  if (diff == 1) return 'دیروز';
-  return 'قدیمی‌تر';
+  if (diff <= 0) return _kBucketToday;
+  if (diff == 1) return _kBucketYesterday;
+  return _kBucketOlder;
+}
+
+String _bucketLabel(BuildContext context, String key) {
+  switch (key) {
+    case _kBucketToday:
+      return context.tr('notifications.bucketToday');
+    case _kBucketYesterday:
+      return context.tr('notifications.bucketYesterday');
+    default:
+      return context.tr('notifications.bucketOlder');
+  }
 }
 
 /// صفحهٔ اعلان‌ها.
@@ -109,21 +131,27 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     // اگر داده‌های سرور از قبل حاضر است (کش شده)، همین حالا هم ادغام کن.
     ref.watch(notificationsProvider).whenData((list) => center.ingestServer(list));
 
+    // رفع اشکال: قبلاً نقش این صفحه همیشه «شاگرد» بود (کد ثابت) — یعنی اگر
+    // والد/استاد هم به این صفحه می‌رسیدند، منوی کناری‌شان به‌جای آیتم‌های
+    // خودشان، منوی شاگرد را نشان می‌داد. حالا از نشست واردشدهٔ واقعی گرفته
+    // می‌شود.
+    final role = ref.watch(authSessionProvider)?.role ?? AppUserRole.student;
+
     return AppScaffold(
       title: context.tr('notifications.title'),
-      role: AppUserRole.student,
+      role: role,
       actions: [
         AnimatedBuilder(
           animation: center,
           builder: (context, _) => center.unreadCount == 0
               ? const SizedBox.shrink()
               : IconButton(
-                  tooltip: 'خواندن همه',
+                  tooltip: context.tr('notifications.markAllReadTooltip'),
                   icon: const Icon(Icons.done_all_rounded, color: Colors.white),
                   onPressed: () {
                     _markAllRead(center.items);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('همهٔ اعلان‌ها خوانده شد'), behavior: SnackBarBehavior.floating),
+                      SnackBar(content: Text(context.tr('notifications.allMarkedRead')), behavior: SnackBarBehavior.floating),
                     );
                   },
                 ),
@@ -141,7 +169,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           for (final n in items) {
             buckets.putIfAbsent(_bucketFor(n.createdAt), () => []).add(n);
           }
-          const order = ['امروز', 'دیروز', 'قدیمی‌تر'];
+          const order = [_kBucketToday, _kBucketYesterday, _kBucketOlder];
           final sections = order.where(buckets.containsKey).toList();
 
           return ListView(
@@ -151,7 +179,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               for (final s in sections) ...[
                 Padding(
                   padding: const EdgeInsets.only(top: 12, bottom: 8),
-                  child: Text(s,
+                  child: Text(_bucketLabel(context, s),
                       style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
@@ -191,10 +219,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  unread == 0 ? 'اعلان خوانده‌نشده‌ای نداری' : '$unread اعلان جدید داری',
+                  unread == 0
+                      ? context.tr('notifications.noUnread')
+                      : context.tr('notifications.unreadCount', {'count': '$unread'}),
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
                 ),
-                Text('هر چیز تازه در برنامه اینجا نمایش داده می‌شود',
+                Text(context.tr('notifications.subtitle'),
                     style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11)),
               ],
             ),
@@ -273,7 +303,7 @@ class _NotificationCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Text(n.bodyFa, style: TextStyle(fontSize: 12.5, height: 1.5, color: scheme.onSurfaceVariant)),
                       const SizedBox(height: 6),
-                      Text(_timeAgo(n.createdAt),
+                      Text(_timeAgo(context, n.createdAt),
                           style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant.withValues(alpha: 0.8))),
                     ],
                   ),

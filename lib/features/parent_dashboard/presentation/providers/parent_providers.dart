@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/student/guardian_link_store.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -15,7 +16,7 @@ final parentDataSourceProvider = Provider<ParentDataSource>((ref) {
   if (kUseLiveBackend) {
     return ParentRemoteDataSource(ref.watch(apiClientProvider));
   }
-  return ParentMockDataSource();
+  return ParentMockDataSource(localeCode: ref.watch(localeProvider).languageCode);
 });
 final parentRepositoryProvider =
     Provider<ParentRepository>((ref) => ParentRepositoryImpl(ref.watch(parentDataSourceProvider)));

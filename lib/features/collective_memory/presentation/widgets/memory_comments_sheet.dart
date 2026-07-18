@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
@@ -123,7 +124,7 @@ class _MemoryCommentsSheetState extends ConsumerState<_MemoryCommentsSheet> {
                   children: [
                     Icon(Icons.mode_comment_rounded, size: 18, color: scheme.primary),
                     const SizedBox(width: 8),
-                    const Text('گفت‌وگو دربارهٔ این روایت', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Text(context.tr('memory.discussionTitle'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   ],
                 ),
               ),
@@ -134,7 +135,7 @@ class _MemoryCommentsSheetState extends ConsumerState<_MemoryCommentsSheet> {
                   data: (comments) {
                     if (comments.isEmpty) {
                       return Center(
-                        child: Text('هنوز نظری ثبت نشده — اولین نفر باش.',
+                        child: Text(context.tr('memory.noCommentsYet'),
                             style: TextStyle(color: scheme.onSurfaceVariant)),
                       );
                     }
@@ -186,7 +187,7 @@ class _MemoryCommentsSheetState extends ConsumerState<_MemoryCommentsSheet> {
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, __) => Center(child: Text('خطا در بارگذاری نظرات', style: TextStyle(color: scheme.error))),
+                  error: (e, __) => Center(child: Text(context.tr('memory.loadCommentsError'), style: TextStyle(color: scheme.error))),
                 ),
               ),
               Divider(height: 1, color: scheme.outlineVariant),
@@ -197,7 +198,7 @@ class _MemoryCommentsSheetState extends ConsumerState<_MemoryCommentsSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: Row(
                     children: [
-                      Expanded(child: Text('در پاسخ به $_replyToName', style: const TextStyle(fontSize: 12))),
+                      Expanded(child: Text(context.tr('memory.replyingTo', {'name': _replyToName ?? ''}), style: const TextStyle(fontSize: 12))),
                       InkWell(onTap: _cancelReply, child: const Icon(Icons.close_rounded, size: 16)),
                     ],
                   ),
@@ -213,7 +214,7 @@ class _MemoryCommentsSheetState extends ConsumerState<_MemoryCommentsSheet> {
                         minLines: 1,
                         maxLines: 4,
                         decoration: InputDecoration(
-                          hintText: user == null ? 'برای نظر دادن وارد شوید' : 'نظر خود را بنویس...',
+                          hintText: user == null ? context.tr('memory.signInToComment') : context.tr('memory.writeCommentHint'),
                           filled: true,
                           fillColor: scheme.surfaceContainerLow,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -294,13 +295,13 @@ class _CommentTile extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                         decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(AppRadii.pill)),
-                        child: Text('مدیریت', style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
+                        child: Text(context.tr('memory.adminBadge'), style: TextStyle(fontSize: 9, color: scheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ],
                 ),
               ),
-              Text(timeAgoFa(comment.createdAt), style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+              Text(timeAgoFa(context, comment.createdAt), style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
             ],
           ),
           const SizedBox(height: 6),
@@ -311,7 +312,7 @@ class _CommentTile extends StatelessWidget {
               if (!isReply)
                 InkWell(
                   onTap: onReply,
-                  child: Text('پاسخ', style: TextStyle(fontSize: 11.5, color: scheme.primary, fontWeight: FontWeight.w700)),
+                  child: Text(context.tr('memory.replyAction'), style: TextStyle(fontSize: 11.5, color: scheme.primary, fontWeight: FontWeight.w700)),
                 ),
               const Spacer(),
               if (canDelete)

@@ -37,7 +37,7 @@ class ParentActionsController extends AsyncNotifier<void> {
       ref.invalidate(parentDetailProvider(id));
       return null;
     } catch (e) {
-      state = AsyncData(null);
+      state = const AsyncData(null);
       return e.toString();
     }
   }

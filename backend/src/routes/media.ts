@@ -128,6 +128,26 @@ media.post('/conversations/:id/messages', async (c) => {
   await c.env.DB.prepare('UPDATE conversations SET last_message = ?, last_message_at = datetime("now") WHERE id = ?')
     .bind(flagged ? 'در انتظار بازبینی مدیر...' : body.text, conversationId)
     .run();
+
+  // رفع اشکال هماهنگی: وقتی پیام در گفتگوی «کاربر ↔ مدیریت» فرستاده
+  // می‌شود، همهٔ مدیران Super Admin باید فوراً اعلان واقعی بگیرند — قبلاً
+  // این پیام‌ها فقط منتظر می‌ماندند تا مدیر خودش صندوق ورودی چت را دستی
+  // باز کند.
+  const conv = await c.env.DB.prepare('SELECT type FROM conversations WHERE id = ?')
+    .bind(conversationId)
+    .first<{ type: string }>();
+  if (conv?.type === 'admin') {
+    const { results: admins } = await c.env.DB.prepare("SELECT id FROM users WHERE role = 'super_admin'").all<{
+      id: string;
+    }>();
+    for (const a of admins) {
+      await c.env.DB.prepare(
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'chat')",
+      )
+        .bind(uid(), a.id, `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text)
+        .run();
+    }
+  }
   return c.json({ id, flagged });
 });
 
@@ -278,6 +298,65 @@ media.post('/admin/conversations/:id/reply', async (c) => {
   if (!(await isAdmin(c))) return forbid(c);
   const conversationId = c.req.param('id');
   const body = await c.req.json<{ text: string }>();
+
+  // رفع اشکال: اگر مدیر بخواهد پیش‌دستانه از داخل پروندهٔ خودِ کاربر (بخش
+  // مدیریت کاربران) به او پیام بدهد و آن کاربر هنوز خودش گفتگویی با
+  // مدیریت شروع نکرده باشد، ردیف conversations وجود ندارد. قبلاً در این
+  // حالت پیام یتیم ثبت می‌شد و هرگز در فهرست «گفتگوهای من» آن کاربر دیده
+  // نمی‌شد. حالا گفتگو با هویت واقعی کاربر (از جدول users) ساخته می‌شود —
+  // دقیقاً با همان قرارداد شناسه‌ای که خودِ کاربر هنگام شروع گفتگو
+  // می‌سازد: `admin_<userId>`.
+  let conv = await c.env.DB.prepare('SELECT * FROM conversations WHERE id = ?')
+    .bind(conversationId)
+    .first<any>();
+  let targetUserId: string | null = null;
+  if (!conv && conversationId.startsWith('admin_')) {
+    targetUserId = conversationId.slice('admin_'.length);
+    const target = await c.env.DB.prepare(
+      'SELECT id, first_name, last_name, role, current_grade FROM users WHERE id = ?',
+    )
+      .bind(targetUserId)
+      .first<{ id: string; first_name: string; last_name: string; role: string; current_grade: number | null }>();
+    if (!target) {
+      return c.json(
+        { success: false, error: { code: 'NOT_FOUND', message_fa: 'کاربر یافت نشد', message_en: 'User not found' } },
+        404,
+      );
+    }
+    const name = `${target.first_name} ${target.last_name}`.trim();
+    const className =
+      target.role === 'student' && target.current_grade
+        ? `صنف ${target.current_grade}`
+        : target.role === 'parent'
+          ? 'والدین'
+          : target.role === 'seminar_instructor'
+            ? 'استادان'
+            : '';
+    const classId = target.role === 'student' && target.current_grade ? `grade-${target.current_grade}` : 'admin-support';
+    await c.env.DB.prepare(
+      'INSERT INTO conversations (id, type, class_id, class_name, participants, last_message, last_message_at) VALUES (?, ?, ?, ?, ?, ?, datetime("now"))',
+    )
+      .bind(
+        conversationId,
+        'admin',
+        classId,
+        className,
+        JSON.stringify([
+          { id: target.id, name, className },
+          { id: 'admin', name: 'مدیریت و پشتیبانی مکتب', className: '' },
+        ]),
+        '',
+      )
+      .run();
+  } else if (conv) {
+    try {
+      const parts = JSON.parse(conv.participants ?? '[]') as { id: string }[];
+      targetUserId = parts.find((p) => p.id !== 'admin')?.id ?? null;
+    } catch {
+      targetUserId = null;
+    }
+  }
+
   const id = uid();
   await c.env.DB.prepare(
     "INSERT INTO messages (id, conversation_id, sender_id, sender_name, body, kind) VALUES (?, ?, 'admin', 'مدیریت و پشتیبانی مکتب', ?, 'text')",
@@ -287,6 +366,17 @@ media.post('/admin/conversations/:id/reply', async (c) => {
   await c.env.DB.prepare('UPDATE conversations SET last_message = ?, last_message_at = datetime("now") WHERE id = ?')
     .bind(body.text, conversationId)
     .run();
+
+  // اعلان واقعی برای همان کاربر — تا در بخش اعلان‌های خودش (و نه فقط با
+  // باز کردن دستیِ چت) ببیند که مدیریت پاسخ داده است.
+  if (targetUserId) {
+    await c.env.DB.prepare(
+      "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'chat')",
+    )
+      .bind(uid(), targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text)
+      .run();
+  }
+
   return c.json({ id });
 });
 

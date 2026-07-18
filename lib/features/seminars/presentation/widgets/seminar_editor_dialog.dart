@@ -126,9 +126,9 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
                             color: Colors.amber.withValues(alpha: .12),
                             borderRadius: BorderRadius.circular(AppRadii.md),
                           ),
-                          child: const Text(
-                            'هنوز هیچ حساب استادی ثبت نشده — ابتدا از «مدیریت استادان» یک استاد بسازید.',
-                            style: TextStyle(fontSize: 12.5),
+                          child: Text(
+                            dialogContext.tr('instructor.noInstructorAccountsHint'),
+                            style: const TextStyle(fontSize: 12.5),
                           ),
                         )
                       else
@@ -159,16 +159,16 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
                     TextFormField(
                       controller: meetingLinkController,
                       keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'لینک جلسهٔ زنده (Zoom/Meet/Jitsi)',
+                      decoration: InputDecoration(
+                        labelText: dialogContext.tr('instructor.meetingLinkLabel'),
                         hintText: 'https://meet.jit.si/...',
-                        prefixIcon: Icon(Icons.videocam_rounded),
+                        prefixIcon: const Icon(Icons.videocam_rounded),
                       ),
                       validator: (v) {
                         final t = v?.trim() ?? '';
                         if (t.isEmpty) return null; // اختیاری
                         final ok = t.startsWith('http://') || t.startsWith('https://');
-                        return ok ? null : 'لینک باید با http:// یا https:// شروع شود';
+                        return ok ? null : dialogContext.tr('instructor.meetingLinkValidation');
                       },
                     ),
                     const SizedBox(height: 12),

@@ -6,8 +6,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../chat_monitoring/presentation/widgets/contact_thread_button.dart';
 import '../../../user_management/domain/entities/student_entities.dart' show AccountStatus;
 import '../../../user_management/presentation/widgets/common_widgets.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/parent_entities.dart';
 import '../providers/parent_management_providers.dart';
 
@@ -39,7 +41,7 @@ class ParentDetailScreen extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () => ref.invalidate(parentDetailProvider(parentId)),
                 icon: const Icon(Icons.refresh),
-                label: const Text('تلاش دوباره'),
+                label: Text(context.tr('common.retry')),
               ),
             ]),
           ),
@@ -60,33 +62,42 @@ class ParentDetailScreen extends ConsumerWidget {
                       StatTile(
                           icon: Icons.family_restroom,
                           value: '${d.children.where((c) => c.linkStatus == 'approved').length}',
-                          label: 'فرزند لینک‌شده'),
+                          label: context.tr('parentDetail.linkedChildStat')),
                       StatTile(
                           icon: Icons.hourglass_top,
                           value: '${d.children.where((c) => c.linkStatus == 'pending_student_approval').length}',
-                          label: 'در انتظار تأیید',
+                          label: context.tr('parentDetail.pendingApprovalStat'),
                           color: AppPalette.amber),
                     ],
                   ),
                   const SizedBox(height: 14),
                   SectionCard(
-                    title: 'معلومات تماس',
+                    title: context.tr('parentDetail.contactInfoTitle'),
                     icon: Icons.badge_outlined,
                     child: Column(children: [
-                      _InfoRow(label: 'ایمیل', value: d.email),
-                      _InfoRow(label: 'شماره تلفن', value: d.phone.isEmpty ? 'ثبت نشده' : d.phone),
-                      _InfoRow(label: 'تاریخ ثبت‌نام', value: _fmt(d.registeredAt)),
+                      _InfoRow(label: context.tr('parentDetail.emailLabel'), value: d.email),
+                      _InfoRow(label: context.tr('parentDetail.phoneLabel'), value: d.phone.isEmpty ? context.tr('parentDetail.notRegistered') : d.phone),
+                      _InfoRow(label: context.tr('parentDetail.registrationDateLabel'), value: _fmt(d.registeredAt)),
                     ]),
                   ),
                   SectionCard(
-                    title: 'فرزندان لینک‌شده',
+                    title: context.tr('parentDetail.linkedChildrenTitle'),
                     icon: Icons.family_restroom,
                     child: d.children.isEmpty
-                        ? Text('هنوز هیچ فرزندی به این والد لینک نشده است',
+                        ? Text(context.tr('parentDetail.noChildrenLinked'),
                             style: TextStyle(color: Colors.grey.shade600))
                         : Column(
                             children: d.children.map((c) => _ChildTile(child: c)).toList(),
                           ),
+                  ),
+                  // رفع اشکال هماهنگی: قبلاً هیچ راهی برای والد وجود نداشت
+                  // که با مدیریت مکتب پیام‌رسانی کند، و مدیر هم نمی‌توانست
+                  // از داخل همین پروندهٔ والد به او پیام بدهد. حالا از همان
+                  // زیرساخت واقعی گفتگوی «کاربر ↔ مدیریت» استفاده می‌شود.
+                  SectionCard(
+                    title: context.tr('parentDetail.adminMessagesTitle'),
+                    icon: Icons.support_agent_rounded,
+                    child: ContactThreadButton(userId: d.id, userName: d.fullName),
                   ),
                 ]),
               ),
@@ -112,7 +123,7 @@ class _Header extends ConsumerWidget {
       actions: [
         IconButton(
           icon: const Icon(Icons.more_vert),
-          tooltip: 'اکشن‌های مدیریتی',
+          tooltip: context.tr('parentDetail.actionsTooltip'),
           onPressed: () => showModalBottomSheet(
             context: context,
             showDragHandle: true,
@@ -125,8 +136,8 @@ class _Header extends ConsumerWidget {
                         ? Icons.check_circle_outline
                         : Icons.block),
                     title: Text(detail.status == AccountStatus.suspended
-                        ? 'فعال‌سازی حساب والد'
-                        : 'مسدودسازی حساب والد'),
+                        ? ctx.tr('parentDetail.activateAccount')
+                        : ctx.tr('parentDetail.suspendAccount')),
                     onTap: () async {
                       Navigator.pop(ctx);
                       final next = detail.status == AccountStatus.suspended
@@ -135,7 +146,7 @@ class _Header extends ConsumerWidget {
                       final err = await ref.read(parentActionsProvider.notifier).setStatus(detail.id, next);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(err ?? 'وضعیت حساب والد به‌روز شد')),
+                        SnackBar(content: Text(err ?? context.tr('parentDetail.statusUpdated'))),
                       );
                     },
                   ),
@@ -199,9 +210,9 @@ class _ChildTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (child.linkStatus) {
-      'approved' => ('تأییدشده', AppPalette.green),
-      'pending_student_approval' => ('در انتظار تأیید شاگرد', AppPalette.amber),
-      _ => ('ردشده', Colors.grey),
+      'approved' => (context.tr('parentDetail.childApproved'), AppPalette.green),
+      'pending_student_approval' => (context.tr('parentDetail.childPendingApproval'), AppPalette.amber),
+      _ => (context.tr('parentDetail.childRejected'), Colors.grey),
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -214,7 +225,7 @@ class _ChildTile extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(
-            child: Text('${child.studentName} — صنف ${child.grade}',
+            child: Text(context.tr('parentDetail.childNameGrade', {'name': child.studentName, 'grade': '${child.grade}'}),
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
           ),
           Container(
@@ -225,9 +236,9 @@ class _ChildTile extends StatelessWidget {
         ]),
         if (child.linkStatus == 'approved') ...[
           const SizedBox(height: 10),
-          ScoreBar(value: child.progressPercent, label: 'پیشرفت کلی صنف'),
+          ScoreBar(value: child.progressPercent, label: context.tr('parentDetail.overallProgressLabel')),
           const SizedBox(height: 6),
-          Text('امتیاز فعالیت: ${child.pointsTotal} — سطح «${child.pointsLevelTitleFa}»',
+          Text(context.tr('parentDetail.pointsSummary', {'points': '${child.pointsTotal}', 'level': child.pointsLevelTitleFa}),
               style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
         ],
       ]),

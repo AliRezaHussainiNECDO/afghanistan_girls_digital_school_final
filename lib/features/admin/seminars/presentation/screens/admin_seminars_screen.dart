@@ -57,7 +57,7 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
       ),
       body: seminarsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (all) {
           final studentCount = all.where((s) => s.audience == SeminarAudience.students).length;
           final parentCount = all.where((s) => s.audience == SeminarAudience.parents).length;
@@ -592,7 +592,7 @@ class _RegistrantsSheet extends ConsumerWidget {
                 Icon(Icons.how_to_reg_rounded, color: scheme.primary),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('ثبت‌نامی‌های «${seminar.title}»',
+                  child: Text(context.tr('adminSeminars.registrationsTitle', {'title': seminar.title}),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
@@ -610,15 +610,15 @@ class _RegistrantsSheet extends ConsumerWidget {
               error: (e, _) => Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('خطا در دریافت فهرست: $e', textAlign: TextAlign.center),
+                  child: Text(context.tr('adminSeminars.fetchError', {'error': '$e'}), textAlign: TextAlign.center),
                 ),
               ),
               data: (list) {
                 if (list.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('هنوز کسی ثبت‌نام نکرده است.'),
+                      padding: const EdgeInsets.all(24),
+                      child: Text(context.tr('adminSeminars.noRegistrationsYet')),
                     ),
                   );
                 }

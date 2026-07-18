@@ -22,7 +22,11 @@ import 'package:dio/dio.dart';
 /// تزریق شود؛ مقدار زیر پیش‌فرضِ امن است اگر تزریق نشده باشد.
 const String kApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://api.afghanistangirlsdigitalschool.org/api/v1',
+  // نکته: دامنهٔ سفارشی api.afghanistangirlsdigitalschool.org هنوز در
+  // wrangler.toml روت نشده (خط routes کامنت است)، پس آدرس واقعیِ در حال کار
+  // همان Workers.dev است. وقتی Route دامنه را فعال کردید، این مقدار را
+  // به همان دامنهٔ سفارشی برگردانید یا از --dart-define=API_BASE_URL استفاده کنید.
+  defaultValue: 'https://afghan-girls-school-api.alireza-necdo.workers.dev/api/v1',
 );
 
 /// امضای تابعی که Access Token فعلی را برمی‌گرداند (یا null اگر کاربر وارد
@@ -101,6 +105,80 @@ class ApiClient {
   final TokenProvider? _tokenProvider;
   final UnauthorizedCallback? _onUnauthorized;
 
+  /// کد زبان فعال اپ (fa/en/ps/fr) — برای پیام‌های خطای این کلاینت. این کلاس
+  /// همچنان مستقل از Flutter/Riverpod است؛ فقط یک مقدار ساده‌ی رشته‌ای
+  /// می‌گیرد (بدون وابستگی مستقیم به BuildContext یا Provider).
+  final String localeCode;
+
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'unexpectedError': 'خطای غیرمنتظره رخ داد. لطفاً دوباره تلاش کنید.',
+      'timeout': 'زمان اتصال به سرور به پایان رسید. اتصال اینترنت خود را بررسی کنید.',
+      'connectionError': 'اتصال به سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید.',
+      'cancelled': 'درخواست لغو شد.',
+      'badCertificate': 'گواهی امنیتی سرور معتبر نیست.',
+      'transformError': 'خطای غیرمنتظره در پردازش داده‌های شبکه.',
+      'badRequest': 'درخواست نامعتبر است. لطفاً ورودی‌ها را بررسی کنید.',
+      'unauthorized': 'ایمیل یا رمز عبور اشتباه است، یا نشست شما منقضی شده.',
+      'forbidden': 'شما اجازهٔ انجام این عملیات را ندارید.',
+      'notFound': 'منبع درخواستی یافت نشد.',
+      'conflict': 'این اطلاعات قبلاً ثبت شده است.',
+      'serverError': 'خطای داخلی سرور. لطفاً کمی بعد دوباره تلاش کنید.',
+      'unknownServerError': 'خطای ناشناخته در ارتباط با سرور.',
+      'invalidResponse': 'پاسخ نامعتبر از سرور دریافت شد.',
+    },
+    'en': {
+      'unexpectedError': 'An unexpected error occurred. Please try again.',
+      'timeout': 'The connection to the server timed out. Please check your internet connection.',
+      'connectionError': 'Could not connect to the server. Please check your internet connection.',
+      'cancelled': 'The request was cancelled.',
+      'badCertificate': 'The server\'s security certificate is not valid.',
+      'transformError': 'An unexpected error occurred while processing network data.',
+      'badRequest': 'The request is invalid. Please check your input.',
+      'unauthorized': 'Incorrect email or password, or your session has expired.',
+      'forbidden': 'You are not allowed to perform this action.',
+      'notFound': 'The requested resource was not found.',
+      'conflict': 'This information has already been registered.',
+      'serverError': 'Internal server error. Please try again shortly.',
+      'unknownServerError': 'An unknown error occurred while communicating with the server.',
+      'invalidResponse': 'An invalid response was received from the server.',
+    },
+    'ps': {
+      'unexpectedError': 'یوه غیرمنتظره تېروتنه رامنځته شوه. مهرباني وکړئ بیا هڅه وکړئ.',
+      'timeout': 'د سرور سره د اړیکې وخت پای ته ورسید. د خپل انټرنیټ اړیکه وګورئ.',
+      'connectionError': 'له سرور سره اړیکه ونه نیول شوه. مهرباني وکړئ د خپل انټرنیټ اړیکه وګورئ.',
+      'cancelled': 'غوښتنه لغوه شوه.',
+      'badCertificate': 'د سرور امنیتي سند معتبر نه دی.',
+      'transformError': 'د شبکې د معلوماتو په پروسس کې غیرمنتظره تېروتنه.',
+      'badRequest': 'غوښتنه ناسمه ده. مهرباني وکړئ ننوتلي معلومات وګورئ.',
+      'unauthorized': 'بریښنالیک یا پټنوم ناسم دی، یا ستاسو ناسته ختمه شوې.',
+      'forbidden': 'تاسو د دې کړنې د ترسره کولو اجازه نه لرئ.',
+      'notFound': 'غوښتل شوی سرچینه ونه موندل شوه.',
+      'conflict': 'دا معلومات دمخه ثبت شوي دي.',
+      'serverError': 'د سرور داخلي تېروتنه. مهرباني وکړئ لږ وروسته بیا هڅه وکړئ.',
+      'unknownServerError': 'له سرور سره په اړیکه کې ناڅرګنده تېروتنه.',
+      'invalidResponse': 'له سرور نه ناسم ځواب ترلاسه شو.',
+    },
+    'fr': {
+      'unexpectedError': 'Une erreur inattendue s\'est produite. Veuillez réessayer.',
+      'timeout': 'Le délai de connexion au serveur a expiré. Vérifiez votre connexion Internet.',
+      'connectionError': 'Impossible de se connecter au serveur. Vérifiez votre connexion Internet.',
+      'cancelled': 'La requête a été annulée.',
+      'badCertificate': 'Le certificat de sécurité du serveur n\'est pas valide.',
+      'transformError': 'Erreur inattendue lors du traitement des données réseau.',
+      'badRequest': 'La requête est invalide. Veuillez vérifier les informations saisies.',
+      'unauthorized': 'E-mail ou mot de passe incorrect, ou votre session a expiré.',
+      'forbidden': 'Vous n\'êtes pas autorisé à effectuer cette action.',
+      'notFound': 'La ressource demandée est introuvable.',
+      'conflict': 'Ces informations sont déjà enregistrées.',
+      'serverError': 'Erreur interne du serveur. Veuillez réessayer sous peu.',
+      'unknownServerError': 'Erreur inconnue lors de la communication avec le serveur.',
+      'invalidResponse': 'Une réponse invalide a été reçue du serveur.',
+    },
+  };
+
+  String _t(String key) => _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+
   /// [dio] فقط برای تست تزریق می‌شود؛ در Production خالی بگذارید تا نمونهٔ
   /// پیکربندی‌شده ساخته شود.
   ApiClient({
@@ -109,6 +187,7 @@ class ApiClient {
     UnauthorizedCallback? onUnauthorized,
     Dio? dio,
     bool enableLogging = false,
+    this.localeCode = 'fa',
   })  : _tokenProvider = tokenProvider,
         _onUnauthorized = onUnauthorized {
     _dio = dio ??
@@ -302,8 +381,8 @@ class ApiClient {
     } on DioException catch (e) {
       throw _mapDioError(e);
     } catch (e) {
-      throw const ApiException(
-        message: 'خطای غیرمنتظره رخ داد. لطفاً دوباره تلاش کنید.',
+      throw ApiException(
+        message: _t('unexpectedError'),
         type: ApiErrorType.unknown,
       );
     }
@@ -315,23 +394,23 @@ class ApiClient {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return const ApiException(
-          message: 'زمان اتصال به سرور به پایان رسید. اتصال اینترنت خود را بررسی کنید.',
+        return ApiException(
+          message: _t('timeout'),
           type: ApiErrorType.timeout,
         );
       case DioExceptionType.connectionError:
-        return const ApiException(
-          message: 'اتصال به سرور برقرار نشد. لطفاً اتصال اینترنت خود را بررسی کنید.',
+        return ApiException(
+          message: _t('connectionError'),
           type: ApiErrorType.network,
         );
       case DioExceptionType.cancel:
-        return const ApiException(
-          message: 'درخواست لغو شد.',
+        return ApiException(
+          message: _t('cancelled'),
           type: ApiErrorType.network,
         );
       case DioExceptionType.badCertificate:
-        return const ApiException(
-          message: 'گواهی امنیتی سرور معتبر نیست.',
+        return ApiException(
+          message: _t('badCertificate'),
           type: ApiErrorType.network,
         );
       case DioExceptionType.badResponse:
@@ -339,8 +418,8 @@ class ApiClient {
         break; // پایین پردازش می‌شود.
       case DioExceptionType.transformTimeout:
       default:
-        return const ApiException(
-          message: 'خطای غیرمنتظره در پردازش داده‌های شبکه.',
+        return ApiException(
+          message: _t('transformError'),
           type: ApiErrorType.unknown,
           code: 'TRANSFORM_TIMEOUT',
         );
@@ -354,35 +433,35 @@ class ApiClient {
     switch (status) {
       case 400:
         return ApiException(
-          message: serverMsg ?? 'درخواست نامعتبر است. لطفاً ورودی‌ها را بررسی کنید.',
+          message: serverMsg ?? _t('badRequest'),
           type: ApiErrorType.badRequest,
           statusCode: 400,
           code: serverCode,
         );
       case 401:
         return ApiException(
-          message: serverMsg ?? 'ایمیل یا رمز عبور اشتباه است، یا نشست شما منقضی شده.',
+          message: serverMsg ?? _t('unauthorized'),
           type: ApiErrorType.unauthorized,
           statusCode: 401,
           code: serverCode,
         );
       case 403:
         return ApiException(
-          message: serverMsg ?? 'شما اجازهٔ انجام این عملیات را ندارید.',
+          message: serverMsg ?? _t('forbidden'),
           type: ApiErrorType.forbidden,
           statusCode: 403,
           code: serverCode,
         );
       case 404:
         return ApiException(
-          message: serverMsg ?? 'منبع درخواستی یافت نشد.',
+          message: serverMsg ?? _t('notFound'),
           type: ApiErrorType.notFound,
           statusCode: 404,
           code: serverCode,
         );
       case 409:
         return ApiException(
-          message: serverMsg ?? 'این اطلاعات قبلاً ثبت شده است.',
+          message: serverMsg ?? _t('conflict'),
           type: ApiErrorType.conflict,
           statusCode: 409,
           code: serverCode,
@@ -390,14 +469,14 @@ class ApiClient {
       default:
         if (status != null && status >= 500) {
           return ApiException(
-            message: serverMsg ?? 'خطای داخلی سرور. لطفاً کمی بعد دوباره تلاش کنید.',
+            message: serverMsg ?? _t('serverError'),
             type: ApiErrorType.server,
             statusCode: status,
             code: serverCode,
           );
         }
         return ApiException(
-          message: serverMsg ?? 'خطای ناشناخته در ارتباط با سرور.',
+          message: serverMsg ?? _t('unknownServerError'),
           type: ApiErrorType.unknown,
           statusCode: status,
           code: serverCode,
@@ -416,24 +495,41 @@ class ApiClient {
     return null;
   }
 
-  /// استخراج پیام فارسی (یا انگلیسی) از بدنهٔ خطای سرور.
+  /// استخراج پیام محلی‌شدهٔ خطا از بدنهٔ پاسخ سرور، بر اساس زبان جاری اپ
+  /// (`localeCode`). سرور (طبق قرارداد بخش ۱۹.۱۰) هر ۴ زبان را همزمان در
+  /// `message_fa`/`message_en`/`message_ps`/`message_fr` برمی‌گرداند؛ این
+  /// متد اول فیلد متناظر با زبان انتخابی کاربر را امتحان می‌کند و در صورت
+  /// نبود (مثلاً نسخهٔ قدیمی‌تر بک‌اند که فقط fa/en دارد)، به فارسی، بعد
+  /// انگلیسی و در نهایت هر پیام موجود دیگر برمی‌گردد — تا هرگز پیام خالی
+  /// به کاربر نشان داده نشود.
   String? _extractServerMessage(dynamic body) {
+    Map? err;
     if (body is Map) {
-      final err = body['error'];
-      if (err is Map) {
-        return (err['message_fa'] ?? err['message'] ?? err['message_en'])?.toString();
-      }
-      return (body['message_fa'] ?? body['message'] ?? body['message_en'])?.toString();
+      final e = body['error'];
+      err = e is Map ? e : body;
     }
-    if (body is String && body.trim().isNotEmpty) return body;
+    if (err == null) {
+      if (body is String && body.trim().isNotEmpty) return body;
+      return null;
+    }
+    final localizedKey = switch (localeCode) {
+      'en' => 'message_en',
+      'ps' => 'message_ps',
+      'fr' => 'message_fr',
+      _ => 'message_fa',
+    };
+    for (final key in [localizedKey, 'message_fa', 'message', 'message_en', 'message_ps', 'message_fr']) {
+      final v = err[key];
+      if (v != null && v.toString().trim().isNotEmpty) return v.toString();
+    }
     return null;
   }
 
   Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
-    throw const ApiException(
-      message: 'پاسخ نامعتبر از سرور دریافت شد.',
+    throw ApiException(
+      message: _t('invalidResponse'),
       type: ApiErrorType.unknown,
     );
   }

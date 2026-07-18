@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
@@ -32,11 +33,11 @@ class ParentScoresScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
-      title: 'نمرات فرزندان',
+      title: context.tr('academy.parentScoresTitle'),
       role: AppUserRole.parent,
       body: childrenAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (children) {
           if (children.isEmpty) {
             return Center(
@@ -46,7 +47,7 @@ class ParentScoresScreen extends ConsumerWidget {
                   Icon(Icons.family_restroom_rounded,
                       size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
-                  Text('هنوز فرزندی به حساب شما لینک نشده است.\nاز داشبورد والدین کد دعوت فرزندتان را وارد کنید.',
+                  Text(context.tr('academy.noLinkedChildrenHint'),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant, height: 1.8)),
                 ]),
@@ -56,7 +57,7 @@ class ParentScoresScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text('فرزند خود را انتخاب کنید تا تمام نمرات امتحاناتش را ببینید',
+              Text(context.tr('academy.selectChildHint'),
                       style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant))
                   .animate()
                   .fadeIn(duration: 240.ms),
@@ -141,12 +142,14 @@ class _ChildCard extends ConsumerWidget {
                         const SizedBox(height: 4),
                         summaryAsync.maybeWhen(
                           data: (s) => Row(children: [
-                            _heroChip(Icons.school_rounded, 'صنف ${s.gradeNumber}'),
+                            _heroChip(Icons.school_rounded,
+                                '${context.tr('common.grade')} ${s.gradeNumber}'),
                             const SizedBox(width: 6),
                             _heroChip(Icons.event_available_rounded,
-                                'حاضری ${s.attendanceRatePercent.toStringAsFixed(0)}٪'),
+                                context.tr('academy.attendanceChip',
+                                    {'percent': s.attendanceRatePercent.toStringAsFixed(0)})),
                           ]),
-                          orElse: () => Text('در حال بارگذاری…',
+                          orElse: () => Text(context.tr('common.loading'),
                               style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.85), fontSize: 11)),
                         ),
@@ -199,7 +202,7 @@ class _ChildCard extends ConsumerWidget {
         Icon(Icons.hourglass_empty_rounded, size: 18, color: scheme.onSurfaceVariant),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('هنوز امتحانی ثبت نشده است',
+          child: Text(context.tr('academy.noExamsYet'),
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
         ),
       ]);
@@ -208,11 +211,14 @@ class _ChildCard extends ConsumerWidget {
     final passed = subs.where((s) => s.passed).length;
     final avgColor = avg >= 50 ? AppColors.green600 : AppColors.orange600;
     return Row(children: [
-      _stat(context, Icons.assignment_turned_in_rounded, '${subs.length}', 'امتحان', scheme.primary),
+      _stat(context, Icons.assignment_turned_in_rounded, '${subs.length}',
+          context.tr('academy.examsLabel'), scheme.primary),
       _divider(scheme),
-      _stat(context, Icons.speed_rounded, '${avg.toStringAsFixed(0)}٪', 'میانگین', avgColor),
+      _stat(context, Icons.speed_rounded, '${avg.toStringAsFixed(0)}٪',
+          context.tr('academy.averageLabel'), avgColor),
       _divider(scheme),
-      _stat(context, Icons.verified_rounded, '$passed', 'قبولی', AppColors.green600),
+      _stat(context, Icons.verified_rounded, '$passed',
+          context.tr('academy.passedLabel'), AppColors.green600),
     ]);
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/memory_post.dart';
@@ -27,14 +28,14 @@ class MemoryPostCard extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('حذف این روایت؟'),
-        content: const Text('این روایت و همهٔ کامنت‌های آن برای همیشه حذف می‌شود.'),
+        title: Text(context.tr('memory.deleteConfirmTitle')),
+        content: Text(context.tr('memory.deleteConfirmBody')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: scheme.error),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('حذف'),
+            child: Text(context.tr('common.delete')),
           ),
         ],
       ),
@@ -115,14 +116,16 @@ class MemoryPostCard extends ConsumerWidget {
                                 color: scheme.primaryContainer,
                                 borderRadius: BorderRadius.circular(AppRadii.pill),
                               ),
-                              child: Text('مدیریت',
+                              child: Text(context.tr('memory.adminBadge'),
                                   style: TextStyle(fontSize: 10, color: scheme.onPrimaryContainer, fontWeight: FontWeight.w700)),
                             ),
                           ],
                         ],
                       ),
                       Text(
-                        post.isEdited ? '${timeAgoFa(post.createdAt)} · ویرایش‌شده' : timeAgoFa(post.createdAt),
+                        post.isEdited
+                            ? '${timeAgoFa(context, post.createdAt)} · ${context.tr('memory.editedSuffix')}'
+                            : timeAgoFa(context, post.createdAt),
                         style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
                       ),
                     ],
@@ -139,13 +142,13 @@ class MemoryPostCard extends ConsumerWidget {
                       }
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(value: 'edit', child: Row(children: [
-                        Icon(Icons.edit_outlined, size: 18), SizedBox(width: 8), Text('ویرایش'),
+                      PopupMenuItem(value: 'edit', child: Row(children: [
+                        const Icon(Icons.edit_outlined, size: 18), const SizedBox(width: 8), Text(context.tr('common.edit')),
                       ])),
                       PopupMenuItem(value: 'delete', child: Row(children: [
                         Icon(Icons.delete_outline_rounded, size: 18, color: scheme.error),
                         const SizedBox(width: 8),
-                        Text('حذف', style: TextStyle(color: scheme.error)),
+                        Text(context.tr('common.delete'), style: TextStyle(color: scheme.error)),
                       ])),
                     ],
                   ),
@@ -259,9 +262,11 @@ class MemoryPostCard extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Text(
                       commentCountAsync.when(
-                        data: (c) => c == 0 ? 'اولین نظر را بنویس' : '$c نظر · مشاهده و گفت‌وگو',
-                        loading: () => 'در حال بارگذاری...',
-                        error: (_, __) => 'نظرات',
+                        data: (c) => c == 0
+                            ? context.tr('memory.writeFirstComment')
+                            : context.tr('memory.commentsCountView', {'count': '$c'}),
+                        loading: () => context.tr('common.loading'),
+                        error: (_, __) => context.tr('memory.commentsLabel'),
                       ),
                       style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
                     ),

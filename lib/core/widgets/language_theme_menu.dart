@@ -27,6 +27,7 @@ class LanguageThemeMenu extends ConsumerWidget {
               PopupMenuItem(value: Locale('fa'), child: Text('دری')),
               PopupMenuItem(value: Locale('ps'), child: Text('پښتو')),
               PopupMenuItem(value: Locale('en'), child: Text('English')),
+              PopupMenuItem(value: Locale('fr'), child: Text('Français')),
             ],
           ),
         ),

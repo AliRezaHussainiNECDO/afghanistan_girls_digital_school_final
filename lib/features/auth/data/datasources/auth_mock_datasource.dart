@@ -11,6 +11,42 @@ import 'auth_remote_datasource.dart' show AuthDataSource;
 /// (پروتکل Invite Code). قرارداد مشترک `AuthDataSource` را پیاده می‌کند تا
 /// با یک سوییچ در Providerها با `AuthRemoteDataSource` واقعی تعویض شود.
 class AuthMockDataSource implements AuthDataSource {
+  final String localeCode;
+  AuthMockDataSource({this.localeCode = 'fa'});
+
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'invalidCredentials': 'ایمیل یا رمز اشتباه است',
+      'accountSuspended': 'حساب شما توسط مدیریت مسدود شده است',
+      'notLoggedIn': 'وارد نشده‌اید',
+      'wrongCurrentPassword': 'رمز عبور فعلی نادرست است',
+      'weakPassword': 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد',
+    },
+    'en': {
+      'invalidCredentials': 'Incorrect email or password',
+      'accountSuspended': 'Your account has been suspended by the administration',
+      'notLoggedIn': 'You are not logged in',
+      'wrongCurrentPassword': 'The current password is incorrect',
+      'weakPassword': 'The new password must be at least 8 characters',
+    },
+    'ps': {
+      'invalidCredentials': 'بریښنالیک یا پټنوم ناسم دی',
+      'accountSuspended': 'ستاسو حساب د ادارې لخوا بند شوی دی',
+      'notLoggedIn': 'تاسو ننوتلي نه یاست',
+      'wrongCurrentPassword': 'اوسنی پټنوم ناسم دی',
+      'weakPassword': 'نوی پټنوم باید لږ تر لږه ۸ توري ولري',
+    },
+    'fr': {
+      'invalidCredentials': 'E-mail ou mot de passe incorrect',
+      'accountSuspended': 'Votre compte a été suspendu par l’administration',
+      'notLoggedIn': 'Vous n’êtes pas connecté',
+      'wrongCurrentPassword': 'Le mot de passe actuel est incorrect',
+      'weakPassword': 'Le nouveau mot de passe doit comporter au moins 8 caractères',
+    },
+  };
+
+  String _t(String key) => _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+
   // تنها حساب ورودِ از پیش ساخته: مدیر کل. حساب‌های نمایشی حذف شدند —
   // شاگرد/والد/استاد فقط از راه ثبت‌نام (با کد دعوت) حساب می‌سازند.
   static final Map<String, ({String password, AppUserModel user})> _accounts = {
@@ -34,19 +70,19 @@ class AuthMockDataSource implements AuthDataSource {
     await Future.delayed(const Duration(milliseconds: 500));
     final account = _accounts[email.trim().toLowerCase()];
     if (account == null || account.password != password) {
-      throw const ServerFailure('ایمیل یا رمز اشتباه است', code: 'INVALID_CREDENTIALS');
+      throw ServerFailure(_t('invalidCredentials'), code: 'INVALID_CREDENTIALS');
     }
     // شاخهٔ status=suspended در State Machine ورود (بخش ۳.۲ سند):
     // استادی که مدیر از «مدیریت استادان» مسدود کرده، نمی‌تواند وارد شود.
     if (account.user.role == AppUserRole.seminarInstructor &&
         (InstructorDirectory.instance.byId(account.user.id)?.suspended ?? false)) {
-      throw const ServerFailure('حساب شما توسط مدیریت مسدود شده است', code: 'ACCOUNT_SUSPENDED');
+      throw ServerFailure(_t('accountSuspended'), code: 'ACCOUNT_SUSPENDED');
     }
     // همان قانون برای شاگردی که مدیر از «مدیریت شاگردان» مسدود/حذف کرده.
     if (account.user.role == AppUserRole.student) {
       final rec = StudentDirectory.instance.byId(account.user.id);
       if (rec != null && rec.status != StudentAccountStatus.active) {
-        throw const ServerFailure('حساب شما توسط مدیریت مسدود شده است', code: 'ACCOUNT_SUSPENDED');
+        throw ServerFailure(_t('accountSuspended'), code: 'ACCOUNT_SUSPENDED');
       }
     }
     _currentUser = account.user;
@@ -75,6 +111,7 @@ class AuthMockDataSource implements AuthDataSource {
         rawCode: inviteCode,
         studentName: '$firstName $lastName'.trim(),
         studentEmail: email,
+        localeCode: localeCode,
       );
     } catch (e) {
       throw ServerFailure(e.toString(), code: 'INVALID_INVITE_CODE');
@@ -143,6 +180,7 @@ class AuthMockDataSource implements AuthDataSource {
       fullName: fullName,
       email: email,
       specialty: specialty,
+      localeCode: localeCode,
     );
     final user = AppUserModel(
       id: 'u-${DateTime.now().millisecondsSinceEpoch}',
@@ -195,7 +233,7 @@ class AuthMockDataSource implements AuthDataSource {
   Future<AppUserModel> updateProfile({required String firstName, required String lastName}) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final current = _currentUser;
-    if (current == null) throw const ServerFailure('وارد نشده‌اید', code: 'UNAUTHORIZED');
+    if (current == null) throw ServerFailure(_t('notLoggedIn'), code: 'UNAUTHORIZED');
     final fullName = [firstName, lastName].where((s) => s.trim().isNotEmpty).join(' ').trim();
     final updated = AppUserModel(
       id: current.id,
@@ -218,13 +256,13 @@ class AuthMockDataSource implements AuthDataSource {
   Future<void> changePassword({required String currentPassword, required String newPassword}) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final current = _currentUser;
-    if (current == null) throw const ServerFailure('وارد نشده‌اید', code: 'UNAUTHORIZED');
+    if (current == null) throw ServerFailure(_t('notLoggedIn'), code: 'UNAUTHORIZED');
     final account = _accounts[current.email.trim().toLowerCase()];
     if (account == null || account.password != currentPassword) {
-      throw const ServerFailure('رمز عبور فعلی نادرست است', code: 'INVALID_CREDENTIALS');
+      throw ServerFailure(_t('wrongCurrentPassword'), code: 'INVALID_CREDENTIALS');
     }
     if (newPassword.length < 8) {
-      throw const ServerFailure('رمز عبور جدید باید حداقل ۸ کاراکتر باشد', code: 'WEAK_PASSWORD');
+      throw ServerFailure(_t('weakPassword'), code: 'WEAK_PASSWORD');
     }
     _accounts[current.email.trim().toLowerCase()] = (password: newPassword, user: account.user);
   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/student_entities.dart';
 import '../providers/student_management_providers.dart';
 import '../widgets/common_widgets.dart';
@@ -34,8 +35,8 @@ class StudentListScreen extends ConsumerWidget {
             flexibleSpace: FlexibleSpaceBar(
               titlePadding:
                   const EdgeInsetsDirectional.only(start: 16, bottom: 14),
-              title: const Text('مدیریت شاگردان',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(context.tr('studentList.screenTitle'),
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -50,7 +51,7 @@ class StudentListScreen extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(16, 52, 16, 0),
                     child: students.maybeWhen(
                       data: (p) => Text(
-                        '${p.total} شاگرد ثبت‌شده',
+                        context.tr('studentList.totalRegisteredCount', {'count': '${p.total}'}),
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: .85), fontSize: 13),
                       ),
@@ -71,8 +72,8 @@ class StudentListScreen extends ConsumerWidget {
                   onRetry: () => ref.invalidate(studentsProvider)),
             ),
             data: (page) => page.items.isEmpty
-                ? const SliverFillRemaining(
-                    child: Center(child: Text('شاگردی با این فیلتر یافت نشد')))
+                ? SliverFillRemaining(
+                    child: Center(child: Text(context.tr('studentList.noResultsForFilter'))))
                 : SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                     sliver: SliverList.separated(
@@ -102,7 +103,7 @@ class _FilterBar extends ConsumerWidget {
         TextField(
           onChanged: (v) => notifier.state = filter.copyWith(query: v, page: 1),
           decoration: InputDecoration(
-            hintText: 'جستجوی نام شاگرد…',
+            hintText: context.tr('studentList.searchHint'),
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
@@ -118,11 +119,13 @@ class _FilterBar extends ConsumerWidget {
           child: Row(children: [
             _chip(
               context,
-              label: filter.grade == null ? 'صنف' : 'صنف ${filter.grade}',
+              label: filter.grade == null
+                  ? context.tr('studentList.gradeChipDefault')
+                  : context.tr('bulkImport.gradeOption', {'grade': '${filter.grade}'}),
               selected: filter.grade != null,
               onTap: () async {
-                final g = await _pick<int>(context, 'انتخاب صنف',
-                    [for (var g = 7; g <= 12; g++) (g, 'صنف $g')]);
+                final g = await _pick<int>(context, context.tr('studentList.pickGradeTitle'),
+                    [for (var g = 7; g <= 12; g++) (g, context.tr('bulkImport.gradeOption', {'grade': '$g'}))]);
                 notifier.state = g == null
                     ? filter.copyWith(clearGrade: true, page: 1)
                     : filter.copyWith(grade: g, page: 1);
@@ -130,10 +133,10 @@ class _FilterBar extends ConsumerWidget {
             ),
             _chip(
               context,
-              label: filter.province ?? 'ولایت',
+              label: filter.province ?? context.tr('studentList.provinceChipDefault'),
               selected: filter.province != null,
               onTap: () async {
-                final p = await _pick<String>(context, 'انتخاب ولایت',
+                final p = await _pick<String>(context, context.tr('studentList.pickProvinceTitle'),
                     [for (final p in StudentListScreen.provinces) (p, p)]);
                 notifier.state = p == null
                     ? filter.copyWith(clearProvince: true, page: 1)
@@ -143,18 +146,18 @@ class _FilterBar extends ConsumerWidget {
             _chip(
               context,
               label: switch (filter.status) {
-                null => 'وضعیت حساب',
-                AccountStatus.active => 'فعال',
-                AccountStatus.suspended => 'مسدود',
-                AccountStatus.pendingVerification => 'در انتظار',
-                AccountStatus.deleted => 'حذف‌شده',
+                null => context.tr('studentList.accountStatusLabel'),
+                AccountStatus.active => context.tr('adminCommon.statusActive'),
+                AccountStatus.suspended => context.tr('adminCommon.statusSuspended'),
+                AccountStatus.pendingVerification => context.tr('studentList.statusPendingShort'),
+                AccountStatus.deleted => context.tr('adminCommon.statusDeleted'),
               },
               selected: filter.status != null,
               onTap: () async {
-                final s = await _pick<AccountStatus>(context, 'وضعیت حساب', [
-                  (AccountStatus.active, 'فعال'),
-                  (AccountStatus.suspended, 'مسدود'),
-                  (AccountStatus.deleted, 'حذف‌شده'),
+                final s = await _pick<AccountStatus>(context, context.tr('studentList.accountStatusLabel'), [
+                  (AccountStatus.active, context.tr('adminCommon.statusActive')),
+                  (AccountStatus.suspended, context.tr('adminCommon.statusSuspended')),
+                  (AccountStatus.deleted, context.tr('adminCommon.statusDeleted')),
                 ]);
                 notifier.state = s == null
                     ? filter.copyWith(clearStatus: true, page: 1)
@@ -163,7 +166,7 @@ class _FilterBar extends ConsumerWidget {
             ),
             _chip(
               context,
-              label: 'در معرض خطر',
+              label: context.tr('studentList.atRiskChip'),
               selected: filter.atRiskOnly,
               color: AppPalette.red,
               onTap: () => notifier.state =
@@ -272,16 +275,16 @@ class _StudentCard extends StatelessWidget {
                   StatusBadge(student.status),
                 ]),
                 const SizedBox(height: 4),
-                Text('صنف ${student.grade} • ${student.province}',
+                Text('${context.tr('bulkImport.gradeOption', {'grade': '${student.grade}'})} • ${student.province}',
                     style:
                         TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
-                      child: ScoreBar(value: student.gradeAverage, label: 'میانگین نمرات')),
+                      child: ScoreBar(value: student.gradeAverage, label: context.tr('studentList.gradeAverageLabel'))),
                   const SizedBox(width: 12),
                   Expanded(
-                      child: ScoreBar(value: student.attendanceRate, label: 'حاضری')),
+                      child: ScoreBar(value: student.attendanceRate, label: context.tr('studentList.attendanceLabel'))),
                 ]),
                 if (student.riskLevel != RiskLevel.none) ...[
                   const SizedBox(height: 8),
@@ -313,7 +316,7 @@ class _ErrorView extends StatelessWidget {
           FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
-              label: const Text('تلاش دوباره')),
+              label: Text(context.tr('common.retry'))),
         ]),
       );
 }

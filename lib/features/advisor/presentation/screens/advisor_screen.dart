@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/app_notification.dart';
@@ -23,12 +24,12 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
   final _scroll = ScrollController();
   bool _sending = false;
 
-  static const _suggestions = [
-    'استرس امتحان دارم',
-    'با خانواده‌ام مشکل دارم',
-    'احساس تنهایی می‌کنم',
-    'نمی‌توانم تمرکز کنم',
-  ];
+  List<String> _suggestions(BuildContext context) => [
+        context.tr('advisor.suggestion1'),
+        context.tr('advisor.suggestion2'),
+        context.tr('advisor.suggestion3'),
+        context.tr('advisor.suggestion4'),
+      ];
 
   @override
   void dispose() {
@@ -38,7 +39,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
   }
 
   String get _studentId => ref.read(authSessionProvider)?.id ?? 'me';
-  String get _studentName => ref.read(authSessionProvider)?.displayName ?? 'شاگرد';
+  String get _studentName => ref.read(authSessionProvider)?.displayName ?? context.tr('advisor.studentFallback');
 
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,8 +77,8 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         // /advisor/messages که `store.add(...)` بالا آن را صدا می‌زند).
         // این یکی فقط برای بازخورد آنیِ محلی/همین‌نشست به خودِ شاگرد است.
         NotificationCenter.instance.push(
-          title: 'گفتگوی مشاور نیاز به توجه دارد 💙',
-          body: '$_studentName پیامی حساس ارسال کرد — لطفاً در جزئیات شاگرد بازبینی شود.',
+          title: context.tr('advisor.flaggedNotifTitle'),
+          body: context.tr('advisor.flaggedNotifBody', {'name': _studentName}),
           kind: NotificationKind.safety,
           priority: NotificationPriority.high,
         );
@@ -87,7 +88,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         studentId: _studentId,
         studentName: _studentName,
         role: AdvisorRole.advisor,
-        text: 'ببخشید، الان نتوانستم پاسخ بدهم. لطفاً دوباره تلاش کن. 🌸',
+        text: context.tr('advisor.errorFallback'),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -102,7 +103,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
-      title: 'مشاور هوشمند',
+      title: context.tr('nav.advisor'),
       role: AppUserRole.student,
       body: Column(
         children: [
@@ -133,7 +134,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(width: 8),
-                Text('مشاور در حال نوشتن…', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                Text(context.tr('advisor.typing'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ]),
             ),
           _composer(context),
@@ -157,23 +158,22 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
           ),
         ).animate().scale(begin: const Offset(0.8, 0.8), duration: 400.ms, curve: Curves.easeOutBack),
         const SizedBox(height: 16),
-        Text('سلام عزیزم 🌸',
+        Text(context.tr('advisor.introGreeting'),
             textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: scheme.onSurface)),
         const SizedBox(height: 8),
         Text(
-          'من مشاور تو هستم. می‌توانی دربارهٔ درس، احساسات، خانواده، دوستان یا هر چیزی که '
-          'ذهنت را مشغول کرده با من صحبت کنی. اینجا جای امنی برای توست.',
+          context.tr('advisor.introBody'),
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13.5, height: 1.7, color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
-        Text('می‌توانی این‌طور شروع کنی:', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+        Text(context.tr('advisor.startPrompt'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           alignment: WrapAlignment.center,
-          children: _suggestions
+          children: _suggestions(context)
               .map((s) => ActionChip(
                     label: Text(s),
                     onPressed: () => _send(s),
@@ -205,7 +205,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
                 textInputAction: TextInputAction.send,
                 onSubmitted: _send,
                 decoration: InputDecoration(
-                  hintText: 'پیامت را بنویس…',
+                  hintText: context.tr('advisor.messageHint'),
                   filled: true,
                   fillColor: scheme.surfaceContainerLowest,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -222,7 +222,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
             ),
             const SizedBox(width: 8),
             Container(
-              decoration: BoxDecoration(gradient: AppColors.heroGradient, shape: BoxShape.circle),
+              decoration: const BoxDecoration(gradient: AppColors.heroGradient, shape: BoxShape.circle),
               child: IconButton(
                 icon: const Icon(Icons.send_rounded, color: Colors.white),
                 onPressed: _sending ? null : () => _send(_controller.text),
@@ -244,10 +244,10 @@ class _MonitoredNotice extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: AppColors.gold600.withValues(alpha: 0.10),
       child: Row(children: [
-        Icon(Icons.shield_moon_rounded, size: 16, color: AppColors.gold600),
+        const Icon(Icons.shield_moon_rounded, size: 16, color: AppColors.gold600),
         const SizedBox(width: 8),
         Expanded(
-          child: Text('برای امنیت و حمایت بهتر تو، این گفتگوها ممکن است توسط مدیریت مکتب بازبینی شود.',
+          child: Text(context.tr('advisor.monitoredNotice'),
               style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
         ),
       ]),
@@ -273,7 +273,7 @@ class _Bubble extends StatelessWidget {
             Container(
               width: 34,
               height: 34,
-              decoration: BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
+              decoration: const BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
               child: const Icon(Icons.volunteer_activism_rounded, color: Colors.white, size: 18),
             ),
             const SizedBox(width: 8),

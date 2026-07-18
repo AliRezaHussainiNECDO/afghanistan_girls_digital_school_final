@@ -79,7 +79,9 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('خوش آمدید ${_fullName.text.trim()}! حساب استاد شما فعال شد')),
+      SnackBar(
+        content: Text(context.tr('instructor.welcomeActivated', {'name': _fullName.text.trim()})),
+      ),
     );
     context.go(AppRoutes.instructorHome);
   }
@@ -89,7 +91,7 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: scheme.surface,
-      appBar: AppBar(title: const Text('ثبت‌نام استاد سمینار')),
+      appBar: AppBar(title: Text(context.tr('auth.registerInstructor'))),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -126,7 +128,7 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'ثبت‌نام استاد فقط با کد دعوتی ممکن است که مدیریت مکتب برای شما ساخته است. اگر کد ندارید، با مدیریت تماس بگیرید.',
+                          context.tr('instructor.inviteCodeNotice'),
                           style: TextStyle(fontSize: 12, height: 1.7, color: scheme.onSurfaceVariant),
                         ),
                       ),
@@ -148,20 +150,20 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                           TextFormField(
                             controller: _inviteCode,
                             textDirection: TextDirection.ltr,
-                            decoration: const InputDecoration(
-                              labelText: 'کد دعوت استاد',
+                            decoration: InputDecoration(
+                              labelText: context.tr('instructor.inviteCodeLabel'),
                               hintText: 'TCH-XXXXXX',
-                              prefixIcon: Icon(Icons.vpn_key_rounded),
+                              prefixIcon: const Icon(Icons.vpn_key_rounded),
                             ),
                             validator: (v) =>
-                                (v == null || v.trim().length < 6) ? 'کد دعوت الزامی است' : null,
+                                (v == null || v.trim().length < 6) ? context.tr('common.required') : null,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _fullName,
-                            decoration: const InputDecoration(
-                              labelText: 'نام کامل',
-                              prefixIcon: Icon(Icons.badge_rounded),
+                            decoration: InputDecoration(
+                              labelText: context.tr('auth.fullName'),
+                              prefixIcon: const Icon(Icons.badge_rounded),
                             ),
                             validator: (v) =>
                                 (v == null || v.trim().length < 3) ? context.tr('common.required') : null,
@@ -188,22 +190,22 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                           // ── معلومات ضروری تدریس ──
                           TextFormField(
                             controller: _specialty,
-                            decoration: const InputDecoration(
-                              labelText: 'تخصص / رشتهٔ تدریس',
-                              hintText: 'مثلاً: مهارت‌های زندگی، کمپیوتر، ریاضی',
-                              prefixIcon: Icon(Icons.school_rounded),
+                            decoration: InputDecoration(
+                              labelText: context.tr('instructor.specialtyLabel'),
+                              hintText: context.tr('instructor.specialtyHint'),
+                              prefixIcon: const Icon(Icons.school_rounded),
                             ),
                             validator: (v) =>
-                                (v == null || v.trim().length < 2) ? 'تخصص الزامی است' : null,
+                                (v == null || v.trim().length < 2) ? context.tr('common.required') : null,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _bio,
                             maxLines: 3,
-                            decoration: const InputDecoration(
-                              labelText: 'سابقهٔ تدریس / معرفی کوتاه',
-                              hintText: 'چند سال تجربه دارید و چه سمینارهایی برگزار کرده‌اید؟',
-                              prefixIcon: Icon(Icons.history_edu_rounded),
+                            decoration: InputDecoration(
+                              labelText: context.tr('instructor.bioLabel'),
+                              hintText: context.tr('instructor.bioHint'),
+                              prefixIcon: const Icon(Icons.history_edu_rounded),
                               alignLabelWithHint: true,
                             ),
                           ),
@@ -216,7 +218,7 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                               prefixIcon: const Icon(Icons.lock_rounded),
                             ),
                             validator: (v) =>
-                                (v == null || v.length < 8) ? 'رمز حداقل ۸ کاراکتر باشد' : null,
+                                (v == null || v.length < 8) ? context.tr('auth.passwordTooShort') : null,
                           ),
                           const SizedBox(height: 8),
                           TermsConsentField(
@@ -233,7 +235,7 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                           ],
                           const SizedBox(height: 20),
                           AppPrimaryButton(
-                            label: 'فعال‌سازی حساب استاد',
+                            label: context.tr('instructor.activateAccount'),
                             loading: _submitting,
                             gradient: AppColors.heroGradientWarm,
                             onPressed: _submit,

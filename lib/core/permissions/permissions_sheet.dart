@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/theme/design_tokens.dart';
+import '../localization/app_localizations.dart';
 import 'permission_service.dart';
 
 class _PermItem {
@@ -13,13 +14,16 @@ class _PermItem {
   const _PermItem(this.permission, this.icon, this.title, this.subtitle);
 }
 
-const List<_PermItem> _items = [
-  _PermItem(Permission.camera, Icons.photo_camera_rounded, 'دوربین', 'برای عکس پروفایل و ارسال عکس تکالیف'),
-  _PermItem(Permission.microphone, Icons.mic_rounded, 'میکروفون', 'برای پیام صوتی و شرکت در سمینارها'),
-  _PermItem(Permission.photos, Icons.photo_library_rounded, 'گالری تصاویر', 'برای انتخاب و ذخیرهٔ تصاویر و فایل‌ها'),
-  _PermItem(Permission.notification, Icons.notifications_active_rounded, 'اعلان‌ها',
-      'برای اطلاع از کتاب‌ها، امتحان‌ها و نمرات'),
-];
+List<_PermItem> _items(BuildContext context) => [
+      _PermItem(Permission.camera, Icons.photo_camera_rounded,
+          context.tr('permissions.cameraTitle'), context.tr('permissions.cameraSubtitle')),
+      _PermItem(Permission.microphone, Icons.mic_rounded,
+          context.tr('permissions.microphoneTitle'), context.tr('permissions.microphoneSubtitle')),
+      _PermItem(Permission.photos, Icons.photo_library_rounded,
+          context.tr('permissions.galleryTitle'), context.tr('permissions.gallerySubtitle')),
+      _PermItem(Permission.notification, Icons.notifications_active_rounded,
+          context.tr('permissions.notificationsTitle'), context.tr('permissions.notificationsSubtitle')),
+    ];
 
 /// بلوک شیت مدرن درخواست دسترسی‌های دستگاه.
 class PermissionsSheet extends StatefulWidget {
@@ -99,17 +103,17 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
                   child: const Icon(Icons.verified_user_rounded, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('دسترسی‌های برنامه',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                Expanded(
+                  child: Text(context.tr('permissions.sheetTitle'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
                 ),
               ]),
             ),
             const SizedBox(height: 12),
-            Text('برای استفادهٔ کامل از امکانات، لطفاً به موارد زیر اجازه بده. هر زمان می‌توانی از تنظیمات تغییر بدهی.',
+            Text(context.tr('permissions.sheetDescription'),
                 style: TextStyle(fontSize: 12.5, height: 1.6, color: scheme.onSurfaceVariant)),
             const SizedBox(height: 14),
-            ..._items.map((it) {
+            ..._items(context).map((it) {
               final granted = _granted[it.permission] == true;
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
@@ -144,10 +148,10 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
               icon: _busy
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.check_rounded),
-              label: Text(_busy ? 'در حال درخواست…' : 'اجازه دادن'),
+              label: Text(_busy ? context.tr('permissions.requestingButton') : context.tr('permissions.allowButton')),
             ),
             const SizedBox(height: 6),
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('بعداً')),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('permissions.laterButton'))),
           ],
         ),
       ),

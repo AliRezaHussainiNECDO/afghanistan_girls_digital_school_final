@@ -43,17 +43,20 @@ class CurriculumLibraryLocalDataSource implements CurriculumLibraryDataSource {
     await prefs.setString(_storageKey, jsonEncode(books.map((b) => b.toJson()).toList()));
   }
 
+  @override
   Future<List<CurriculumBook>> getBooksForSubject(String subjectId) async {
     final all = await _readAll();
     return all.where((b) => b.subjectId == subjectId).toList()
       ..sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
   }
 
+  @override
   Future<List<CurriculumBook>> getAllBooks() async {
     final all = await _readAll();
     return all..sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
   }
 
+  @override
   Future<CurriculumBook> addBook({
     required String subjectId,
     required String title,
@@ -82,6 +85,7 @@ class CurriculumLibraryLocalDataSource implements CurriculumLibraryDataSource {
     return book;
   }
 
+  @override
   Future<void> deleteBook(String bookId) async {
     final all = await _readAll();
     all.removeWhere((b) => b.id == bookId);

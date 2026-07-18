@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/certificate.dart';
 import '../widgets/certificate_view.dart';
 
@@ -46,7 +47,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
     try {
       final png = await _capturePng();
       if (png == null) {
-        _toast('آماده‌سازی تصویر گواهی‌نامه ناموفق بود');
+        _toast(context.tr('certificates.prepareImageFailed'));
         return;
       }
 
@@ -70,14 +71,14 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
       }
 
       if (kIsWeb) {
-        _toast('دانلود در نسخهٔ وب هنوز فعال نیست');
+        _toast(context.tr('certificates.webDownloadUnavailable'));
         return;
       }
 
       final fileName =
-          'گواهینامه-صنف${widget.certificate.grade}-${widget.certificate.serial}.$ext';
+          '${context.tr('certificates.fileNamePrefix')}-${widget.certificate.grade}-${widget.certificate.serial}.$ext';
       final path = await FilePicker.saveFile(
-        dialogTitle: 'ذخیرهٔ گواهی‌نامه',
+        dialogTitle: context.tr('certificates.saveDialogTitle'),
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: [ext],
@@ -90,9 +91,9 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
       if (!await file.exists() || (await file.length()) == 0) {
         await file.writeAsBytes(bytes);
       }
-      _toast('گواهی‌نامه ذخیره شد ✅');
+      _toast(context.tr('certificates.savedSuccess'));
     } catch (e) {
-      _toast('خطا در ذخیره: $e');
+      _toast(context.tr('certificates.saveError', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -113,8 +114,8 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
-          title: const Text('گواهی‌نامه',
-              style: TextStyle(fontWeight: FontWeight.w800)),
+          title: Text(context.tr('certificates.title'),
+              style: const TextStyle(fontWeight: FontWeight.w800)),
         ),
         body: Column(
           children: [
@@ -147,7 +148,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
                                 child:
                                     CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.picture_as_pdf_rounded),
-                        label: const Text('دانلود PDF'),
+                        label: Text(context.tr('certificates.downloadPdf')),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -155,7 +156,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
                       child: FilledButton.tonalIcon(
                         onPressed: _saving ? null : () => _save(asPdf: false),
                         icon: const Icon(Icons.image_rounded),
-                        label: const Text('ذخیرهٔ عکس'),
+                        label: Text(context.tr('certificates.saveImage')),
                       ),
                     ),
                   ],

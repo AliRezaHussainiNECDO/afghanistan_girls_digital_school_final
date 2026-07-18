@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/network/network_providers.dart';
 import '../../../../../core/usecase/usecase.dart';
+import '../../../../../core/localization/locale_provider.dart';
 import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/reports_mock_datasource.dart';
 import '../../data/datasources/reports_remote_datasource.dart';
@@ -14,7 +15,7 @@ final reportsDataSourceProvider = Provider<ReportsDataSource>((ref) {
   if (kUseLiveBackend) {
     return ReportsRemoteDataSource(ref.watch(apiClientProvider));
   }
-  return ReportsMockDataSource();
+  return ReportsMockDataSource(localeCode: ref.watch(localeProvider).languageCode);
 });
 final reportsRepositoryProvider =
     Provider<ReportsRepository>((ref) => ReportsRepositoryImpl(ref.watch(reportsDataSourceProvider)));

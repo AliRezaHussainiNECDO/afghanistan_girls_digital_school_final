@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/certificate.dart';
 
 /// طراحی رسمی و تزئینی گواهی‌نامه — همین ویجت هم در اپ نمایش داده می‌شود و
@@ -88,7 +89,7 @@ class CertificateView extends StatelessWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('شماره سریال',
+                            Text(context.tr('certificates.serialNumberLabel'),
                                 style: TextStyle(
                                     fontSize: compact ? 6.5 : 8,
                                     color: _ink.withValues(alpha: .55))),
@@ -109,7 +110,7 @@ class CertificateView extends StatelessWidget {
                         Padding(
                           padding:
                               const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('گواهی‌نامهٔ اتمام صنف',
+                          child: Text(context.tr('certificates.completionTitle'),
                               style: TextStyle(
                                   fontSize: compact ? 17 : 22,
                                   fontWeight: FontWeight.w900,
@@ -119,7 +120,7 @@ class CertificateView extends StatelessWidget {
                       ],
                     ),
                     SizedBox(height: compact ? 6 : 10),
-                    Text('این گواهی‌نامه تأیید می‌کند که',
+                    Text(context.tr('certificates.certifiesText'),
                         style: TextStyle(
                             fontSize: compact ? 9 : 11,
                             color: _ink.withValues(alpha: .75))),
@@ -135,7 +136,12 @@ class CertificateView extends StatelessWidget {
                     ),
                     SizedBox(height: compact ? 4 : 8),
                     Text(
-                      'صنف ${c.grade} را در سال تعلیمی ${c.yearLabel} با میانگین نمرات ٪${c.average.toStringAsFixed(0)} با موفقیت به پایان رسانیده است${c.honor.isNotEmpty ? ' — ${c.honor}' : ''}.',
+                      context.tr('certificates.achievementSentence', {
+                        'grade': '${c.grade}',
+                        'year': c.yearLabel,
+                        'average': c.average.toStringAsFixed(0),
+                        'honor': c.honor.isNotEmpty ? ' — ${c.honor}' : '',
+                      }),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                           fontSize: compact ? 9.5 : 11.5,
@@ -151,7 +157,7 @@ class CertificateView extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('تاریخ صدور',
+                              Text(context.tr('certificates.issueDateLabel'),
                                   style: TextStyle(
                                       fontSize: compact ? 7 : 8.5,
                                       color: _ink.withValues(alpha: .55))),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/collective_memory_providers.dart';
@@ -24,13 +25,13 @@ class CollectiveMemoryScreen extends ConsumerWidget {
     if (user == null) return const SizedBox.shrink();
 
     return AppScaffold(
-      title: 'حافظهٔ جمعی',
+      title: context.tr('nav.collectiveMemory'),
       role: user.role,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showMemoryComposerSheet(context),
         backgroundColor: scheme.primary,
         icon: const Icon(Icons.edit_rounded, color: Colors.white),
-        label: const Text('روایت تازه', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        label: Text(context.tr('memory.newStoryFab'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.read(memoryPostsRefreshProvider.notifier).state++,
@@ -58,8 +59,8 @@ class CollectiveMemoryScreen extends ConsumerWidget {
                           const SizedBox(height: 12),
                           Text(
                               searchQuery.trim().isEmpty
-                                  ? 'هنوز روایتی ثبت نشده — اولین روایت را تو بنویس.'
-                                  : 'روایتی با این عبارت پیدا نشد.',
+                                  ? context.tr('memory.emptyFeedTitle')
+                                  : context.tr('memory.noSearchResults'),
                               style: TextStyle(color: scheme.onSurfaceVariant)),
                         ],
                       ),
@@ -74,7 +75,7 @@ class CollectiveMemoryScreen extends ConsumerWidget {
           error: (e, __) => Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('خطا در بارگذاری حافظهٔ جمعی: $e', style: TextStyle(color: scheme.error)),
+              child: Text(context.tr('memory.loadError', {'error': '$e'}), style: TextStyle(color: scheme.error)),
             ),
           ),
         ),
@@ -116,7 +117,7 @@ class _SearchBarState extends ConsumerState<_SearchBar> {
       textDirection: TextDirection.rtl,
       onChanged: (value) => ref.read(memorySearchQueryProvider.notifier).state = value,
       decoration: InputDecoration(
-        hintText: 'جستجو در روایت‌ها (متن یا نام نویسنده)...',
+        hintText: context.tr('memory.searchHint'),
         prefixIcon: Icon(Icons.search_rounded, color: scheme.onSurfaceVariant, size: 20),
         suffixIcon: query.isEmpty
             ? null
@@ -166,17 +167,16 @@ class _Header extends StatelessWidget {
                 child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 22),
               ),
               const SizedBox(width: 12),
-              const Expanded(
-                child: Text('روایت‌های دختران و زنان افغانستان',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+              Expanded(
+                child: Text(context.tr('memory.headerTitle'),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          const Text(
-            'اینجا فضایی امن برای بازگو کردن تجربه‌ها، بازدیدها و داستان‌های واقعی است — '
-            'صدای هر نفر بخشی از تاریخی است که با هم می‌سازیم.',
-            style: TextStyle(color: Colors.white, height: 1.7, fontSize: 13),
+          Text(
+            context.tr('memory.headerBody'),
+            style: const TextStyle(color: Colors.white, height: 1.7, fontSize: 13),
           ),
         ],
       ),

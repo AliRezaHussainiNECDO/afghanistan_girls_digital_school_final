@@ -7,6 +7,7 @@ import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../auth/domain/entities/app_user.dart';
 import '../../../../chat/presentation/providers/chat_providers.dart';
 import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
@@ -24,15 +25,15 @@ class AdminClassChatsScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: conversationsAsync.maybeWhen(
-        data: (list) => list.isEmpty ? 'چت‌های صنف' : list.first.className,
-        orElse: () => 'چت‌های صنف',
+        data: (list) => list.isEmpty ? context.tr('classChats.title') : list.first.className,
+        orElse: () => context.tr('classChats.title'),
       ),
       role: AppUserRole.superAdmin,
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(classConversationsProvider(classId)),
         child: conversationsAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(message: e.toString()),
+          error: (e, st) => ErrorView(error: e),
           data: (conversations) => conversations.isEmpty
               ? ListView(
                   children: [
@@ -40,7 +41,7 @@ class AdminClassChatsScreen extends ConsumerWidget {
                     Icon(Icons.forum_rounded, size: 56, color: scheme.outlineVariant),
                     const SizedBox(height: 12),
                     Center(
-                        child: Text('در این صنف هنوز گفتگویی آغاز نشده است.',
+                        child: Text(context.tr('classChats.emptyState'),
                             style: TextStyle(color: scheme.onSurfaceVariant))),
                   ],
                 )
@@ -81,7 +82,7 @@ class AdminClassChatsScreen extends ConsumerWidget {
                                         Expanded(
                                           child: Text(
                                             c.isAdminSupport
-                                                ? '${c.title} ↔ مدیریت'
+                                                ? context.tr('classChats.titleWithAdmin', {'title': c.title})
                                                 : c.title,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -90,7 +91,7 @@ class AdminClassChatsScreen extends ConsumerWidget {
                                                 fontSize: 13.5),
                                           ),
                                         ),
-                                        Text(relativeTimeFa(c.lastMessageAt),
+                                        Text(relativeTimeFa(context, c.lastMessageAt),
                                             style: TextStyle(
                                                 fontSize: 10.5,
                                                 color: scheme.onSurfaceVariant)),
@@ -107,13 +108,13 @@ class AdminClassChatsScreen extends ConsumerWidget {
                                     Wrap(
                                       spacing: 8,
                                       children: [
-                                        Text('${c.messageCount} پیام',
+                                        Text(context.tr('classChats.messageCountLabel', {'count': '${c.messageCount}'}),
                                             style: TextStyle(
                                                 fontSize: 10.5,
                                                 color: scheme.onSurfaceVariant)),
                                         if (c.flaggedPendingCount > 0)
                                           Text(
-                                              '⚑ ${c.flaggedPendingCount} در انتظار بازبینی',
+                                              '⚑ ${context.tr('classChats.pendingReviewLabel', {'count': '${c.flaggedPendingCount}'})}',
                                               style: const TextStyle(
                                                   fontSize: 10.5,
                                                   color: AppColors.danger,

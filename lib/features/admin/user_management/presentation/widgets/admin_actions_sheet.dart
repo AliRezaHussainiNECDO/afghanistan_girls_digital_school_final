@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/student_entities.dart';
 import '../providers/student_management_providers.dart';
 import 'common_widgets.dart';
@@ -33,13 +34,13 @@ class AdminActionItem {
   });
 }
 
-List<AdminActionItem> buildAdminActions(StudentDetail detail) {
+List<AdminActionItem> buildAdminActions(BuildContext context, StudentDetail detail) {
   final suspended = detail.summary.status == AccountStatus.suspended;
   return [
     AdminActionItem(
       id: 'reset_password',
-      label: 'ارسال لینک ریست رمز',
-      subtitle: 'لینک بازیابی به ایمیل شاگرد فرستاده می‌شود (رمز نمایش داده نمی‌شود)',
+      label: context.tr('adminActions.resetPasswordLabel'),
+      subtitle: context.tr('adminActions.resetPasswordSubtitle'),
       icon: Icons.lock_reset,
       execute: (ref, id, _) =>
           ref.read(studentActionsProvider.notifier).sendPasswordReset(id),
@@ -47,8 +48,8 @@ List<AdminActionItem> buildAdminActions(StudentDetail detail) {
     if (!suspended)
       AdminActionItem(
         id: 'suspend',
-        label: 'مسدود کردن حساب',
-        subtitle: 'شاگرد تا رفع مسدودیت نمی‌تواند وارد شود',
+        label: context.tr('adminActions.suspendLabel'),
+        subtitle: context.tr('adminActions.suspendSubtitle'),
         icon: Icons.block,
         destructive: true,
         execute: (ref, id, reason) =>
@@ -57,16 +58,16 @@ List<AdminActionItem> buildAdminActions(StudentDetail detail) {
     else
       AdminActionItem(
         id: 'activate',
-        label: 'رفع مسدودیت حساب',
-        subtitle: 'حساب دوباره فعال می‌شود',
+        label: context.tr('adminActions.activateLabel'),
+        subtitle: context.tr('adminActions.activateSubtitle'),
         icon: Icons.lock_open,
         execute: (ref, id, reason) =>
             ref.read(studentActionsProvider.notifier).activate(id, reason),
       ),
     AdminActionItem(
       id: 'soft_delete',
-      label: 'حذف حساب (Soft Delete)',
-      subtitle: 'حساب غیرفعال و پنهان می‌شود؛ داده‌ها طبق بخش ۱۵.۲ حفظ می‌ماند',
+      label: context.tr('adminActions.softDeleteLabel'),
+      subtitle: context.tr('adminActions.softDeleteSubtitle'),
       icon: Icons.delete_forever,
       destructive: true,
       requiresTypedConfirmation: true,
@@ -81,7 +82,7 @@ List<AdminActionItem> buildAdminActions(StudentDetail detail) {
 
 Future<void> showAdminActionsSheet(
     BuildContext context, WidgetRef ref, StudentDetail detail) {
-  final actions = buildAdminActions(detail);
+  final actions = buildAdminActions(context, detail);
   return showModalBottomSheet(
     context: context,
     showDragHandle: true,
@@ -91,7 +92,7 @@ Future<void> showAdminActionsSheet(
       textDirection: TextDirection.rtl,
       child: SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('اکشن‌های مدیریتی — ${detail.summary.fullName}',
+          Text(context.tr('adminActions.sheetTitle', {'name': detail.summary.fullName}),
               style:
                   const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -144,9 +145,9 @@ Future<void> _confirmAndRun(BuildContext context, WidgetRef ref,
             const SizedBox(height: 14),
             TextField(
               controller: reasonCtrl,
-              decoration: const InputDecoration(
-                labelText: 'دلیل (در Audit Log ثبت می‌شود)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: ctx.tr('adminActions.reasonLabel'),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 2,
               onChanged: (_) => setState(() {}),
@@ -156,7 +157,7 @@ Future<void> _confirmAndRun(BuildContext context, WidgetRef ref,
               TextField(
                 controller: confirmCtrl,
                 decoration: InputDecoration(
-                  labelText: 'برای تأیید، نام شاگرد «$name» را بنویسید',
+                  labelText: ctx.tr('adminActions.typeNameToConfirm', {'name': name}),
                   border: const OutlineInputBorder(),
                 ),
                 onChanged: (_) => setState(() {}),
@@ -166,7 +167,7 @@ Future<void> _confirmAndRun(BuildContext context, WidgetRef ref,
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('انصراف')),
+                child: Text(ctx.tr('common.cancel'))),
             FilledButton(
               style: action.destructive
                   ? FilledButton.styleFrom(backgroundColor: AppPalette.red)
@@ -176,7 +177,7 @@ Future<void> _confirmAndRun(BuildContext context, WidgetRef ref,
                           confirmCtrl.text.trim() == name)
                   ? () => Navigator.pop(ctx, true)
                   : null,
-              child: const Text('تأیید'),
+              child: Text(ctx.tr('adminActions.confirmButton')),
             ),
           ],
         ),
@@ -193,7 +194,7 @@ Future<void> _confirmAndRun(BuildContext context, WidgetRef ref,
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     behavior: SnackBarBehavior.floating,
     backgroundColor: error == null ? AppPalette.greenDark : AppPalette.red,
-    content: Text(error ?? '«${action.label}» با موفقیت انجام شد'),
+    content: Text(error ?? context.tr('adminActions.actionSucceededWithLabel', {'label': action.label})),
   ));
 
   // پس از حذف، بازگشت به لیست

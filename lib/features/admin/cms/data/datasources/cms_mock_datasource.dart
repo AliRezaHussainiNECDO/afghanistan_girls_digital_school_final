@@ -80,7 +80,7 @@ class CmsMockDataSource implements CmsDataSource {
       difficulty: 'easy',
       subject: 'ریاضی',
       type: 'mcq',
-      options: ['۹۰', '۱۸۰', '۲۷۰', '۳۶۰'],
+      options: const ['۹۰', '۱۸۰', '۲۷۰', '۳۶۰'],
       answer: '۱۸۰',
       status: ContentStatus.published,
       updatedAt: DateTime(2026, 6, 25),
@@ -91,7 +91,7 @@ class CmsMockDataSource implements CmsDataSource {
       difficulty: 'medium',
       subject: 'فزیک',
       type: 'essay',
-      options: [],
+      options: const [],
       answer: 'F = m × a',
       status: ContentStatus.approved,
       updatedAt: DateTime(2026, 6, 28),
@@ -101,12 +101,14 @@ class CmsMockDataSource implements CmsDataSource {
   String _newId(String prefix) => '$prefix${DateTime.now().microsecondsSinceEpoch}';
 
   // ─────────────────────────── BOOKS ───────────────────────────
+  @override
   Future<List<CmsBookRow>> getBooks() async {
     await Future.delayed(const Duration(milliseconds: 250));
     final list = [..._books]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return list;
   }
 
+  @override
   Future<CmsBookRow> saveBook(CmsBookRow row) async {
     await Future.delayed(const Duration(milliseconds: 250));
     final idx = _books.indexWhere((b) => b.id == row.id);
@@ -130,11 +132,13 @@ class CmsMockDataSource implements CmsDataSource {
     return saved;
   }
 
+  @override
   Future<void> deleteBook(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
     _books.removeWhere((b) => b.id == id);
   }
 
+  @override
   Future<void> setBookStatus(String id, ContentStatus status) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final idx = _books.indexWhere((b) => b.id == id);
@@ -142,12 +146,14 @@ class CmsMockDataSource implements CmsDataSource {
   }
 
   // ─────────────────────────── LESSONS ───────────────────────────
+  @override
   Future<List<CmsLessonRow>> getLessons() async {
     await Future.delayed(const Duration(milliseconds: 250));
     final list = [..._lessons]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return list;
   }
 
+  @override
   Future<CmsLessonRow> saveLesson(CmsLessonRow row) async {
     await Future.delayed(const Duration(milliseconds: 250));
     final idx = _lessons.indexWhere((l) => l.id == row.id);
@@ -171,11 +177,13 @@ class CmsMockDataSource implements CmsDataSource {
     return saved;
   }
 
+  @override
   Future<void> deleteLesson(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
     _lessons.removeWhere((l) => l.id == id);
   }
 
+  @override
   Future<void> setLessonStatus(String id, ContentStatus status) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final idx = _lessons.indexWhere((l) => l.id == id);
@@ -183,12 +191,14 @@ class CmsMockDataSource implements CmsDataSource {
   }
 
   // ─────────────────────────── QUESTIONS ───────────────────────────
+  @override
   Future<List<CmsQuestionRow>> getQuestions() async {
     await Future.delayed(const Duration(milliseconds: 250));
     final list = [..._questions]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return list;
   }
 
+  @override
   Future<CmsQuestionRow> saveQuestion(CmsQuestionRow row) async {
     await Future.delayed(const Duration(milliseconds: 250));
     final idx = _questions.indexWhere((q) => q.id == row.id);
@@ -212,11 +222,13 @@ class CmsMockDataSource implements CmsDataSource {
     return saved;
   }
 
+  @override
   Future<void> deleteQuestion(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
     _questions.removeWhere((q) => q.id == id);
   }
 
+  @override
   Future<void> setQuestionStatus(String id, ContentStatus status) async {
     await Future.delayed(const Duration(milliseconds: 150));
     final idx = _questions.indexWhere((q) => q.id == id);

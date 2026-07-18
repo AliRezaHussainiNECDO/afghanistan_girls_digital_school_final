@@ -43,7 +43,7 @@ final activeGradeProvider = Provider<int>((ref) {
 /// صنوف تکمیل‌شدهٔ پایین‌تر را هم مرور کند، اما با ارتقا/کاهش صنف، انتخاب
 /// خودکار به صنف فعال جدید منتقل می‌شود.
 class SelectedGradeNotifier extends StateNotifier<int> {
-  SelectedGradeNotifier(int initial) : super(initial);
+  SelectedGradeNotifier(super.initial);
 
   void select(int grade) {
     if (kStudentGrades.contains(grade)) state = grade;

@@ -75,23 +75,23 @@ class AdvisorStore extends ChangeNotifier {
     _addSeed('stu-1000', 'فاطمه رضایی', [
       _m('stu-1000', 'فاطمه رضایی', AdvisorRole.student,
           'سلام، این روزها برای امتحان‌ها خیلی استرس دارم و نمی‌توانم درست تمرکز کنم.',
-          now.subtract(const Duration(days: 2, hours: 3)), topic: 'روانی'),
+          now.subtract(const Duration(days: 2, hours: 3)), topic: 'psychological'),
       _m('stu-1000', 'فاطمه رضایی', AdvisorRole.advisor,
           'سلام فاطمه عزیز 🌸 استرس امتحان کاملاً طبیعی است و نشان می‌دهد که برایت مهم است. بیا با هم یک برنامهٔ کوچک بسازیم: هر بار ۲۵ دقیقه درس و ۵ دقیقه استراحت. نفس عمیق هم خیلی کمک می‌کند. دوست داری با هم شروع کنیم؟',
-          now.subtract(const Duration(days: 2, hours: 3)), topic: 'روانی'),
+          now.subtract(const Duration(days: 2, hours: 3)), topic: 'psychological'),
     ]);
     _addSeed('stu-1004', 'سمیرا نظری', [
       _m('stu-1004', 'سمیرا نظری', AdvisorRole.student,
           'در خانه اجازه نمی‌دهند زیاد درس بخوانم و باید کارهای خانه را انجام بدهم. دلم می‌گیرد.',
-          now.subtract(const Duration(days: 1, hours: 5)), topic: 'خانوادگی'),
+          now.subtract(const Duration(days: 1, hours: 5)), topic: 'family'),
       _m('stu-1004', 'سمیرا نظری', AdvisorRole.advisor,
           'می‌فهمم که چقدر این وضعیت سخت است، سمیرا جان. تو تنها نیستی و تلاشت ارزشمند است. شاید بتوانیم زمان‌های کوتاه اما منظم برای درس پیدا کنیم — مثلاً شب‌ها یا صبح زود. اگر بخواهی، می‌توانم راه‌های محترمانه‌ای پیشنهاد بدهم که با خانواده دربارهٔ اهمیت درس صحبت کنی.',
-          now.subtract(const Duration(days: 1, hours: 5)), topic: 'خانوادگی'),
+          now.subtract(const Duration(days: 1, hours: 5)), topic: 'family'),
     ]);
   }
 
   AdvisorMessage _m(String sid, String name, AdvisorRole role, String text, DateTime at,
-          {String topic = 'عمومی', bool flagged = false}) =>
+          {String topic = 'general', bool flagged = false}) =>
       AdvisorMessage(
         id: 'seed_${_seq++}',
         studentId: sid,
@@ -124,7 +124,7 @@ class AdvisorStore extends ChangeNotifier {
     required AdvisorRole role,
     required String text,
     bool flagged = false,
-    String topic = 'عمومی',
+    String topic = 'general',
   }) {
     final msg = AdvisorMessage(
       id: 'adv_${DateTime.now().microsecondsSinceEpoch}_${_seq++}',

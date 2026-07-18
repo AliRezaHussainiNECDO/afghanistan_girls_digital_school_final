@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../../shared_models/subject.dart';
 import '../../data/services/bulk_book_importer.dart';
 import '../../data/datasources/curriculum_library_local_datasource.dart'; // اضافه شد برای کست کردن تایپ
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 
 /// صفحهٔ «ورود دسته‌ای کتاب‌های نصاب» — همهٔ PDF های دانلودشده را یک‌جا
@@ -38,7 +41,7 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('انتخاب فایل ناموفق بود: $e')));
+            .showSnackBar(SnackBar(content: Text(context.tr('curriculumBook.filePickFailed', {'error': '$e'}))));
       }
       return;
     }
@@ -57,7 +60,7 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
 
     // اصلاح شد: استفاده از پرووایدر اصلی شما و کست کردن آن به تایپ مورد نیاز Importer
     final dataSource = ref.read(curriculumLibraryDataSourceProvider) as CurriculumLibraryLocalDataSource;
-    final importer = BulkBookImporter(dataSource);
+    final importer = BulkBookImporter(dataSource, localeCode: ref.read(localeProvider).languageCode);
 
     for (final item in _items) {
       if (item.status == BulkItemStatus.done) continue;
@@ -71,9 +74,12 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
     }
     setState(() => _importing = false);
     ref.invalidate(booksForSubjectProvider);
+    ref.invalidate(chaptersProvider);
+    ref.invalidate(lessonsProvider);
+    ref.invalidate(lessonProvider);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$_doneCount کتاب با موفقیت وارد کتابخانهٔ معلم هوشمند شد ✅'),
+        content: Text(context.tr('bulkImport.importSuccessCount', {'count': '$_doneCount'})),
       ));
     }
   }
@@ -86,7 +92,7 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
         .length;
 
     return AppScaffold(
-      title: 'ورود دسته‌ای کتاب‌های نصاب',
+      title: context.tr('bulkImport.screenTitle'),
       role: AppUserRole.superAdmin,
       body: Column(
         children: [
@@ -107,14 +113,14 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('کتاب‌های صنف ۷ الی ۱۲ را یک‌جا وارد کنید',
-                          style: TextStyle(
+                      Text(context.tr('bulkImport.heroTitle'),
+                          style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
                               fontSize: 14)),
                       const SizedBox(height: 4),
                       Text(
-                        'مضمون و صنف از نام فایل (مثل Math_G7.pdf) خودکار تشخیص داده می‌شود.',
+                        context.tr('bulkImport.heroSubtitle'),
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: .9),
                             fontSize: 12),
@@ -135,8 +141,8 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
                     onPressed: _importing ? null : _pickFiles,
                     icon: const Icon(Icons.folder_open_rounded),
                     label: Text(_items.isEmpty
-                        ? 'انتخاب فایل‌های PDF'
-                        : '${_items.length} فایل انتخاب شد'),
+                        ? context.tr('bulkImport.pickFilesLabel')
+                        : context.tr('bulkImport.filesSelectedCount', {'count': '${_items.length}'})),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -151,8 +157,8 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.download_done_rounded),
                     label: Text(_importing
-                        ? 'در حال ورود…'
-                        : 'شروع ورود ($detected آماده)'),
+                        ? context.tr('bulkImport.importingLabel')
+                        : context.tr('bulkImport.startImportWithCount', {'count': '$detected'})),
                   ),
                 ),
               ],
@@ -180,7 +186,7 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
                   Icon(Icons.picture_as_pdf_rounded,
                       size: 56, color: scheme.outlineVariant),
                   const SizedBox(height: 12),
-                  Text('هنوز فایلی انتخاب نشده است',
+                  Text(context.tr('bulkImport.noFilesSelected'),
                       style: TextStyle(color: scheme.onSurfaceVariant)),
                 ],
               ),
@@ -255,8 +261,8 @@ class _ImportRow extends StatelessWidget {
                 child: DropdownButtonFormField<String>(
                   initialValue: item.subjectId,
                   isDense: true,
-                  decoration: const InputDecoration(
-                      labelText: 'مضمون', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                      labelText: context.tr('bulkImport.subjectLabel'), border: const OutlineInputBorder()),
                   items: mockSubjects
                       .map((s) => DropdownMenuItem(
                       value: s.id, child: Text(s.nameFa)))
@@ -276,11 +282,11 @@ class _ImportRow extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: item.grade,
                   isDense: true,
-                  decoration: const InputDecoration(
-                      labelText: 'صنف', border: OutlineInputBorder()),
+                  decoration: InputDecoration(
+                      labelText: context.tr('bulkImport.gradeLabel'), border: const OutlineInputBorder()),
                   items: [for (var g = 7; g <= 12; g++) g]
                       .map((g) =>
-                      DropdownMenuItem(value: g, child: Text('صنف $g')))
+                      DropdownMenuItem(value: g, child: Text(context.tr('bulkImport.gradeOption', {'grade': '$g'}))))
                       .toList(),
                   onChanged: enabled && item.status != BulkItemStatus.done
                       ? (v) {

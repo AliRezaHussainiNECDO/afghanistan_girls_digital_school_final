@@ -41,7 +41,8 @@ class LibraryBook extends Equatable {
   final String description;
   final String language;
   final String pdfFileName; // نام فایل نمایشی
-  final String pdfPath; // مسیر محلی فایل پی‌دی‌اف (از file_picker)
+  final String pdfPath; // مسیر محلی فایل پی‌دی‌اف (از file_picker — فقط لحظهٔ آپلود)
+  final String pdfKey; // کلید فایل واقعی روی R2 سرور — منبع حقیقتِ «آیا فایل واقعی دارد؟»
   final double fileSizeMb;
   final int pageCount;
   final int coverIndex; // انتخاب رنگ جلد (۰..n)
@@ -61,6 +62,7 @@ class LibraryBook extends Equatable {
     this.language = 'دری',
     this.pdfFileName = '',
     this.pdfPath = '',
+    this.pdfKey = '',
     this.fileSizeMb = 0,
     this.pageCount = 0,
     this.coverIndex = 0,
@@ -70,7 +72,10 @@ class LibraryBook extends Equatable {
     required this.updatedAt,
   });
 
-  bool get hasPdf => pdfPath.isNotEmpty;
+  // رفع اشکال: قبلاً «آیا فایل دارد؟» فقط از روی pdfPath (مسیر محلیِ لحظهٔ
+  // انتخاب فایل، که بعد از آپلود/رفرش/دستگاه دیگر بی‌معنی است) تشخیص داده
+  // می‌شد. منبع حقیقتِ واقعی، وجود pdfKey (فایل واقعاً روی سرور/R2) است.
+  bool get hasPdf => pdfKey.isNotEmpty || pdfPath.isNotEmpty;
   String get gradeLabel => gradeId == 0 ? 'عمومی' : 'صنف $gradeId';
 
   LibraryBook copyWith({
@@ -83,6 +88,7 @@ class LibraryBook extends Equatable {
     String? language,
     String? pdfFileName,
     String? pdfPath,
+    String? pdfKey,
     double? fileSizeMb,
     int? pageCount,
     int? coverIndex,
@@ -101,6 +107,7 @@ class LibraryBook extends Equatable {
         language: language ?? this.language,
         pdfFileName: pdfFileName ?? this.pdfFileName,
         pdfPath: pdfPath ?? this.pdfPath,
+        pdfKey: pdfKey ?? this.pdfKey,
         fileSizeMb: fileSizeMb ?? this.fileSizeMb,
         pageCount: pageCount ?? this.pageCount,
         coverIndex: coverIndex ?? this.coverIndex,
@@ -111,7 +118,7 @@ class LibraryBook extends Equatable {
       );
 
   @override
-  List<Object?> get props => [id, title, subject, gradeId, status, pdfPath, updatedAt];
+  List<Object?> get props => [id, title, subject, gradeId, status, pdfKey, pdfPath, updatedAt];
 }
 
 /// یک سؤال در بانک سؤالات — با پشتیبانی از سه نوع سؤال.

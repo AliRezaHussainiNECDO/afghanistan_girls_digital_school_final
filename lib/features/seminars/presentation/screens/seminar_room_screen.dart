@@ -56,8 +56,8 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
 
   Future<void> _joinCall(Seminar seminar, AppUser user, bool isHost) async {
     if (!_jitsiSupported) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('ویدیوکنفرانس زنده فقط در اپلیکیشن موبایل (اندروید/iOS) در دسترس است.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(context.tr('room.mobileOnlyShort')),
       ));
       return;
     }
@@ -105,7 +105,7 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
       if (!mounted) return;
       setState(() => _connecting = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('خطا در اتصال به جلسه: $e')));
+          .showSnackBar(SnackBar(content: Text(context.tr('room.connectError', {'error': '$e'}))));
     }
   }
 
@@ -119,11 +119,11 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           title: Text(context.tr('room.endSeminar')),
-          content: const Text('از جلسه خارج شدید. آیا سمینار برای همهٔ شرکت‌کنندگان پایان یابد؟'),
+          content: Text(context.tr('room.leftPromptEndAll')),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('نه، فقط اتصالم قطع شد'),
+              child: Text(context.tr('room.noJustDisconnected')),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
@@ -172,7 +172,8 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
         .call(SetSeminarStatusParams(seminarId: seminar.id, status: SeminarStatus.ended));
     if (!mounted) return;
     result.fold(
-      (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(f.message))),
+      (f) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(localizeSeminarFailureMessage(context, f.message)))),
       (_) {},
     );
     ref.invalidate(seminarByIdProvider(widget.seminarId));
@@ -218,7 +219,7 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
       ),
       error: (e, st) => Scaffold(
         appBar: AppBar(),
-        body: ErrorView(message: e.toString()),
+        body: ErrorView(error: e),
       ),
       data: (seminar) {
         if (user == null) return const SizedBox.shrink();
@@ -258,8 +259,8 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
               result.fold(
                 (f) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(f.message)));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(localizeSeminarFailureMessage(context, f.message))));
                   }
                 },
                 (_) {},
@@ -418,10 +419,10 @@ class _LiveGateView extends StatelessWidget {
                           borderRadius: BorderRadius.circular(AppRadii.lg),
                           border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                         ),
-                        child: const Text(
-                          'ویدیوکنفرانس زنده فقط در اپلیکیشن موبایل (اندروید/iOS) در دسترس است. لطفاً از گوشی همراه خود وارد شوید.',
+                        child: Text(
+                          context.tr('room.mobileOnlyLong'),
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.7),
+                          style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.7),
                         ),
                       ),
                     if (isHost) ...[

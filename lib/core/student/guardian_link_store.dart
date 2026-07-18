@@ -144,30 +144,68 @@ class GuardianLinkStore extends ChangeNotifier {
   /// شود (بخش ۱۳ب.۲ / ۳ب.۴ سند — اصلاح ۲.۴: قبلاً در این فاز نمایشی
   /// بلافاصله approved می‌شد که ناقض عاملیت شاگرد بود). برای چند فرزند،
   /// والد همین کار را با کدِ هر فرزند تکرار می‌کند (بخش ۱۳ب.۵).
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'codeMustBe6Digits': 'کد دعوت باید ۶ رقم باشد.',
+      'invalidCode': 'کد دعوت نامعتبر است. از فرزندتان بخواهید از بخش پروفایل، کد جدید بسازد.',
+      'expiredCode': 'این کد منقضی شده است (اعتبار کد ۷۲ ساعت است). لطفاً کد جدید دریافت کنید.',
+      'alreadyLinked': '«{name}» قبلاً به حساب شما لینک شده است.',
+      'requestPending': 'درخواست پیوند با «{name}» قبلاً ثبت شده و در انتظار تأیید اوست.',
+    },
+    'en': {
+      'codeMustBe6Digits': 'The invite code must be 6 digits.',
+      'invalidCode': 'The invite code is invalid. Ask your child to generate a new one from their profile.',
+      'expiredCode': 'This code has expired (codes are valid for 72 hours). Please get a new code.',
+      'alreadyLinked': '"{name}" is already linked to your account.',
+      'requestPending': 'A link request with "{name}" has already been submitted and is awaiting their approval.',
+    },
+    'ps': {
+      'codeMustBe6Digits': 'د بلنې کوډ باید ۶ عدده وي.',
+      'invalidCode': 'د بلنې کوډ ناسم دی. له خپل ماشوم وغواړئ چې د پروفایل برخې څخه نوی کوډ جوړ کړي.',
+      'expiredCode': 'دا کوډ ختم شوی دی (د کوډ اعتبار ۷۲ ساعته دی). مهرباني وکړئ نوی کوډ ترلاسه کړئ.',
+      'alreadyLinked': '«{name}» دمخه ستاسو حساب سره تړل شوی دی.',
+      'requestPending': 'د «{name}» سره د تړنې غوښتنه دمخه ثبت شوې او د هغه/هغې د تایید په تمه ده.',
+    },
+    'fr': {
+      'codeMustBe6Digits': 'Le code d’invitation doit comporter 6 chiffres.',
+      'invalidCode': 'Le code d’invitation est invalide. Demandez à votre enfant d’en générer un nouveau depuis son profil.',
+      'expiredCode': 'Ce code a expiré (les codes sont valables 72 heures). Veuillez obtenir un nouveau code.',
+      'alreadyLinked': '« {name} » est déjà lié à votre compte.',
+      'requestPending': 'Une demande de liaison avec « {name} » a déjà été soumise et est en attente de son approbation.',
+    },
+  };
+
+  String _tr(String localeCode, String key, [Map<String, String>? params]) {
+    var s = _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+    params?.forEach((k, v) => s = s.replaceAll('{$k}', v));
+    return s;
+  }
+
   ParentStudentLink redeemCode({
     required String parentId,
     String parentName = '',
     required String rawCode,
+    String localeCode = 'fa',
   }) {
     final code = _normalize(rawCode);
     if (code.length != 6) {
-      throw 'کد دعوت باید ۶ رقم باشد.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'codeMustBe6Digits'); // ignore: only_throw_errors
     }
     final invite = _codes[code];
     if (invite == null) {
-      throw 'کد دعوت نامعتبر است. از فرزندتان بخواهید از بخش پروفایل، کد جدید بسازد.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'invalidCode'); // ignore: only_throw_errors
     }
     if (invite.expired) {
       _codes.remove(code);
-      throw 'این کد منقضی شده است (اعتبار کد ۷۲ ساعت است). لطفاً کد جدید دریافت کنید.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'expiredCode'); // ignore: only_throw_errors
     }
     final existing = linkFor(parentId, invite.studentId);
     if (existing != null) {
-      throw '«${invite.studentName}» قبلاً به حساب شما لینک شده است.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'alreadyLinked', {'name': invite.studentName}); // ignore: only_throw_errors
     }
     final pending = _pendingLink(parentId, invite.studentId);
     if (pending != null) {
-      throw 'درخواست پیوند با «${invite.studentName}» قبلاً ثبت شده و در انتظار تأیید اوست.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'requestPending', {'name': invite.studentName}); // ignore: only_throw_errors
     }
     // درخواست ردشدهٔ قبلی مانع درخواست دوباره نیست (بخش ۱۳ب.۲: والد
     // می‌تواند کد جدید وارد کند) — رکورد ردشده حذف و درخواست تازه ثبت می‌شود.

@@ -65,7 +65,7 @@ const SystemHealthSection(),
 const SizedBox(height: 16),
 statsAsync.when(
 loading: () => const LoadingView(),
-error: (e, st) => ErrorView(message: e.toString()),
+error: (e, st) => ErrorView(error: e),
 data: (stats) => GridView.count(
 shrinkWrap: true,
 physics: const NeverScrollableScrollPhysics(),

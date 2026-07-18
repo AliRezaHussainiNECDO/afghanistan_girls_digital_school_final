@@ -45,8 +45,8 @@ class RegisterRoleSelectScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 // استاد سمینار — فقط با کد دعوت ساخته‌شده توسط مدیر (بخش ۲.۲).
                 _RoleCard(
-                  title: 'استاد سمینار',
-                  subtitle: 'فعال‌سازی حساب با کد دعوت مدیریت',
+                  title: context.tr('auth.roleInstructor'),
+                  subtitle: context.tr('auth.instructorInviteHint'),
                   icon: Icons.co_present_rounded,
                   gradient: AppColors.heroGradientWarm,
                   onTap: () => context.push(AppRoutes.registerInstructor),

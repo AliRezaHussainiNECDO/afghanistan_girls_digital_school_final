@@ -12,7 +12,7 @@ class AppUser extends Equatable {
   final String lastName; // تخلص
   final int? currentGrade; // صنف فعلی — فقط برای دانش‌آموز
   final AppUserRole role;
-  final String preferredLanguage; // fa | ps | en
+  final String preferredLanguage; // fa | ps | en | fr
   final bool awaitingParentLink; // فقط برای Parent — بخش ۳.۶/۱۳ب.۲
   final String? avatarUrl; // آدرس کامل عکس پروفایل روی سرور (null = بدون عکس)
   final bool emailVerified; // آیا ایمیل با لینک تأیید شده است؟

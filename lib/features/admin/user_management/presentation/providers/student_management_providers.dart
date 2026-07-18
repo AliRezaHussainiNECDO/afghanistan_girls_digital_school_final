@@ -4,6 +4,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/network/network_providers.dart';
+import '../../../../../core/localization/locale_provider.dart';
 import '../../../../../core/student/selected_grade_provider.dart'
     show progressionStoreProvider;
 import '../../../../../core/student/student_directory.dart';
@@ -28,7 +29,8 @@ final studentMgmtDataSourceProvider =
   if (kUseLiveBackend) {
     return StudentManagementRemoteDataSourceImpl(ref.watch(apiClientProvider));
   }
-  return StudentManagementMockDataSource();
+  return StudentManagementMockDataSource(
+      localeCode: ref.watch(localeProvider).languageCode);
 });
 
 final studentMgmtRepositoryProvider = Provider<StudentManagementRepository>(

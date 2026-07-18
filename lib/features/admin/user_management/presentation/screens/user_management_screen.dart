@@ -150,7 +150,7 @@ class UserManagementScreen extends ConsumerWidget {
           Expanded(
             child: usersAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(message: e.toString()),
+              error: (e, st) => ErrorView(error: e),
               data: (users) => ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 itemCount: users.length,

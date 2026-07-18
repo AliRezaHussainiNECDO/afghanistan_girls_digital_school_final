@@ -12,6 +12,9 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
 import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
 import '../../../ai_teacher/presentation/widgets/ai_voice_ask_sheet.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/curriculum_entities.dart';
 import '../providers/curriculum_providers.dart';
 
@@ -115,7 +118,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     if (path == null) {
       setState(() => _isReading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('پخش صوتی در حال حاضر در دسترس نیست.')));
+          SnackBar(content: Text(context.tr('curriculum.audioUnavailable'))));
       return;
     }
     await _player.play(DeviceFileSource(path));
@@ -161,13 +164,18 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      result.chapterJustCompleted ? '🎉 فصل تکمیل شد!' : 'آفرین!',
+                      result.chapterJustCompleted
+                          ? context.tr('curriculum.chapterCompletedCelebration')
+                          : context.tr('curriculum.wellDoneExclaim'),
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
                     ),
                     Text(
                       result.chapterJustCompleted
-                          ? '+${result.pointsAwarded} امتیاز درس، +${result.chapterBonusAwarded} امتیاز پاداش تکمیل فصل — فصل بعدی باز شد!'
-                          : '+${result.pointsAwarded} امتیاز فعالیت گرفتید',
+                          ? context.tr('curriculum.pointsChapterCompleted', {
+                              'points': '${result.pointsAwarded}',
+                              'bonus': '${result.chapterBonusAwarded}',
+                            })
+                          : context.tr('curriculum.pointsEarned', {'points': '${result.pointsAwarded}'}),
                       style: const TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ],
@@ -194,7 +202,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
         data: (lesson) => FloatingActionButton.extended(
           heroTag: 'ask_ai_lesson',
           icon: Icon(voiceEnabled ? Icons.mic_rounded : Icons.smart_toy_rounded),
-          label: const Text('پرسش از معلم'),
+          label: Text(context.tr('curriculum.askTeacher')),
           onPressed: () => showAiVoiceAskSheet(
             context,
             subjectId: widget.subjectId,
@@ -207,7 +215,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       ),
       body: lessonAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (lesson) => Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -259,7 +267,9 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        _isReading ? 'توقف' : 'شنیدن درس',
+                                        _isReading
+                                            ? context.tr('curriculum.stopListening')
+                                            : context.tr('curriculum.listenLesson'),
                                         style: const TextStyle(
                                             fontSize: 12, color: Colors.white),
                                       ),
@@ -305,6 +315,18 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                         await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
                     ref.invalidate(lessonProvider(widget.lessonId));
                     ref.invalidate(chaptersProvider(widget.subjectId));
+                    // رفع اشکال «پیشرفت/امتیاز خانهٔ شاگرد به‌روز نمی‌شود»:
+                    // دیدن این درس ممکن است امتیاز فعالیت داده باشد (و اگر
+                    // فصل را هم تمام کرده، امتیاز فصل + پیشرفت کلی هم تغییر
+                    // کرده) — خانهٔ شاگرد و نقشهٔ صنوف باید همین لحظه آن را
+                    // ببینند، نه فقط دفعهٔ بعد که برنامه از نو باز شود.
+                    final studentId = ref.read(authSessionProvider)?.id;
+                    if (studentId != null) {
+                      ref.invalidate(dashboardSummaryProvider(studentId));
+                      // نقشهٔ صنوف اکنون به‌ازای هر صنف جدا کش می‌شود؛ ساده‌ترین
+                      // و امن‌ترین راه، باطل‌کردن کل خانوادهٔ Provider است.
+                      ref.invalidate(gradeMapProvider);
+                    }
                     if (mounted) {
                       setState(() => _marking = false);
                       result.fold((_) {}, _showPointsFeedback);

@@ -20,6 +20,9 @@ import 'parent_remote_datasource.dart' show ParentDataSource;
 /// * دستاوردها ← نشان‌های محاسبه‌شده از همین داده‌های واقعی.
 /// * حاضری ← همان منبع صفحهٔ حاضری شاگرد.
 class ParentMockDataSource implements ParentDataSource {
+  final String localeCode;
+  ParentMockDataSource({this.localeCode = 'fa'});
+
   GuardianLinkStore get _links => GuardianLinkStore.instance;
 
   @override
@@ -127,7 +130,8 @@ class ParentMockDataSource implements ParentDataSource {
   @override
   Future<String> submitInviteCode(String parentId, String code, {String parentName = ''}) async {
     await Future.delayed(const Duration(milliseconds: 400));
-    final link = _links.redeemCode(parentId: parentId, parentName: parentName, rawCode: code);
+    final link = _links.redeemCode(
+        parentId: parentId, parentName: parentName, rawCode: code, localeCode: localeCode);
     return link.studentName;
   }
 }

@@ -45,6 +45,14 @@ class DashboardSummary extends Equatable {
   final int pointsLevel;
   final String pointsLevelTitleFa;
 
+  /// رفع اشکال: سرور این سه مقدار را از قبل محاسبه می‌کرد (`getPointsSummary`)
+  /// ولی Endpoint خلاصهٔ داشبورد هرگز آن‌ها را نمی‌فرستاد — یعنی خانهٔ شاگرد
+  /// نمی‌توانست نوار «چند امتیاز تا سطح بعدی» را نشان بدهد. `null` یعنی
+  /// شاگرد در بالاترین سطح است (سطح بعدی وجود ندارد).
+  final int? pointsNextLevelAt;
+  final String? pointsNextLevelTitleFa;
+  final double pointsProgressToNextPercent;
+
   /// تعداد گواهی‌نامه‌های صادرشده — تا کارت «گواهی‌نامه‌های من» در خانهٔ
   /// شاگرد وضعیت واقعی را نشان دهد نه یک متن ثابت.
   final int certificatesCount;
@@ -63,6 +71,9 @@ class DashboardSummary extends Equatable {
     this.pointsTotal = 0,
     this.pointsLevel = 1,
     this.pointsLevelTitleFa = 'نوآموز',
+    this.pointsNextLevelAt,
+    this.pointsNextLevelTitleFa,
+    this.pointsProgressToNextPercent = 0,
     this.certificatesCount = 0,
   });
 

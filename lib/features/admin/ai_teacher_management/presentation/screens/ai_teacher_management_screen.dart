@@ -31,7 +31,7 @@ class AiTeacherManagementScreen extends ConsumerWidget {
       role: AppUserRole.superAdmin,
       body: configsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (configs) => ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: configs.length + 1,
@@ -63,12 +63,12 @@ class AiTeacherManagementScreen extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('ورود دسته‌ای کتاب‌های نصاب',
+                                  Text(context.tr('aiTeacherManagement.bulkImportTitle'),
                                       style: TextStyle(
                                           fontWeight: FontWeight.w800,
                                           color: scheme.onPrimaryContainer)),
                                   Text(
-                                    'همهٔ PDF های دانلودشده (صنف ۷ الی ۱۲) را یک‌جا وارد کنید — تشخیص خودکار مضمون و صنف',
+                                    context.tr('aiTeacherManagement.bulkImportSubtitle'),
                                     style: TextStyle(
                                         fontSize: 12,
                                         color: scheme.onPrimaryContainer),

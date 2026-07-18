@@ -78,12 +78,16 @@ class StudentDashboardScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 10),
                         // ── امتیاز فعالیت (Gamification) — طبق `getPointsSummary` سرور ──
-                        PointsBadge(
+                        // نسخهٔ پویا/زیبا: عدد با انیمیشن شمارشی بالا می‌رود،
+                        // نشان می‌تپد، و نوار پیشرفت واقعی «چند امتیاز تا سطح
+                        // بعدی» نشان داده می‌شود (طبق درخواست کاربر).
+                        StudentPointsHero(
                           pointsTotal: summary.pointsTotal,
                           pointsLevel: summary.pointsLevel,
                           pointsLevelTitleFa: summary.pointsLevelTitleFa,
-                          light: true,
-                          compact: true,
+                          nextLevelAt: summary.pointsNextLevelAt,
+                          nextLevelTitleFa: summary.pointsNextLevelTitleFa,
+                          progressToNextPercent: summary.pointsProgressToNextPercent,
                         ),
                       ],
                     ),
@@ -102,7 +106,7 @@ class StudentDashboardScreen extends ConsumerWidget {
               children: [
                 Icon(Icons.school_rounded, size: 18, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text('صنف من', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                Text(context.tr('dashboard.myGrade'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               ],
             ),
             const SizedBox(height: 10),
@@ -110,7 +114,7 @@ class StudentDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             const PromotionStatusCard(),
             const SizedBox(height: 18),
-            Text('مضامین صنف $grade',
+            Text(context.tr('dashboard.subjectsOfGrade', {'grade': '$grade'}),
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 10),
             const GradeSubjectsGrid(),
@@ -163,10 +167,10 @@ class StudentDashboardScreen extends ConsumerWidget {
             _ActionCard(
               icon: Icons.workspace_premium_rounded,
               iconColor: const Color(0xFFB8860B),
-              title: 'گواهی‌نامه‌های من',
+              title: context.tr('dashboard.myCertificates'),
               subtitle: summary.certificatesCount > 0
-                  ? '${summary.certificatesCount} گواهی‌نامه صادرشده — مشاهده و دانلود'
-                  : 'هنوز گواهی‌نامه‌ای صادر نشده — با تکمیل صنف صادر می‌شود',
+                  ? context.tr('dashboard.certificatesIssuedCount', {'count': '${summary.certificatesCount}'})
+                  : context.tr('dashboard.noCertificatesYet'),
               onTap: () => context.push(AppRoutes.certificates),
             ).animate().fadeIn(delay: 160.ms, duration: 380.ms).slideY(
                 begin: 0.15, end: 0, delay: 160.ms, duration: 380.ms, curve: Curves.easeOutCubic),
@@ -231,23 +235,30 @@ class _ProgressRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final clamped = percent.clamp(0, 100).toDouble();
     return SizedBox(
       width: 64,
       height: 64,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            value: percent / 100,
-            strokeWidth: 6,
-            backgroundColor: Colors.white.withValues(alpha: 0.25),
-            valueColor: const AlwaysStoppedAnimation(Colors.white),
-          ),
-          Text(
-            '${percent.toStringAsFixed(0)}%',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-          ),
-        ],
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: clamped),
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOutCubic,
+        builder: (context, value, _) => Stack(
+          alignment: Alignment.center,
+          children: [
+            CircularProgressIndicator(
+              value: value / 100,
+              strokeWidth: 6,
+              strokeCap: StrokeCap.round,
+              backgroundColor: Colors.white.withValues(alpha: 0.25),
+              valueColor: const AlwaysStoppedAnimation(Colors.white),
+            ),
+            Text(
+              '${value.toStringAsFixed(0)}%',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }

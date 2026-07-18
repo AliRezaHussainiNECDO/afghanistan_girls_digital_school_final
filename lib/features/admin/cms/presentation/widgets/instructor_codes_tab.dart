@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../domain/entities/cms_entities.dart';
@@ -42,23 +43,23 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('کد دعوت استاد جدید'),
+        title: Text(dialogContext.tr('instructorCodes.dialogTitle')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: labelController,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'برای چه کسی؟ (نام استاد / تخصص)',
-                hintText: 'مثلاً: استاد نادری — مهارت‌های زندگی',
+              decoration: InputDecoration(
+                labelText: dialogContext.tr('instructorCodes.forWhomLabel'),
+                hintText: dialogContext.tr('instructorCodes.forWhomHint'),
               ),
             ),
             const SizedBox(height: 10),
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: Text(
-                'کد یک‌بارمصرف است.',
+                dialogContext.tr('instructorCodes.oneTimeUseNotice'),
                 style: TextStyle(
                     fontSize: 11.5,
                     color: Theme.of(dialogContext).colorScheme.onSurfaceVariant),
@@ -69,10 +70,10 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('لغو')),
+              child: Text(dialogContext.tr('common.cancel'))),
           FilledButton.icon(
             icon: const Icon(Icons.vpn_key_rounded, size: 18),
-            label: const Text('ساخت کد'),
+            label: Text(dialogContext.tr('instructorCodes.createCodeButton')),
             onPressed: () => Navigator.pop(dialogContext, true),
           ),
         ],
@@ -86,8 +87,8 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
           ));
       ref.invalidate(cmsInviteCodesProvider('instructor'));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('کد جدید ساخته شد — از فهرست پایین کپی و به استاد بدهید'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(context.tr('instructorCodes.newCodeCreatedNotice')),
           behavior: SnackBarBehavior.floating,
         ));
       }
@@ -104,7 +105,7 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
         heroTag: 'fab_instructor_codes',
         onPressed: _showGenerateDialog,
         icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('کد استاد جدید'),
+        label: Text(context.tr('instructorCodes.newInstructorCodeButton')),
       ),
       body: codesAsync.when(
         loading: () => const LoadingView(),
@@ -137,7 +138,7 @@ class _InstructorCodesTabState extends ConsumerState<InstructorCodesTab> {
                             onCopy: () {
                               Clipboard.setData(ClipboardData(text: c.code));
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('«${c.code}» کاپی شد'),
+                                content: Text(context.tr('cms.codeCopiedNotice', {'code': c.code})),
                                 behavior: SnackBarBehavior.floating,
                               ));
                             },
@@ -172,10 +173,10 @@ class _InstructorCodeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (statusLabel, statusColor) = switch (invite.status) {
-      'used' => ('استفاده‌شده', AppColors.green600),
-      'revoked' => ('باطل‌شده', scheme.error),
-      'expired' => ('منقضی', AppColors.ink500),
-      _ => ('فعال', AppColors.info),
+      'used' => (context.tr('cms.inviteStatusUsed'), AppColors.green600),
+      'revoked' => (context.tr('cms.inviteStatusRevoked'), scheme.error),
+      'expired' => (context.tr('cms.inviteStatusExpired'), AppColors.ink500),
+      _ => (context.tr('adminCommon.statusActive'), AppColors.info),
     };
 
     return Container(
@@ -239,11 +240,11 @@ class _InstructorCodeCard extends StatelessWidget {
                 color: AppColors.green600.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(AppRadii.md),
               ),
-              child: Text('فعال‌شده توسط: ${invite.usedByName}',
+              child: Text(context.tr('instructorCodes.activatedByLabel', {'name': invite.usedByName}),
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
             ),
           ] else if (invite.status == 'unused' && invite.expiresAt != null)
-            Text('اعتبار: ${invite.remainingDays} روز دیگر',
+            Text(context.tr('instructorCodes.remainingDaysAlt', {'days': '${invite.remainingDays}'}),
                 style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 8),
           Row(
@@ -251,14 +252,14 @@ class _InstructorCodeCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onCopy,
                 icon: const Icon(Icons.copy_rounded, size: 16),
-                label: const Text('کاپی'),
+                label: Text(context.tr('instructorCodes.copyButton')),
               ),
               if (onRevoke != null)
                 TextButton.icon(
                   onPressed: onRevoke,
                   style: TextButton.styleFrom(foregroundColor: scheme.error),
                   icon: const Icon(Icons.block_rounded, size: 16),
-                  label: const Text('ابطال'),
+                  label: Text(context.tr('instructorCodes.revokeButton')),
                 ),
             ],
           ),

@@ -1,3 +1,7 @@
+import '../../../core/localization/translations/en.dart';
+import '../../../core/localization/translations/fa.dart';
+import '../../../core/localization/translations/fr.dart';
+import '../../../core/localization/translations/ps.dart';
 import '../../ai_teacher/domain/engine/ai_engine.dart';
 import '../../ai_teacher/domain/entities/chat_message.dart';
 import '../../curriculum_library/domain/entities/curriculum_book.dart';
@@ -8,7 +12,7 @@ class AdvisorReply {
   final String text;
   final bool flagged; // نشانهٔ نگرانی — نیاز به توجه مدیر
   final String topic;
-  const AdvisorReply({required this.text, this.flagged = false, this.topic = 'عمومی'});
+  const AdvisorReply({required this.text, this.flagged = false, this.topic = 'general'});
 }
 
 /// سرویس «مشاور هوشمند» — یک مشاور دلسوز و محترم برای دختران افغانستان که
@@ -20,16 +24,23 @@ class AdvisorReply {
 /// یا آسیب داشته باشد، به‌جای مدل، یک پاسخ حمایتی و امن داده می‌شود و پیام
 /// برای بازبینی مدیر «flag» می‌گردد. اگر موتور در دسترس نبود، پاسخ‌های
 /// همدلانهٔ درون‌ساخت داده می‌شود تا این بخش هیچ‌وقت بی‌پاسخ نماند.
+///
+/// [localeCode] زبان فعال اپ (fa/ps/en/fr) است — همهٔ پاسخ‌های درون‌ساخت و
+/// دستورالعمل زبان به موتور هوش مصنوعی طبق همین زبان انتخاب می‌شوند تا
+/// شاگرد همیشه به زبانی که خودش انتخاب کرده پاسخ بگیرد.
 class AdvisorService {
   final AiEngine engine;
-  AdvisorService(this.engine);
+  final String localeCode;
+  AdvisorService(this.engine, {this.localeCode = 'fa'});
 
-  static const String _persona =
-      'یک مشاور زن، مهربان، صبور و محترم برای دختران نوجوان افغان. با لحن گرم، '
-      'امیدبخش و بدون قضاوت صحبت می‌کند؛ احساسات را به رسمیت می‌شناسد، راهکارهای '
-      'عملی و کوچک و سالم پیشنهاد می‌دهد، به فرهنگ و شرایط افغانستان حساس است، و '
-      'دختر را به گفت‌وگو با بزرگ‌سالان مورد اعتماد تشویق می‌کند. هرگز توصیهٔ '
-      'پزشکی/دارویی قطعی نمی‌دهد و محتوای نامناسب تولید نمی‌کند.';
+  Map<String, String> get _strings => switch (localeCode) {
+        'ps' => psStrings,
+        'en' => enStrings,
+        'fr' => frStrings,
+        _ => faStrings,
+      };
+
+  String _t(String key) => _strings[key] ?? key;
 
   Future<AdvisorReply> reply({
     required List<AdvisorMessage> history,
@@ -37,12 +48,14 @@ class AdvisorService {
   }) async {
     final text = userText.trim();
     if (text.isEmpty) {
-      return const AdvisorReply(text: 'هر وقت آماده بودی، من اینجا هستم که به حرف‌هایت گوش بدهم. 🌸');
+      return AdvisorReply(text: _t('advisorService.emptyTextReply'));
     }
 
-    // ۱) لایهٔ ایمنی — پیش از هر چیز.
+    // ۱) لایهٔ ایمنی — پیش از هر چیز. کلمات نگران‌کننده در هر ۴ زبان بررسی
+    // می‌شوند (نه فقط زبان فعال اپ) چون پیام شاگرد ممکن است به زبان دیگری
+    // نوشته شده باشد.
     if (_isConcerning(text)) {
-      return AdvisorReply(text: _supportiveSafeReply, flagged: true, topic: 'حساس');
+      return AdvisorReply(text: _t('advisorService.supportiveSafeReply'), flagged: true, topic: 'sensitive');
     }
 
     final topic = _detectTopic(text);
@@ -50,19 +63,23 @@ class AdvisorService {
     // ۲) تلاش برای پاسخ با موتور واقعی.
     try {
       final recent = history.length > 6 ? history.sublist(history.length - 6) : history;
+      final roleStudent = _t('advisorService.roleStudent');
+      final roleAdvisor = _t('advisorService.roleAdvisor');
       final ctx = recent
-          .map((m) => '${m.role == AdvisorRole.student ? 'دختر' : 'مشاور'}: ${m.text}')
+          .map((m) => '${m.role == AdvisorRole.student ? roleStudent : roleAdvisor}: ${m.text}')
           .join('\n');
+      final priorLabel = _t('advisorService.priorConversationLabel');
+      final freshLabel = _t('advisorService.freshMessageLabel');
       final prompt = '''
-${ctx.isEmpty ? '' : 'خلاصهٔ گفتگوی قبلی:\n$ctx\n\n'}پیام تازهٔ دختر: $text
+${ctx.isEmpty ? '' : '$priorLabel\n$ctx\n\n'}$freshLabel $text
 
-به‌عنوان مشاور دلسوز، با همدلی و به زبان دری پاسخ بده. کوتاه، گرم و امیدبخش باشد و در صورت مناسب یک راهکار عملی کوچک پیشنهاد بده.''';
+${_t('advisorService.languageInstruction')}''';
 
       final res = await engine.respond(AiEngineRequest(
         intent: AiIntent.freeQuestion,
         subjectId: 'advisor',
-        subjectNameFa: 'مشاور دلسوز',
-        personaDescription: _persona,
+        subjectNameFa: _t('advisorService.subjectName'),
+        personaDescription: _t('advisorService.personaDescription'),
         currentSection: null,
         allSections: const <BookSection>[],
         history: const <AiChatMessage>[],
@@ -84,59 +101,86 @@ ${ctx.isEmpty ? '' : 'خلاصهٔ گفتگوی قبلی:\n$ctx\n\n'}پیام ت
   }
 
   // ─────────────────── ایمنی ───────────────────
-  static const List<String> _concernWords = [
+  // کلمات نگران‌کننده به هر ۴ زبان — این‌ها داده‌های تشخیص الگو هستند (نه
+  // متن نمایشی)، پس به‌عمد در فایل‌های ترجمه نیستند و همیشه هر ۴ فهرست با
+  // هم بررسی می‌شوند تا صرف‌نظر از زبان تایپ شاگرد، لایهٔ ایمنی کار کند.
+  static const List<String> _concernWordsFa = [
     'خودکشی', 'خودم را بکشم', 'خودمو بکشم', 'نمیخواهم زنده', 'نمی‌خواهم زنده',
     'به زندگی ادامه', 'تمامش کنم', 'بمیرم', 'مرگ', 'آسیب به خودم', 'خودآزاری',
     'کتک', 'آزار', 'اذیت جنسی', 'تجاوز', 'فرار از خانه', 'ازدواج اجباری',
     'دیگر امیدی', 'هیچ‌کس دوستم ندارد', 'هیچ کس دوستم ندارد',
   ];
+  static const List<String> _concernWordsPs = [
+    'ځان وژنه', 'ځان ووژنم', 'ژوند نه غواړم', 'مړه شم', 'ځان ته زیان',
+    'ځان ځورونه', 'وهل', 'ځورونه', 'جنسي ځورونه', 'تجاوز', 'له کوره تښتیدل',
+    'جبري واده', 'امید نشته', 'هیڅوک ما سره مینه نلري',
+  ];
+  static const List<String> _concernWordsEn = [
+    'suicide', 'kill myself', "don't want to live", 'want to die', 'end it all',
+    'end my life', 'hurt myself', 'self harm', 'self-harm', 'beaten', 'abuse',
+    'sexual abuse', 'rape', 'run away from home', 'forced marriage', 'no hope',
+    'nobody loves me', 'no one loves me',
+  ];
+  static const List<String> _concernWordsFr = [
+    'suicide', 'me suicider', 'me tuer', 'je ne veux plus vivre', 'en finir',
+    'me faire du mal', 'automutilation', 'battue', 'maltraitance', 'abus sexuel',
+    'viol', 'fuguer', 'mariage forcé', "plus d'espoir", "personne ne m'aime",
+  ];
 
   bool _isConcerning(String text) {
-    final t = text.replaceAll('‌', '');
-    return _concernWords.any((w) => t.contains(w.replaceAll('‌', '')));
+    final t = text.toLowerCase().replaceAll('‌', '');
+    final all = [..._concernWordsFa, ..._concernWordsPs, ..._concernWordsEn, ..._concernWordsFr];
+    return all.any((w) => t.contains(w.toLowerCase().replaceAll('‌', '')));
   }
-
-  static const String _supportiveSafeReply =
-      'خیلی متأسفم که این‌قدر سختی می‌کشی 💙 احساس تو مهم است و تو تنها نیستی. '
-      'آن‌چه حس می‌کنی واقعی است، اما این درد همیشگی نیست و کمک وجود دارد. '
-      'لطفاً همین امروز با یک بزرگ‌سال مورد اعتماد صحبت کن — یک معلم، مادر، خواهر، '
-      'یا یکی از مدیران مکتب. مدیریت مکتب می‌تواند تو را به کسی که واقعاً کمک کند '
-      'وصل کند. من هم همیشه اینجا هستم تا به حرف‌هایت گوش بدهم. الان دوست داری '
-      'دربارهٔ چه چیزی با هم صحبت کنیم؟';
 
   // ─────────────────── تشخیص موضوع ───────────────────
-  String _detectTopic(String text) {
-    final t = text;
-    if (_any(t, ['استرس', 'اضطراب', 'غمگین', 'ناراحت', 'افسرده', 'تنها', 'خسته', 'ترس'])) {
-      return 'روانی';
-    }
-    if (_any(t, ['خانواده', 'مادر', 'پدر', 'خواهر', 'برادر', 'خانه'])) return 'خانوادگی';
-    if (_any(t, ['دوست', 'همصنفی', 'هم‌صنفی', 'مکتب', 'معلم', 'دعوا'])) return 'اجتماعی';
-    if (_any(t, ['درس', 'امتحان', 'نمره', 'مضمون', 'تمرکز', 'مطالعه'])) return 'تحصیلی';
-    return 'روزمره';
-  }
+  static const Map<String, List<String>> _topicWords = {
+    'psychological': [
+      'استرس', 'اضطراب', 'غمگین', 'ناراحت', 'افسرده', 'تنها', 'خسته', 'ترس',
+      'ربړ', 'اندېښنه', 'خپه', 'ستړی',
+      'stress', 'anxiety', 'sad', 'depressed', 'lonely', 'tired', 'afraid',
+      'stressé', 'anxieux', 'triste', 'déprimée', 'seule', 'fatiguée', 'peur',
+    ],
+    'family': [
+      'خانواده', 'مادر', 'پدر', 'خواهر', 'برادر', 'خانه',
+      'کورنۍ', 'مور', 'پلار', 'خور', 'ورور', 'کور',
+      'family', 'mother', 'father', 'sister', 'brother', 'home',
+      'famille', 'mère', 'père', 'sœur', 'frère', 'maison',
+    ],
+    'social': [
+      'دوست', 'همصنفی', 'هم‌صنفی', 'مکتب', 'معلم', 'دعوا',
+      'ملګری', 'ښوونځی', 'ښوونکی', 'شخړه',
+      'friend', 'classmate', 'school', 'teacher', 'fight',
+      'ami', 'amie', 'camarade', 'école', 'enseignant', 'dispute',
+    ],
+    'academic': [
+      'درس', 'امتحان', 'نمره', 'مضمون', 'تمرکز', 'مطالعه',
+      'لوست', 'ازموینه', 'نمره', 'مضمون', 'تمرکز',
+      'study', 'exam', 'grade', 'subject', 'focus', 'homework',
+      'étude', 'examen', 'note', 'matière', 'concentration', 'devoirs',
+    ],
+  };
 
-  bool _any(String t, List<String> words) => words.any(t.contains);
+  String _detectTopic(String text) {
+    final t = text.toLowerCase();
+    for (final entry in _topicWords.entries) {
+      if (entry.value.any((w) => t.contains(w.toLowerCase()))) return entry.key;
+    }
+    return 'daily';
+  }
 
   String _fallbackFor(String topic) {
     switch (topic) {
-      case 'روانی':
-        return 'حس تو کاملاً قابل‌درک است و خوب کردی که دربارهٔ آن حرف زدی 🌸 '
-            'یک تمرین کوچک: سه نفس عمیق بکش و به سه چیزی که بابتشان سپاس‌گزاری فکر کن. '
-            'دوست داری بیشتر برایم بگویی چه چیزی بیشتر اذیتت می‌کند؟';
-      case 'خانوادگی':
-        return 'می‌فهمم که مسائل خانوادگی می‌تواند دل آدم را سنگین کند. تو ارزشمندی و '
-            'تلاشت دیده می‌شود. اگر بخواهی، می‌توانیم با هم فکر کنیم چطور آرام و محترمانه '
-            'احساست را با خانواده در میان بگذاری.';
-      case 'اجتماعی':
-        return 'روابط با دوستان و مکتب گاهی سخت می‌شود، و این طبیعی است. تو لایق احترام '
-            'و دوستی خوب هستی. بگو دقیقاً چه اتفاقی افتاده تا با هم بهترین راه را پیدا کنیم.';
-      case 'تحصیلی':
-        return 'برای درس و تمرکز راه‌های خوبی هست 💪 یک روش ساده: ۲۵ دقیقه درس، ۵ دقیقه '
-            'استراحت. با کوچک شروع کن و به خودت سخت نگیر. کدام مضمون برایت سخت‌تر است؟';
+      case 'psychological':
+        return _t('advisorService.fallbackPsychological');
+      case 'family':
+        return _t('advisorService.fallbackFamily');
+      case 'social':
+        return _t('advisorService.fallbackSocial');
+      case 'academic':
+        return _t('advisorService.fallbackAcademic');
       default:
-        return 'ممنون که با من در میان گذاشتی 🌸 من اینجا هستم تا کنارت باشم. کمی بیشتر '
-            'برایم بگو تا بهتر بتوانم کمکت کنم.';
+        return _t('advisorService.fallbackDaily');
     }
   }
 }

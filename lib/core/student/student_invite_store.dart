@@ -113,8 +113,30 @@ class StudentInviteStore extends ChangeNotifier {
   static const int _maxAttempts = 5;
   static const Duration _lockDuration = Duration(seconds: 60);
 
-  /// پیام یکسان برای همهٔ حالت‌های ناکامی — بخش ۳ب.۲.۴ سند.
-  static const String _uniformError = 'کد دعوت نامعتبر است یا قبلاً استفاده شده';
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'uniformError': 'کد دعوت نامعتبر است یا قبلاً استفاده شده',
+      'lockedError': 'به دلیل تلاش‌های ناکام زیاد، {secs} ثانیه صبر کنید و دوباره امتحان کنید.',
+    },
+    'en': {
+      'uniformError': 'The invite code is invalid or has already been used',
+      'lockedError': 'Too many failed attempts. Please wait {secs} seconds and try again.',
+    },
+    'ps': {
+      'uniformError': 'د بلنې کوډ ناسم دی یا دمخه کارول شوی',
+      'lockedError': 'د ډیرو ناکامو هڅو له امله، {secs} ثانیې تمه وکړئ او بیا هڅه وکړئ.',
+    },
+    'fr': {
+      'uniformError': 'Le code d’invitation est invalide ou a déjà été utilisé',
+      'lockedError': 'Trop de tentatives échouées. Veuillez patienter {secs} secondes et réessayer.',
+    },
+  };
+
+  String _tr(String localeCode, String key, [Map<String, String>? params]) {
+    var s = _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+    params?.forEach((k, v) => s = s.replaceAll('{$k}', v));
+    return s;
+  }
 
   List<StudentInviteCode> get codes {
     final list = [..._codes]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -163,12 +185,13 @@ class StudentInviteStore extends ChangeNotifier {
     required String rawCode,
     required String studentName,
     required String studentEmail,
+    String localeCode = 'fa',
   }) {
     // قفل ضد حدس: پیش از هر بررسی.
     final locked = _lockedUntil;
     if (locked != null && DateTime.now().isBefore(locked)) {
       final secs = locked.difference(DateTime.now()).inSeconds + 1;
-      throw 'به دلیل تلاش‌های ناکام زیاد، $secs ثانیه صبر کنید و دوباره امتحان کنید.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'lockedError', {'secs': '$secs'}); // ignore: only_throw_errors
     }
 
     final code = _normalize(rawCode);
@@ -181,7 +204,7 @@ class StudentInviteStore extends ChangeNotifier {
     if (!valid) {
       _registerFailure();
       // پیام یکسان برای نامعتبر/مصرف‌شده/باطل/منقضی — بخش ۳ب.۲.۴.
-      throw _uniformError; // ignore: only_throw_errors
+      throw _tr(localeCode, 'uniformError'); // ignore: only_throw_errors
     }
 
     _failedAttempts = 0;

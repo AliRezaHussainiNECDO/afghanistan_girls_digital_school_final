@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../domain/academy_entities.dart';
 
 /// رنگ‌های جلد کتاب — برای تنوع بصری در کتابخانه و مدیریت محتوا.
@@ -16,7 +17,8 @@ List<Color> coverFor(int index) => kCoverGradients[index % kCoverGradients.lengt
 
 /// صنوف قابل انتخاب: عمومی + ۷ الی ۱۲.
 const List<int> kGrades = [0, 7, 8, 9, 10, 11, 12];
-String gradeLabel(int g) => g == 0 ? 'عمومی' : 'صنف $g';
+String gradeLabel(BuildContext context, int g) =>
+    g == 0 ? context.tr('academy.generalGradeLabel') : context.tr('grade.label', {'grade': '$g'});
 
 /// مضامین رایج نصاب (پیشنهاد برای Dropdownها).
 const List<String> kSubjects = [
@@ -63,7 +65,7 @@ class PublishChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final published = status == PublishStatus.published;
     final c = published ? AppColors.green600 : AppColors.ink500;
-    final label = published ? 'منتشرشده' : 'پیش‌نویس';
+    final label = published ? context.tr('academy.published') : context.tr('academy.draft');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -88,15 +90,15 @@ class KindChip extends StatelessWidget {
     switch (kind) {
       case QuestionKind.mcq:
         c = AppColors.info;
-        label = 'چهارجوابه';
+        label = context.tr('academy.kindMcq');
         break;
       case QuestionKind.trueFalse:
         c = AppColors.gold600;
-        label = 'صحیح/غلط';
+        label = context.tr('academy.kindTrueFalse');
         break;
       case QuestionKind.essay:
         c = AppColors.orange600;
-        label = 'تشریحی';
+        label = context.tr('academy.kindEssay');
         break;
     }
     return Container(
@@ -111,14 +113,14 @@ class KindChip extends StatelessWidget {
   }
 }
 
-String kindLabel(QuestionKind k) {
+String kindLabel(BuildContext context, QuestionKind k) {
   switch (k) {
     case QuestionKind.mcq:
-      return 'چهارجوابه';
+      return context.tr('academy.kindMcq');
     case QuestionKind.trueFalse:
-      return 'صحیح/غلط';
+      return context.tr('academy.kindTrueFalse');
     case QuestionKind.essay:
-      return 'تشریحی';
+      return context.tr('academy.kindEssay');
   }
 }
 

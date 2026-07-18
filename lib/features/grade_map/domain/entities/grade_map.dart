@@ -36,10 +36,20 @@ class GradeMapSubjectEntry extends Equatable {
 /// این کلاس دقیقاً همان چیزی است که Backend محاسبه و آمادهٔ نمایش می‌فرستد.
 class GradeMap extends Equatable {
   final int gradeNumber;
+
+  /// صنف فعال واقعیِ شاگرد در حال حاضر — ممکن است با [gradeNumber] فرق کند
+  /// اگر این پاسخ برای مرور یکی از صنوف پایین‌ترِ تکمیل‌شده درخواست شده
+  /// باشد (رفع اشکال: قبلاً امکان تشخیص «این صنفِ فعال است یا صنفِ
+  /// تکمیل‌شدهٔ مرورشده» برای کلاینت وجود نداشت).
+  final int activeGradeNumber;
   final bool gradeLocked;
   final double gradeAveragePercent;
   final double attendanceRatePercent;
   final List<GradeMapSubjectEntry> subjects;
+
+  /// آیا [gradeNumber] همان صنف فعال شاگرد است یا یک صنفِ پایین‌ترِ
+  /// تکمیل‌شده که فقط برای مرور باز شده.
+  bool get isActiveGrade => gradeNumber == activeGradeNumber;
 
   /// وضعیت واقعی ارتقا — محاسبه‌شدهٔ سرور (رفع اشکال: قبلاً این وضعیت فقط
   /// در «انبار ارتقای» محلی گوشی شبیه‌سازی می‌شد و با نصاب واقعی هماهنگ
@@ -51,6 +61,7 @@ class GradeMap extends Equatable {
 
   const GradeMap({
     required this.gradeNumber,
+    int? activeGradeNumber,
     required this.gradeLocked,
     required this.gradeAveragePercent,
     required this.attendanceRatePercent,
@@ -59,8 +70,8 @@ class GradeMap extends Equatable {
     this.examPassed = false,
     this.examBestScore,
     this.canPromote = false,
-  });
+  }) : activeGradeNumber = activeGradeNumber ?? gradeNumber;
 
   @override
-  List<Object?> get props => [gradeNumber, gradeLocked, subjects, canPromote];
+  List<Object?> get props => [gradeNumber, activeGradeNumber, gradeLocked, subjects, canPromote];
 }

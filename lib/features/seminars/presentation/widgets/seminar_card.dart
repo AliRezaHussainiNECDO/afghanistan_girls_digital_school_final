@@ -225,7 +225,11 @@ class SeminarCard extends ConsumerWidget {
         .call(RegisterSeminarParams(seminarId: s.id, userId: userId));
     result.fold(
       (f) => messenger.showSnackBar(
-        SnackBar(content: Text(f.message), backgroundColor: scheme.error),
+        SnackBar(
+            content: Text(context.mounted
+                ? localizeSeminarFailureMessage(context, f.message)
+                : f.message),
+            backgroundColor: scheme.error),
       ),
       (_) {
         ref.invalidate(refreshProvider);
@@ -254,7 +258,10 @@ class SeminarCard extends ConsumerWidget {
   ///   ۲) لینک جلسهٔ خارجی (Zoom/Meet/Jitsi) در مرورگر،
   ///   ۳) اتاق داخلی سمینار (پیش‌فرض).
   static Future<void> _joinLive(BuildContext context, Seminar s) async {
-    if (s.hasLiveStream) {
+    // `isLiveNow` هم چک می‌شود (نه فقط `hasLiveStream`) تا اگر سمینار قبلاً
+    // یک‌بار پخش زنده داشته و بعداً پایان یافته، کاربر به یک صفحهٔ پخشِ مرده
+    // هدایت نشود.
+    if (s.hasLiveStream && s.isLiveNow) {
       context.push(AppRoutes.seminarLive(s.id));
       return;
     }
@@ -266,7 +273,7 @@ class SeminarCard extends ConsumerWidget {
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('باز کردن لینک جلسه ممکن نشد.')),
+          SnackBar(content: Text(context.tr('seminars.linkOpenFailed'))),
         );
       }
       return;

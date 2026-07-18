@@ -1,3 +1,7 @@
+import '../../../core/localization/translations/en.dart';
+import '../../../core/localization/translations/fa.dart';
+import '../../../core/localization/translations/fr.dart';
+import '../../../core/localization/translations/ps.dart';
 import '../../ai_teacher/domain/engine/ai_engine.dart';
 import '../../ai_teacher/domain/entities/chat_message.dart';
 import '../../curriculum_library/domain/entities/curriculum_book.dart';
@@ -19,7 +23,17 @@ class EssayGrade {
 /// از کار نیفتد** و همیشه سؤال معتبر بسازد و نمرهٔ منصفانه بدهد.
 class AiAssessmentService {
   final AiEngine engine;
-  AiAssessmentService(this.engine);
+  final String localeCode;
+  AiAssessmentService(this.engine, {this.localeCode = 'fa'});
+
+  Map<String, String> get _strings => switch (localeCode) {
+        'ps' => psStrings,
+        'en' => enStrings,
+        'fr' => frStrings,
+        _ => faStrings,
+      };
+
+  String _t(String key) => _strings[key] ?? key;
 
   // ─────────────────────── تولید سؤال ───────────────────────
   Future<List<BankQuestion>> generateQuestions({
@@ -140,7 +154,7 @@ class AiAssessmentService {
     required String studentAnswer,
   }) async {
     final answer = studentAnswer.trim();
-    if (answer.isEmpty) return const EssayGrade(0, 'پاسخی ثبت نشده است.');
+    if (answer.isEmpty) return EssayGrade(0, _t('academy.essayNoAnswerFeedback'));
 
     // ۱) تلاش برای نمره‌دهی با موتور واقعی.
     try {
@@ -204,9 +218,9 @@ class AiAssessmentService {
   }
 
   String _autoFeedback(double f) {
-    if (f >= 0.85) return 'عالی! پاسخ کامل و دقیق بود. 🌟';
-    if (f >= 0.6) return 'خوب بود؛ نکات اصلی را پوشش دادی. با کمی جزئیات بیشتر عالی می‌شود.';
-    if (f >= 0.35) return 'قدم خوبی بود، اما بخشی از مفاهیم کلیدی جا مانده. دوباره فصل را مرور کن.';
-    return 'برای رسیدن به پاسخ بهتر، مفاهیم اصلی این بخش را یک‌بار دیگر مطالعه کن. 💪';
+    if (f >= 0.85) return _t('academy.essayFeedbackExcellent');
+    if (f >= 0.6) return _t('academy.essayFeedbackGood');
+    if (f >= 0.35) return _t('academy.essayFeedbackFair');
+    return _t('academy.essayFeedbackNeedsWork');
   }
 }

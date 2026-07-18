@@ -11,14 +11,15 @@ import { verifyBearer } from '../lib/auth';
 
 type Bindings = {
   DB: D1Database;
+  BUCKET: R2Bucket;
   JWT_SECRET: string;
 };
 
 const academy = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function me(c: any): Promise<{ sub: string; role: string } | null> {
@@ -30,6 +31,7 @@ async function me(c: any): Promise<{ sub: string; role: string } | null> {
 // ─────────────────────────────── Books ──────────────────────────────────────
 
 function bookJson(r: any) {
+  const pdfKey = r.pdf_key ?? '';
   return {
     id: r.id,
     title: r.title,
@@ -40,6 +42,10 @@ function bookJson(r: any) {
     description: r.description,
     language: r.language,
     pdfFileName: r.pdf_file_name,
+    pdfKey,
+    // آدرس واقعیِ قابل‌دانلود فایل — از همان endpoint عمومی R2 (`GET /files/*`)
+    // که برای عکس پروفایل و فایل‌های صوتی هم استفاده می‌شود.
+    fileUrl: pdfKey ? `/files/${pdfKey}` : null,
     fileSizeMb: r.file_size_mb,
     pageCount: r.page_count,
     coverIndex: r.cover_index,
@@ -51,25 +57,38 @@ function bookJson(r: any) {
 }
 
 academy.get('/academy/books', async (c) => {
-  if (!(await me(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
-  const { results } = await c.env.DB.prepare(
-    'SELECT * FROM academy_books ORDER BY updated_at DESC',
-  ).all<any>();
+  const u = await me(c);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  // رفع اشکال: قبلاً همهٔ کاربران (حتی شاگردان) کتاب‌های «پیش‌نویس» را هم
+  // می‌دیدند چون این Route فقط احراز هویت را چک می‌کرد، نه نقش. اکنون فقط
+  // مدیر (که نمای کامل مدیریت محتوا را می‌بیند) پیش‌نویس‌ها را هم می‌بیند؛
+  // بقیهٔ نقش‌ها فقط کتاب‌های منتشرشده را.
+  const stmt =
+    u.role === 'super_admin'
+      ? c.env.DB.prepare('SELECT * FROM academy_books ORDER BY updated_at DESC')
+      : c.env.DB.prepare("SELECT * FROM academy_books WHERE status = 'published' ORDER BY updated_at DESC");
+  const { results } = await stmt.all<any>();
   return c.json({ books: results.map(bookJson) });
 });
 
 academy.post('/academy/books', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<Record<string, any>>().catch(() => null);
-  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
   const id = String(b.id ?? '').trim() || `lb_${Date.now()}`;
+  // نکتهٔ مهم: `pdf_key` عمداً از بدنهٔ کلاینت خوانده نمی‌شود — چون
+  // INSERT OR REPLACE کل ردیف را جایگزین می‌کند و اگر این ستون این‌جا هم
+  // از روی ورودی کلاینت نوشته می‌شد، هر ذخیرهٔ سادهٔ متادیتا (عنوان/توضیحات
+  // و…) می‌توانست کلید فایل واقعیِ آپلودشده را پاک کند. تنها مسیر مجاز برای
+  // تغییر آن، Endpoint اختصاصیِ `POST /academy/books/:id/pdf` است.
   await c.env.DB.prepare(
     `INSERT OR REPLACE INTO academy_books
        (id, title, subject, grade_id, category, author, description, language,
         pdf_file_name, file_size_mb, page_count, cover_index, include_in_rag, status,
-        uploaded_at, updated_at)
+        pdf_key, uploaded_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        COALESCE((SELECT pdf_key FROM academy_books WHERE id = ?), ''),
         COALESCE((SELECT uploaded_at FROM academy_books WHERE id = ?), datetime('now')),
         datetime('now'))`,
   )
@@ -88,7 +107,8 @@ academy.post('/academy/books', async (c) => {
       Number(b.coverIndex ?? 0),
       b.includeInRag ? 1 : 0,
       b.status === 'published' ? 'published' : 'draft',
-      id,
+      id, // برای COALESCE ستون pdf_key
+      id, // برای COALESCE ستون uploaded_at
     )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM academy_books WHERE id = ?').bind(id).first<any>();
@@ -97,9 +117,42 @@ academy.post('/academy/books', async (c) => {
 
 academy.delete('/academy/books/:id', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
-  await c.env.DB.prepare('DELETE FROM academy_books WHERE id = ?').bind(c.req.param('id')).run();
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  const row = await c.env.DB.prepare('SELECT pdf_key FROM academy_books WHERE id = ?').bind(id).first<{ pdf_key: string }>();
+  if (row?.pdf_key) await c.env.BUCKET.delete(row.pdf_key);
+  await c.env.DB.prepare('DELETE FROM academy_books WHERE id = ?').bind(id).run();
   return c.json({ success: true });
+});
+
+// ─────────────────────── آپلود واقعیِ فایل پی‌دی‌اف کتاب (R2) ───────────────
+// بدنه = بایت‌های خام پی‌دی‌اف (همان الگوی `POST /users/me/avatar` در
+// media.ts)؛ نام فایل در Query String (`?fileName=`) ارسال می‌شود. قبلاً این
+// مرحله کاملاً شبیه‌سازی بود — نه فایلی روی سرور ذخیره می‌شد نه شاگردان
+// می‌توانستند واقعاً دانلود کنند.
+academy.post('/academy/books/:id/pdf', async (c) => {
+  const u = await me(c);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  const exists = await c.env.DB.prepare('SELECT id FROM academy_books WHERE id = ?').bind(id).first();
+  if (!exists) return c.json(fail('NOT_FOUND', 'کتاب یافت نشد', 'Book not found', 'کتاب ونه موندل شو', 'Livre introuvable'), 404);
+  const fileName = c.req.query('fileName') || 'book.pdf';
+  const bytes = await c.req.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > 60 * 1024 * 1024) {
+    return c.json(
+      fail('BAD_SIZE', 'حجم فایل باید بین ۱ بایت و ۶۰ مگابایت باشد', 'File size must be between 1 byte and 60MB', 'د فایل اندازه باید د ۱ بایت او ۶۰ میګابایټ ترمنځ وي', 'La taille du fichier doit être comprise entre 1 octet et 60 Mo'),
+      400,
+    );
+  }
+  const pdfKey = `academy-books/${id}.pdf`;
+  await c.env.BUCKET.put(pdfKey, bytes, { httpMetadata: { contentType: 'application/pdf' } });
+  const fileSizeMb = Math.round((bytes.byteLength / (1024 * 1024)) * 10) / 10;
+  await c.env.DB.prepare(
+    "UPDATE academy_books SET pdf_key = ?, pdf_file_name = ?, file_size_mb = ?, updated_at = datetime('now') WHERE id = ?",
+  )
+    .bind(pdfKey, fileName, fileSizeMb, id)
+    .run();
+  return c.json({ success: true, pdfKey, fileUrl: `/files/${pdfKey}`, fileSizeMb });
 });
 
 // ────────────────────────────── Questions ───────────────────────────────────
@@ -130,7 +183,7 @@ function questionJson(r: any) {
 }
 
 academy.get('/academy/questions', async (c) => {
-  if (!(await me(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await me(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM academy_questions ORDER BY created_at DESC',
   ).all<any>();
@@ -139,9 +192,9 @@ academy.get('/academy/questions', async (c) => {
 
 academy.post('/academy/questions', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<Record<string, any>>().catch(() => null);
-  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
   const id = String(b.id ?? '').trim() || `bq_${Date.now()}`;
   const kind = ['mcq', 'trueFalse', 'essay'].includes(b.kind) ? b.kind : 'mcq';
   await c.env.DB.prepare(
@@ -175,7 +228,7 @@ academy.post('/academy/questions', async (c) => {
 
 academy.delete('/academy/questions/:id', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   await c.env.DB.prepare('DELETE FROM academy_questions WHERE id = ?').bind(c.req.param('id')).run();
   return c.json({ success: true });
 });
@@ -206,7 +259,7 @@ function submissionJson(r: any) {
 
 academy.get('/academy/submissions', async (c) => {
   const u = await me(c);
-  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   // شاگرد فقط پاسخ‌های خودش؛ مدیر می‌تواند studentId دلخواه یا همه را ببیند.
   const requested = c.req.query('studentId');
   const target = u.role === 'super_admin' ? requested : u.sub;
@@ -224,9 +277,9 @@ academy.get('/academy/submissions', async (c) => {
 
 academy.post('/academy/submissions', async (c) => {
   const u = await me(c);
-  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<Record<string, any>>().catch(() => null);
-  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body'), 400);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
   const id = String(b.id ?? '').trim() || `sub_${Date.now()}_${uid().slice(0, 6)}`;
   // شاگرد فقط به نام خودش ثبت می‌کند (ضد جعل).
   const studentId = u.role === 'super_admin' ? String(b.studentId ?? u.sub) : u.sub;

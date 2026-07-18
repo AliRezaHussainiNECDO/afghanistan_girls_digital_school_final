@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../domain/academy_entities.dart';
 
@@ -23,6 +24,32 @@ class AcademyRemoteDataSource {
 
   Future<void> deleteBook(String id) async {
     await _api.delete('/academy/books/$id');
+  }
+
+  /// آپلود واقعیِ فایل پی‌دی‌اف روی سرور (R2) — قبلاً این مرحله کاملاً
+  /// شبیه‌سازی بود. بدنه = بایت‌های خام؛ نام فایل در Query String.
+  Future<Map<String, dynamic>> uploadBookPdf(String bookId, List<int> bytes, String fileName) async {
+    final data = await _api.post(
+      '/academy/books/$bookId/pdf',
+      data: Stream<List<int>>.value(bytes),
+      queryParameters: {'fileName': fileName},
+      options: Options(
+        contentType: 'application/pdf',
+        headers: {Headers.contentLengthHeader: bytes.length},
+      ),
+    );
+    return _map(data);
+  }
+
+  /// دانلود واقعیِ بایت‌های فایل از `GET /files/{pdfKey}` — قبلاً شاگرد هیچ
+  /// فایل واقعی دریافت نمی‌کرد (فقط یک تأخیر مصنوعی + پیام موفقیت جعلی).
+  Future<List<int>> downloadBookPdf(String pdfKey) async {
+    final data = await _api.get(
+      '/files/$pdfKey',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    if (data is List<int>) return data;
+    return const [];
   }
 
   // ───────────────────────────── Questions ─────────────────────────────────
@@ -64,6 +91,7 @@ class AcademyRemoteDataSource {
         'description': b.description,
         'language': b.language,
         'pdfFileName': b.pdfFileName,
+        'pdfKey': b.pdfKey,
         'fileSizeMb': b.fileSizeMb,
         'pageCount': b.pageCount,
         'coverIndex': b.coverIndex,
@@ -81,6 +109,7 @@ class AcademyRemoteDataSource {
         description: (j['description'] ?? '').toString(),
         language: (j['language'] ?? 'دری').toString(),
         pdfFileName: (j['pdfFileName'] ?? '').toString(),
+        pdfKey: (j['pdfKey'] ?? '').toString(),
         fileSizeMb: (j['fileSizeMb'] as num?)?.toDouble() ?? 0,
         pageCount: (j['pageCount'] as num?)?.toInt() ?? 0,
         coverIndex: (j['coverIndex'] as num?)?.toInt() ?? 0,

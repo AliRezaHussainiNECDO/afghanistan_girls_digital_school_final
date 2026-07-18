@@ -1,6 +1,10 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../../../../core/localization/translations/en.dart';
+import '../../../../core/localization/translations/fa.dart';
+import '../../../../core/localization/translations/fr.dart';
+import '../../../../core/localization/translations/ps.dart';
 import '../../../../shared_models/subject.dart';
 import '../datasources/curriculum_library_local_datasource.dart';
 
@@ -33,7 +37,25 @@ class BulkImportItem {
 
 class BulkBookImporter {
   final CurriculumLibraryLocalDataSource library;
-  BulkBookImporter(this.library);
+  final String localeCode;
+  BulkBookImporter(this.library, {this.localeCode = 'fa'});
+
+  Map<String, String> get _strings => switch (localeCode) {
+        'ps' => psStrings,
+        'en' => enStrings,
+        'fr' => frStrings,
+        _ => faStrings,
+      };
+
+  String _t(String key, [Map<String, String>? params]) {
+    var text = _strings[key] ?? key;
+    if (params != null) {
+      for (final e in params.entries) {
+        text = text.replaceAll('{${e.key}}', e.value);
+      }
+    }
+    return text;
+  }
 
   /// نگاشت توکن‌های نام فایل (اسکریپت وزارت معارف) → شناسهٔ مضمون در اپ.
   static const Map<String, String> _tokenToSubject = {
@@ -86,8 +108,8 @@ class BulkBookImporter {
     return (subjectId, grade);
   }
 
-  static String subjectNameFa(String? subjectId) {
-    if (subjectId == null) return 'نامشخص';
+  String subjectNameFa(String? subjectId) {
+    if (subjectId == null) return _t('bulkImporter.unknownSubject');
     return mockSubjects
         .firstWhere((s) => s.id == subjectId, orElse: () => mockSubjects.first)
         .nameFa;
@@ -97,13 +119,13 @@ class BulkBookImporter {
   Future<void> importItem(BulkImportItem item) async {
     if (item.subjectId == null || item.grade == null) {
       item.status = BulkItemStatus.skipped;
-      item.message = 'مضمون یا صنف از نام فایل تشخیص نشد';
+      item.message = _t('bulkImporter.subjectGradeNotDetected');
       return;
     }
     final bytes = item.file.bytes;
     if (bytes == null) {
       item.status = BulkItemStatus.failed;
-      item.message = 'محتوای فایل خوانده نشد';
+      item.message = _t('bulkImporter.fileContentNotRead');
       return;
     }
     try {
@@ -114,24 +136,24 @@ class BulkBookImporter {
 
       if (text.trim().length < 200) {
         item.status = BulkItemStatus.failed;
-        item.message =
-            'متن قابل استخراج ندارد (احتمالاً اسکن تصویری است و به OCR نیاز دارد)';
+        item.message = _t('bulkImporter.noExtractableText');
         return;
       }
       item.charCount = text.length;
       await library.addBook(
         subjectId: item.subjectId!,
-        title:
-            'کتاب ${subjectNameFa(item.subjectId)} — صنف ${item.grade} (نصاب رسمی)',
+        title: _t('bulkImporter.generatedBookTitle',
+            {'subject': subjectNameFa(item.subjectId), 'grade': '${item.grade}'}),
         pageCount: item.pageCount,
         gradeId: item.grade!,
         extractedText: text,
       );
       item.status = BulkItemStatus.done;
-      item.message = '${item.pageCount} صفحه، ${(item.charCount / 1000).round()} هزار نویسه';
+      item.message = _t('bulkImporter.importedStats',
+          {'pages': '${item.pageCount}', 'chars': '${(item.charCount / 1000).round()}'});
     } catch (e) {
       item.status = BulkItemStatus.failed;
-      item.message = 'خطا در پردازش PDF: $e';
+      item.message = _t('bulkImporter.pdfProcessErrorWithReason', {'error': '$e'});
     }
   }
 }

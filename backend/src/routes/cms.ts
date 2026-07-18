@@ -7,6 +7,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = { DB: D1Database; JWT_SECRET: string };
 
@@ -16,9 +17,36 @@ const uid = () => crypto.randomUUID();
 function forbid(c: any) {
   return c.json({ success: false, error: { code: 'FORBIDDEN', message_fa: 'دسترسی مجاز نیست', message_en: 'Forbidden' } }, 403);
 }
-async function isAdmin(c: any): Promise<boolean> {
+/**
+ * فقط Super Admin. در صورت مجاز شناسهٔ مدیر را برمی‌گرداند (برای audit_logs)،
+ * وگرنه null — truthiness آن با کاربردهای قبلی `if (!(await isAdmin(c)))`
+ * سازگار می‌ماند.
+ */
+async function isAdmin(c: any): Promise<string | null> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
-  return p?.['role'] === 'super_admin';
+  return p?.['role'] === 'super_admin' ? ((p['sub'] as string) ?? null) : null;
+}
+
+/** ثبت تغییر وضعیت/حذف محتوای CMS در لاگ بازبینی (بخش ۱۴.۳.۲/۲۰.۳). */
+function auditCms(
+  c: any,
+  adminId: string,
+  actionType: 'content_status_change' | 'content_delete',
+  table: string,
+  targetId: string,
+  status?: string,
+) {
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: adminId,
+      actorRole: 'super_admin',
+      actionType,
+      targetTable: table,
+      targetId,
+      afterValue: status ? { status } : undefined,
+      ipAddress: clientIp(c),
+    }),
+  );
 }
 
 // ───────────────────────────────── کتاب‌ها ──────────────────────────────────
@@ -48,17 +76,21 @@ cms.post('/books', async (c) => {
 });
 
 cms.patch('/books/:id/status', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   await c.env.DB.prepare("UPDATE cms_books SET status=?, updated_at=datetime('now') WHERE id=?")
     .bind(b?.status ?? 'draft', c.req.param('id'))
     .run();
+  auditCms(c, aid, 'content_status_change', 'cms_books', c.req.param('id'), b?.status ?? 'draft');
   return c.json({ success: true });
 });
 
 cms.delete('/books/:id', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   await c.env.DB.prepare('DELETE FROM cms_books WHERE id = ?').bind(c.req.param('id')).run();
+  auditCms(c, aid, 'content_delete', 'cms_books', c.req.param('id'));
   return c.json({ success: true });
 });
 
@@ -89,17 +121,21 @@ cms.post('/lessons', async (c) => {
 });
 
 cms.patch('/lessons/:id/status', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   await c.env.DB.prepare("UPDATE cms_lessons SET status=?, updated_at=datetime('now') WHERE id=?")
     .bind(b?.status ?? 'draft', c.req.param('id'))
     .run();
+  auditCms(c, aid, 'content_status_change', 'cms_lessons', c.req.param('id'), b?.status ?? 'draft');
   return c.json({ success: true });
 });
 
 cms.delete('/lessons/:id', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   await c.env.DB.prepare('DELETE FROM cms_lessons WHERE id = ?').bind(c.req.param('id')).run();
+  auditCms(c, aid, 'content_delete', 'cms_lessons', c.req.param('id'));
   return c.json({ success: true });
 });
 
@@ -131,17 +167,21 @@ cms.post('/questions', async (c) => {
 });
 
 cms.patch('/questions/:id/status', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   await c.env.DB.prepare("UPDATE cms_questions SET status=?, updated_at=datetime('now') WHERE id=?")
     .bind(b?.status ?? 'draft', c.req.param('id'))
     .run();
+  auditCms(c, aid, 'content_status_change', 'cms_questions', c.req.param('id'), b?.status ?? 'draft');
   return c.json({ success: true });
 });
 
 cms.delete('/questions/:id', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const aid = await isAdmin(c);
+  if (!aid) return forbid(c);
   await c.env.DB.prepare('DELETE FROM cms_questions WHERE id = ?').bind(c.req.param('id')).run();
+  auditCms(c, aid, 'content_delete', 'cms_questions', c.req.param('id'));
   return c.json({ success: true });
 });
 
@@ -165,3 +205,4 @@ function questionJson(r: any) {
 }
 
 export default cms;
+// (audit wiring v1 — بخش ۲۰.۳)

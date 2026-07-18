@@ -25,13 +25,13 @@ class CurriculumScreen extends ConsumerWidget {
           children: [
             const GradeSelector(),
             const SizedBox(height: 18),
-            Text('مضامین صنف $grade',
+            Text(context.tr('dashboard.subjectsOfGrade', {'grade': '$grade'}),
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: scheme.onSurface)),
             const SizedBox(height: 12),
-            Expanded(
+            const Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: const GradeSubjectsGrid(),
+                padding: EdgeInsets.only(bottom: 16),
+                child: GradeSubjectsGrid(),
               ),
             ),
           ],

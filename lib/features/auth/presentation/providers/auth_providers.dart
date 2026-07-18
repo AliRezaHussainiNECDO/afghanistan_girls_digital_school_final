@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../data/datasources/auth_mock_datasource.dart';
@@ -38,7 +39,7 @@ final authDataSourceProvider = Provider<AuthDataSource>((ref) {
       ref.watch(tokenStoreProvider),
     );
   }
-  return AuthMockDataSource();
+  return AuthMockDataSource(localeCode: ref.watch(localeProvider).languageCode);
 });
 
 final authRepositoryProvider = Provider<AuthRepository>(
@@ -224,9 +225,20 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
     final parts = trimmed.split(RegExp(r'\s+'));
     final firstName = parts.first;
     final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    return updateProfileName(firstName: firstName, lastName: lastName);
+  }
+
+  /// ویرایش دقیق نام/تخلص — بدون گِرد شدنِ رفت‌وبرگشتی «یک رشته → تقسیم روی
+  /// اولین فاصله»؛ مستقیماً همان دو فیلدِ جدول `users` (`first_name`/
+  /// `last_name`) را روی سرور به‌روزرسانی می‌کند. صفحهٔ ویرایش پروفایل
+  /// (بخش پروفایل هر داشبورد) اکنون این دو فیلد را جداگانه می‌گیرد تا
+  /// تخلص‌های چندبخشی هم درست ذخیره شوند.
+  Future<bool> updateProfileName({required String firstName, required String lastName}) async {
+    final current = state;
+    if (current == null) return false;
     final result = await ref
         .read(authRepositoryProvider)
-        .updateProfile(firstName: firstName, lastName: lastName);
+        .updateProfile(firstName: firstName.trim(), lastName: lastName.trim());
     return result.fold((failure) {
       lastError = failure.message;
       return false;

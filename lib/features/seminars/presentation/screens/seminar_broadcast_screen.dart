@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../providers/seminars_providers.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════════
@@ -53,7 +54,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
       onConnectionFailed: (error) {
         if (mounted) {
           setState(() => _isStreaming = false);
-          _snack('اتصال پخش ناموفق بود: $error');
+          _snack(context.tr('liveStream.connectionFailed', {'error': '$error'}));
         }
       },
       onDisconnection: () {
@@ -69,7 +70,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
     if (!cam.isGranted || !mic.isGranted) {
       if (mounted) {
         setState(() =>
-            _permissionError = 'برای پخش زنده، دسترسی دوربین و میکروفون لازم است.');
+            _permissionError = context.tr('liveStream.permissionRequired'));
       }
       return;
     }
@@ -77,7 +78,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
       await _controller.initialize();
       if (mounted) setState(() => _initialized = true);
     } catch (e) {
-      if (mounted) setState(() => _permissionError = 'راه‌اندازی دوربین ناموفق بود: $e');
+      if (mounted) setState(() => _permissionError = context.tr('liveStream.cameraInitError', {'error': '$e'}));
     }
   }
 
@@ -117,7 +118,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
         // وضعیت واقعی از callback onConnectionSuccess می‌آید.
       }
     } catch (e) {
-      _snack('خطا: $e');
+      _snack(context.tr('liveStream.genericError', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -127,14 +128,14 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('پایان کلاس زنده'),
-        content: const Text('پخش زنده متوقف و کلاس پایان می‌یابد. مطمئن هستید؟'),
+        title: Text(context.tr('liveStream.endClassTitle')),
+        content: Text(context.tr('liveStream.endClassConfirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('پایان کلاس'),
+            child: Text(context.tr('liveStream.endClassButton')),
           ),
         ],
       ),
@@ -257,8 +258,8 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
                       const SizedBox(height: 16),
                       Text(
                         _isStreaming
-                            ? 'در حال پخش زنده — شاگردان/والدین شما را می‌بینند'
-                            : 'برای شروع پخش، دکمهٔ سبز را بزنید',
+                            ? context.tr('liveStream.streamingNotice')
+                            : context.tr('liveStream.tapGreenToStart'),
                         style: const TextStyle(color: Colors.white70, fontSize: 12.5),
                       ),
                       const SizedBox(height: 14),
@@ -272,7 +273,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
                           ),
                           onPressed: _endClass,
                           icon: const Icon(Icons.stop_circle_outlined, size: 18),
-                          label: const Text('پایان کلاس زنده'),
+                          label: Text(context.tr('liveStream.endClassTitle')),
                         ),
                       ),
                     ],
@@ -307,7 +308,7 @@ class _PrepView extends StatelessWidget {
                 color: AppColors.orange400, size: 56),
             const SizedBox(height: 18),
             Text(
-              error ?? 'در حال آماده‌سازی دوربین…',
+              error ?? context.tr('liveStream.preparingCamera'),
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.6),
             ),
@@ -319,12 +320,12 @@ class _PrepView extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('تلاش دوباره'),
+                label: Text(context.tr('common.retry')),
               ),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: onBack,
-                child: const Text('بازگشت', style: TextStyle(color: Colors.white70)),
+                child: Text(context.tr('common.back'), style: const TextStyle(color: Colors.white70)),
               ),
             ],
           ],
@@ -352,7 +353,7 @@ class _StatusPill extends StatelessWidget {
           Icon(streaming ? Icons.sensors_rounded : Icons.sensors_off_rounded,
               color: Colors.white, size: 14),
           const SizedBox(width: 6),
-          Text(streaming ? 'زنده' : 'آماده',
+          Text(streaming ? context.tr('room.live') : context.tr('liveStream.readyStatus'),
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
         ],
       ),

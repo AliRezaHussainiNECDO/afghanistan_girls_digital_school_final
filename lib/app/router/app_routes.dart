@@ -4,6 +4,7 @@ class AppRoutes {
   AppRoutes._();
 
   // Onboarding
+  static const languageSelect = '/language-select';
   static const welcome = '/welcome';
 
   // Auth
@@ -41,6 +42,8 @@ class AppRoutes {
   static const parentDashboard = '/parent';
   static const parentSeminars = '/parent/seminars';
   static const parentScores = '/parent/scores';
+  static const parentContactAdmin = '/parent/contact-admin';
+  static const parentNotifications = '/parent/notifications';
   static const parentProfile = '/parent/profile';
 
   // اتاق ویدیو کنفرانس سمینار — مشترک بین همهٔ نقش‌ها (خارج از پیشوند نقش‌ها).
@@ -51,6 +54,8 @@ class AppRoutes {
 
   // Instructor
   static const instructorHome = '/instructor';
+  static const instructorContactAdmin = '/instructor/contact-admin';
+  static const instructorNotifications = '/instructor/notifications';
   static const instructorProfile = '/instructor/profile';
 
   // Collective Memory (accessible to all roles)
@@ -70,11 +75,13 @@ class AppRoutes {
   static const adminAiTeacher = '/admin/ai-teacher';
   static const adminBulkImport = '/admin/ai-teacher/bulk-import';
   static const adminSafetyQueue = '/admin/safety-queue';
+  static const adminAuditLogs = '/admin/audit-logs';
   static const adminChats = '/admin/chats';
   static String adminClassChats(String classId) => '/admin/chats/class/$classId';
   static String adminChatThread(String conversationId) => '/admin/chats/thread/$conversationId';
   static const adminReports = '/admin/reports';
   static const adminSeminars = '/admin/seminars';
   static const adminSubmissions = '/admin/submissions';
+  static const adminNotifications = '/admin/notifications';
   static const adminProfile = '/admin/profile';
 }

@@ -4,9 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/router/app_routes.dart';
 import '../../app/theme/design_tokens.dart';
+import '../../features/admin/dashboard/presentation/providers/admin_dashboard_providers.dart';
 import '../../features/auth/domain/entities/app_user.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
+import '../../features/curriculum/presentation/widgets/points_badge.dart';
+import '../../features/instructor/presentation/providers/instructor_providers.dart';
+import '../../features/parent_dashboard/presentation/providers/parent_providers.dart';
+import '../../features/student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../localization/app_localizations.dart';
+import 'info_stat_chip.dart';
 import 'user_avatar.dart';
 
 class _DrawerItem {
@@ -40,9 +46,11 @@ const _adminItems = [
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
   _DrawerItem(Icons.forum_rounded, 'admin.chatMonitoring', AppRoutes.adminChats),
   _DrawerItem(Icons.shield_rounded, 'admin.safetyQueue', AppRoutes.adminSafetyQueue),
+  _DrawerItem(Icons.radar_rounded, 'admin.auditLogs', AppRoutes.adminAuditLogs),
   _DrawerItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions),
   _DrawerItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars),
   _DrawerItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports),
+  _DrawerItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications),
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.adminProfile),
 ];
 
@@ -51,12 +59,16 @@ const _parentItems = [
   _DrawerItem(Icons.grade_rounded, 'parent.scores', AppRoutes.parentScores),
   _DrawerItem(Icons.groups_rounded, 'parent.seminars', AppRoutes.parentSeminars),
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
+  _DrawerItem(Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.parentContactAdmin),
+  _DrawerItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.parentNotifications),
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.parentProfile),
 ];
 
 const _instructorItems = [
   _DrawerItem(Icons.groups_rounded, 'nav.instructor', AppRoutes.instructorHome),
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
+  _DrawerItem(Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.instructorContactAdmin),
+  _DrawerItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.instructorNotifications),
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.instructorProfile),
 ];
 
@@ -113,57 +125,145 @@ class AppDrawer extends ConsumerWidget {
             Container(
               width: double.infinity,
               margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-              padding: const EdgeInsets.all(20),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                gradient: AppColors.heroGradient,
+                gradient: AppColors.sunriseGradient,
                 borderRadius: BorderRadius.circular(AppRadii.lg),
                 boxShadow: AppShadows.warm,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
                 children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 2),
-                    ),
-                    child: UserAvatar(
-                      radius: 25,
-                      backgroundColor: Colors.white,
-                      foregroundColor: scheme.primary,
-                    ),
-                  ).animate().scale(
-                        begin: const Offset(0.5, 0.5),
-                        end: const Offset(1, 1),
-                        duration: 420.ms,
-                        curve: Curves.easeOutBack,
+                  // ── دایره‌های تزئینیِ محوِ پس‌زمینه — حس مدرن/پویا ──
+                  Positioned(
+                    top: -30,
+                    right: -24,
+                    child: Container(
+                      width: 110,
+                      height: 110,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.10),
                       ),
-                  const SizedBox(height: 12),
-                  Text(
-                    user?.displayName ?? '',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ).animate().fadeIn(delay: 120.ms, duration: 300.ms),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.22),
-                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  Positioned(
+                    bottom: -36,
+                    left: -18,
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
                     ),
-                    child: Text(
-                      _roleLabel(context, role),
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white.withValues(alpha: 0.75), width: 2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.12),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: UserAvatar(
+                                    radius: 29,
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: scheme.primary,
+                                  ),
+                                ).animate().scale(
+                                      begin: const Offset(0.5, 0.5),
+                                      end: const Offset(1, 1),
+                                      duration: 420.ms,
+                                      curve: Curves.easeOutBack,
+                                    ),
+                                // نشان تأیید ایمیل — همان وضعیت واقعیِ
+                                // `AppUser.emailVerified` که در بخش پروفایل
+                                // هم استفاده می‌شود؛ اینجا فقط یک اشارهٔ
+                                // بصریِ سریع است.
+                                if (user != null)
+                                  Positioned(
+                                    bottom: -2,
+                                    left: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: user.emailVerified ? AppColors.green500 : AppColors.gold500,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 1.6),
+                                      ),
+                                      child: Icon(
+                                        user.emailVerified ? Icons.verified_rounded : Icons.priority_high_rounded,
+                                        size: 11,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ).animate().fadeIn(delay: 260.ms, duration: 260.ms),
+                              ],
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    (user?.fullName.trim().isNotEmpty ?? false) ? user!.fullName : (user?.displayName ?? ''),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ).animate().fadeIn(delay: 120.ms, duration: 300.ms),
+                                  const SizedBox(height: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.22),
+                                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                                    ),
+                                    child: Text(
+                                      _roleLabel(context, role),
+                                      style:
+                                          const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                    ),
+                                  ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        // ── معلومات اضافیِ نقش‌محور — طبق درخواست کاربر، به‌ویژه
+                        // برای شاگرد (صنف + امتیاز/سطح فعالیت)، تا سربرگ منو
+                        // حالت پیشرفته‌تری بگیرد. برای هر نقش از منبع واقعیِ
+                        // همان داشبورد خوانده می‌شود (نه دادهٔ ساختگی). ──
+                        if (user != null) ...[
+                          const SizedBox(height: 14),
+                          _RoleExtraInfo(role: role, user: user),
+                        ],
+                      ],
                     ),
-                  ).animate().fadeIn(delay: 200.ms, duration: 300.ms),
+                  ),
                 ],
               ),
             ),
@@ -252,5 +352,111 @@ class AppDrawer extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// ردیف معلومات اضافیِ سربرگ Drawer — بسته به نقش، از Provider واقعیِ همان
+/// داشبورد می‌خواند تا سربرگ منو در همهٔ داشبوردها یک حس پیشرفته و «زنده»
+/// داشته باشد (نه فقط نام/نقش ثابت):
+///   • شاگرد: صنف فعلی + امتیاز فعالیت/سطح (همان منبع خانهٔ شاگرد).
+///   • والد: تعداد فرزندان متصل‌شدهٔ تأییدشده.
+///   • مدیر کل: تعداد شاگردان ثبت‌نامی + فعال امروز (همان KPI داشبورد مدیر).
+///   • استاد سمینار: تعداد سمینارهای خودش.
+/// در حالت بارگذاری، اسکلت محو نشان می‌دهد؛ در خطا، بی‌صدا چیزی نشان
+/// نمی‌دهد تا باز شدن منو هرگز به‌خاطر یک درخواست شبکه ناکام مسدود نشود.
+class _RoleExtraInfo extends ConsumerWidget {
+  final AppUserRole role;
+  final AppUser user;
+  const _RoleExtraInfo({required this.role, required this.user});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    switch (role) {
+      case AppUserRole.student:
+        final summaryAsync = ref.watch(dashboardSummaryProvider(user.id));
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              InfoStatChip(
+                icon: Icons.school_rounded,
+                dense: true,
+                light: true,
+                label: context.tr('profile.grade'),
+                value: user.currentGrade != null ? '${user.currentGrade}' : '—',
+              ),
+              const SizedBox(width: 8),
+              summaryAsync.when(
+                loading: () => const InfoStatChipSkeleton(light: true, dense: true),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (summary) => PointsBadge(
+                  pointsTotal: summary.pointsTotal,
+                  pointsLevel: summary.pointsLevel,
+                  pointsLevelTitleFa: summary.pointsLevelTitleFa,
+                  light: true,
+                  compact: true,
+                ),
+              ),
+            ],
+          ),
+        );
+
+      case AppUserRole.parent:
+        final childrenAsync = ref.watch(linkedChildrenProvider);
+        return childrenAsync.when(
+          loading: () => const InfoStatChipSkeleton(light: true, dense: true),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (children) => InfoStatChip(
+            icon: Icons.family_restroom_rounded,
+            dense: true,
+            light: true,
+            label: context.tr('profile.linkedChildren'),
+            value: '${children.length}',
+          ),
+        );
+
+      case AppUserRole.superAdmin:
+        final statsAsync = ref.watch(adminStatsProvider);
+        return statsAsync.when(
+          loading: () => const InfoStatChipSkeleton(light: true, dense: true),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (stats) => SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                InfoStatChip(
+                  icon: Icons.groups_rounded,
+                  dense: true,
+                  light: true,
+                  label: context.tr('admin.totalStudents'),
+                  value: '${stats.totalStudents}',
+                ),
+                const SizedBox(width: 8),
+                InfoStatChip(
+                  icon: Icons.bolt_rounded,
+                  dense: true,
+                  light: true,
+                  label: context.tr('admin.activeToday'),
+                  value: '${stats.activeToday}',
+                ),
+              ],
+            ),
+          ),
+        );
+
+      case AppUserRole.seminarInstructor:
+        final seminarsAsync = ref.watch(myInstructorSeminarsProvider);
+        return seminarsAsync.when(
+          loading: () => const InfoStatChipSkeleton(light: true, dense: true),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (seminars) => InfoStatChip(
+            icon: Icons.groups_rounded,
+            dense: true,
+            light: true,
+            label: context.tr('profile.mySeminars'),
+            value: '${seminars.length}',
+          ),
+        );
+    }
   }
 }

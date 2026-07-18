@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/seminar.dart';
 import '../../data/services/seminar_live_service.dart';
+import '../../domain/usecases/seminars_usecases.dart';
 import '../providers/seminars_providers.dart';
 import '../screens/seminar_broadcast_screen.dart';
 
@@ -25,6 +28,33 @@ Future<void> startSeminarLive(
   VoidCallback? onWentLive,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
+
+  // رفع اشکال هماهنگی: اگر استاد از قبل یک لینک جلسهٔ خارجی (Zoom/Meet/
+  // Jitsi خودش) برای این سمینار ثبت کرده، یعنی میزبانی را خودش بیرون از اپ
+  // انجام می‌دهد. قبلاً در این حالت هم دکمهٔ «شروع سمینار» یک پخش زندهٔ
+  // Cloudflare Stream خالی می‌ساخت (که کسی در آن پخش نمی‌کرد) و کارت
+  // شاگرد/والد را به‌جای بازکردنِ لینک واقعی، به همان پخشِ بی‌محتوا هدایت
+  // می‌کرد (چون `hasLiveStream` روی true می‌رفت). حالا در این حالت فقط
+  // وضعیت روی سرور «زنده» می‌شود و لینک واقعی برای خودِ استاد هم باز می‌شود.
+  if (seminar.hasMeetingLink) {
+    final result = await ref
+        .read(setSeminarStatusUseCaseProvider)
+        .call(SetSeminarStatusParams(seminarId: seminar.id, status: SeminarStatus.live));
+    result.fold(
+      (f) => messenger.showSnackBar(
+          SnackBar(content: Text(localizeSeminarFailureMessage(context, f.message)))),
+      (_) {
+        onWentLive?.call();
+        messenger.showSnackBar(SnackBar(
+          content: Text(context.tr('liveStream.announcedOpeningLink')),
+        ));
+        final uri = Uri.tryParse(seminar.meetingLink.trim());
+        if (uri != null) launchUrl(uri, mode: LaunchMode.externalApplication);
+      },
+    );
+    return;
+  }
+
   showDialog(
     context: context,
     barrierDismissible: false,
@@ -48,7 +78,7 @@ Future<void> startSeminarLive(
     }
   } catch (e) {
     if (context.mounted) Navigator.of(context).pop();
-    messenger.showSnackBar(SnackBar(content: Text('خطا در شروع پخش زنده: $e')));
+    messenger.showSnackBar(SnackBar(content: Text(context.tr('liveStream.startError', {'error': '$e'}))));
   }
 }
 
@@ -77,10 +107,10 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
             ),
           ),
           const SizedBox(height: 18),
-          const Text('پخش زنده آماده است',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Text(context.tr('liveStream.readyTitle'),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('چگونه پخش می‌کنید؟',
+          Text(context.tr('liveStream.howToBroadcast'),
               style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 18),
           SizedBox(
@@ -104,8 +134,8 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
                 );
               },
               icon: const Icon(Icons.podcasts_rounded, size: 20),
-              label: const Text('پخش مستقیم از همین اپ',
-                  style: TextStyle(fontWeight: FontWeight.w800)),
+              label: Text(context.tr('liveStream.broadcastFromApp'),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
           ),
           const SizedBox(height: 10),
@@ -118,7 +148,7 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
                 _showIngestSheet(context, r);
               },
               icon: const Icon(Icons.desktop_windows_rounded, size: 18),
-              label: const Text('با نرم‌افزار بیرونی (OBS / Larix)'),
+              label: Text(context.tr('liveStream.broadcastExternal')),
             ),
           ),
         ],
@@ -175,29 +205,27 @@ class _IngestSheet extends StatelessWidget {
                 child: const Icon(Icons.sensors_rounded, color: AppColors.danger),
               ),
               const SizedBox(width: 12),
-              const Expanded(
-                child: Text('پخش زنده آماده است',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              Expanded(
+                child: Text(context.tr('liveStream.readyTitle'),
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'این نشانی و کلید را در یک نرم‌افزار پخش (OBS در کامپیوتر یا Larix '
-            'Broadcaster در موبایل) وارد کنید. به‌محض شروع، شاگردان/والدین پخش '
-            'زنده را در اپ می‌بینند.',
+            context.tr('liveStream.ingestInstructions'),
             style: TextStyle(fontSize: 12.5, height: 1.7, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(height: 18),
-          _CopyField(label: 'سرور (RTMPS URL)', value: result.rtmpsUrl),
+          _CopyField(label: context.tr('liveStream.serverUrlLabel'), value: result.rtmpsUrl),
           const SizedBox(height: 10),
-          _CopyField(label: 'کلید پخش (Stream Key)', value: result.rtmpsKey, secret: true),
+          _CopyField(label: context.tr('liveStream.streamKeyLabel'), value: result.rtmpsKey, secret: true),
           const SizedBox(height: 18),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('باشه، متوجه شدم'),
+              child: Text(context.tr('liveStream.gotIt')),
             ),
           ),
         ],
@@ -263,7 +291,7 @@ class _CopyFieldState extends State<_CopyField> {
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: widget.value));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('کپی شد'), duration: Duration(seconds: 1)),
+                    SnackBar(content: Text(context.tr('common.copied')), duration: const Duration(seconds: 1)),
                   );
                 },
               ),

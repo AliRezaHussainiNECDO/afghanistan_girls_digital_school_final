@@ -15,7 +15,7 @@ class AdvisorRemoteDataSource {
         text: (m['text'] ?? '') as String,
         createdAt: DateTime.tryParse((m['createdAt'] as String? ?? '').replaceFirst(' ', 'T')) ?? DateTime.now(),
         flagged: m['flagged'] == true,
-        topic: (m['topic'] ?? 'عمومی') as String,
+        topic: (m['topic'] ?? 'general') as String,
       );
 
   /// تاریخچهٔ گفتگوی شاگردِ جاری.

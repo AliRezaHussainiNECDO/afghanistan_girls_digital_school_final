@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
 import '../../../../shared_models/app_notification.dart';
-import '../../data/academy_store.dart';
 import '../../data/pdf_picker/pdf_picker.dart';
 import '../../data/pdf_picker/picked_pdf.dart';
+import '../../data/pdf_saver/pdf_saver.dart';
 import '../../domain/academy_entities.dart';
 import '../academy_providers.dart';
 import 'academy_shared.dart';
@@ -43,14 +44,18 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
 
   String _pdfName = '';
   String _pdfPath = '';
+  String _pdfKey = '';
   double _pdfSize = 0;
+  PickedPdf? _pickedPdf; // فایل تازه‌انتخاب‌شده که هنوز آپلود نشده
   bool _picking = false;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
     _pdfName = widget.existing?.pdfFileName ?? '';
     _pdfPath = widget.existing?.pdfPath ?? '';
+    _pdfKey = widget.existing?.pdfKey ?? '';
     _pdfSize = widget.existing?.fileSizeMb ?? 0;
   }
 
@@ -68,13 +73,14 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
       final PickedPdf? picked = await pickPdfFile();
       if (picked != null) {
         setState(() {
+          _pickedPdf = picked;
           _pdfName = picked.name;
           _pdfPath = picked.path;
           _pdfSize = picked.sizeMb;
         });
       }
     } catch (e) {
-      if (mounted) _toast(context, 'انتخاب فایل ناموفق بود');
+      if (mounted) _toast(context, context.tr('academy.pdfPickFailed'));
     } finally {
       if (mounted) setState(() => _picking = false);
     }
@@ -82,39 +88,68 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
 
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) {
-      _toast(context, 'عنوان کتاب اجباری است');
+      _toast(context, context.tr('academy.bookTitleRequired'));
       return;
     }
-    final book = LibraryBook(
-      id: widget.existing?.id ?? 'new',
-      title: _title.text.trim(),
-      subject: _subject,
-      gradeId: _grade,
-      category: _category,
-      author: _author.text.trim(),
-      description: _description.text.trim(),
-      pdfFileName: _pdfName,
-      pdfPath: _pdfPath,
-      fileSizeMb: double.parse(_pdfSize.toStringAsFixed(1)),
-      pageCount: int.tryParse(_pages.text.trim()) ?? 0,
-      coverIndex: _cover,
-      includeInRag: _includeInRag,
-      status: _publish ? PublishStatus.published : PublishStatus.draft,
-      uploadedAt: widget.existing?.uploadedAt ?? DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-    final saved = AcademyStore().saveBook(book);
-    _refresh(ref);
-    if (saved.status == PublishStatus.published) {
-      NotificationCenter.instance.push(
-        title: 'کتاب جدید در کتابخانه 📚',
-        body: '«${saved.title}» (${saved.subject} · ${saved.gradeLabel}) اکنون در دسترس است.',
-        kind: NotificationKind.book,
+    setState(() => _saving = true);
+    try {
+      final book = LibraryBook(
+        id: widget.existing?.id ?? 'new',
+        title: _title.text.trim(),
+        subject: _subject,
+        gradeId: _grade,
+        category: _category,
+        author: _author.text.trim(),
+        description: _description.text.trim(),
+        pdfFileName: _pdfName,
+        pdfPath: _pdfPath,
+        pdfKey: _pdfKey,
+        fileSizeMb: double.parse(_pdfSize.toStringAsFixed(1)),
+        pageCount: int.tryParse(_pages.text.trim()) ?? 0,
+        coverIndex: _cover,
+        includeInRag: _includeInRag,
+        status: _publish ? PublishStatus.published : PublishStatus.draft,
+        uploadedAt: widget.existing?.uploadedAt ?? DateTime.now(),
+        updatedAt: DateTime.now(),
       );
-    }
-    if (mounted) {
-      Navigator.pop(context);
-      _toast(context, 'کتاب ذخیره شد');
+      final store = ref.read(academyStoreProvider);
+      // منتظر می‌مانیم تا ردیف کتاب واقعاً روی سرور ساخته/به‌روز شود — وگرنه
+      // (چون نوشتن معمولیِ AcademyStore «آتش‌وفراموش» است) آپلود فایل ممکن
+      // است زودتر از آماده‌شدن ردیف برسد و با خطای «کتاب یافت نشد» مواجه شود.
+      var saved = await store.saveBookAwaitingServer(book);
+
+      // اگر فایل تازه‌ای انتخاب شده، اکنون واقعاً روی سرور آپلود می‌شود
+      // (قبلاً این مرحله کاملاً شبیه‌سازی بود و هیچ فایلی ذخیره نمی‌شد).
+      if (_pickedPdf != null) {
+        final bytes = await readPickedPdfBytes(_pickedPdf!);
+        if (bytes != null && bytes.isNotEmpty) {
+          final uploaded = await store.uploadBookPdf(saved.id, bytes, _pdfName);
+          if (uploaded != null) saved = uploaded;
+        } else if (mounted) {
+          _toast(context, context.tr('academy.bookSavedPdfUploadFailed'));
+        }
+      }
+
+      _refresh(ref);
+      if (saved.status == PublishStatus.published) {
+        NotificationCenter.instance.push(
+          title: context.tr('academy.newBookNotifTitle'),
+          body: context.tr('academy.newBookNotifBody', {
+            'title': saved.title,
+            'subject': saved.subject,
+            'grade': gradeLabel(context, saved.gradeId),
+          }),
+          kind: NotificationKind.book,
+        );
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        _toast(context, context.tr('academy.bookSaved'));
+      }
+    } catch (e) {
+      if (mounted) _toast(context, context.tr('academy.saveFailedWithError', {'error': '$e'}));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -131,7 +166,7 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.existing == null ? 'کتاب جدید' : 'ویرایش کتاب',
+              Text(widget.existing == null ? context.tr('academy.newBookTitle') : context.tr('academy.editBookTitle'),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
               const SizedBox(height: 16),
               // ── آپلود پی‌دی‌اف ──
@@ -156,7 +191,7 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_pdfName.isEmpty ? 'انتخاب فایل پی‌دی‌اف کتاب' : _pdfName,
+                            Text(_pdfName.isEmpty ? context.tr('academy.selectPdfFile') : _pdfName,
                                 maxLines: 1, overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontWeight: FontWeight.w700)),
                             if (_pdfSize > 0)
@@ -174,20 +209,21 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              academyField(_title, 'عنوان کتاب'),
-              _dropdown<String>('مضمون', _subject, kSubjects.map((s) => (s, s)).toList(),
+              academyField(_title, context.tr('academy.bookTitleLabel')),
+              _dropdown<String>(context.tr('academy.subjectLabel'), _subject, kSubjects.map((s) => (s, s)).toList(),
                   (v) => setState(() => _subject = v)),
-              _dropdown<int>('صنف', _grade, kGrades.map((g) => (g, gradeLabel(g))).toList(),
+              _dropdown<int>(context.tr('common.grade'), _grade,
+                  kGrades.map((g) => (g, gradeLabel(context, g))).toList(),
                   (v) => setState(() => _grade = v)),
-              _dropdown<String>('دسته‌بندی', _category, kCategories.map((c) => (c, c)).toList(),
+              _dropdown<String>(context.tr('academy.categoryLabel'), _category, kCategories.map((c) => (c, c)).toList(),
                   (v) => setState(() => _category = v)),
-              academyField(_author, 'نویسنده / ناشر'),
-              academyField(_pages, 'تعداد صفحات', keyboard: TextInputType.number),
-              academyField(_description, 'توضیحات', maxLines: 3),
+              academyField(_author, context.tr('academy.authorPublisherLabel')),
+              academyField(_pages, context.tr('academy.pageCountLabel'), keyboard: TextInputType.number),
+              academyField(_description, context.tr('academy.descriptionLabel'), maxLines: 3),
               // ── انتخاب رنگ جلد ──
               Align(
                 alignment: Alignment.centerRight,
-                child: Text('رنگ جلد', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                child: Text(context.tr('academy.coverColorLabel'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -215,29 +251,35 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
                 contentPadding: EdgeInsets.zero,
                 value: _includeInRag,
                 onChanged: (v) => setState(() => _includeInRag = v),
-                title: const Text('استفاده در معلم هوشمند (RAG)', style: TextStyle(fontSize: 14)),
-                subtitle: const Text('متن این کتاب به هوش مصنوعی داده شود', style: TextStyle(fontSize: 11)),
+                title: Text(context.tr('academy.useInAiTeacherTitle'), style: const TextStyle(fontSize: 14)),
+                subtitle: Text(context.tr('academy.useInAiTeacherSubtitle'), style: const TextStyle(fontSize: 11)),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: _publish,
                 onChanged: (v) => setState(() => _publish = v),
-                title: const Text('انتشار برای شاگردان', style: TextStyle(fontSize: 14)),
-                subtitle: const Text('در کتابخانهٔ شاگردان قابل دیدن/دانلود شود', style: TextStyle(fontSize: 11)),
+                title: Text(context.tr('academy.publishForStudentsTitle'), style: const TextStyle(fontSize: 14)),
+                subtitle: Text(context.tr('academy.publishForStudentsSubtitle'), style: const TextStyle(fontSize: 11)),
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+                        onPressed: _saving ? null : () => Navigator.pop(context), child: Text(context.tr('common.cancel'))),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.check_rounded, size: 18),
-                      label: const Text('ذخیره'),
+                      onPressed: _saving ? null : _save,
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.check_rounded, size: 18),
+                      label: Text(_saving ? context.tr('academy.savingInProgress') : context.tr('common.save')),
                     ),
                   ),
                 ],
@@ -306,7 +348,7 @@ class BookDetailSheet extends ConsumerWidget {
                         Text(book.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                         const SizedBox(height: 6),
                         Wrap(spacing: 6, runSpacing: 6, children: [
-                          _tag('${book.subject} · ${book.gradeLabel}'),
+                          _tag('${book.subject} · ${gradeLabel(context, book.gradeId)}'),
                           PublishChip(status: book.status),
                         ]),
                       ],
@@ -315,14 +357,16 @@ class BookDetailSheet extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              InfoRow('دسته‌بندی', book.category),
-              InfoRow('نویسنده / ناشر', book.author),
-              InfoRow('توضیحات', book.description),
+              InfoRow(context.tr('academy.categoryLabel'), book.category),
+              InfoRow(context.tr('academy.authorPublisherLabel'), book.author),
+              InfoRow(context.tr('academy.descriptionLabel'), book.description),
               if (book.hasPdf || book.pdfFileName.isNotEmpty)
-                InfoRow('فایل پی‌دی‌اف', '${book.pdfFileName}${book.fileSizeMb > 0 ? ' · ${book.fileSizeMb} MB' : ''}'),
-              InfoRow('تعداد صفحات', book.pageCount > 0 ? '${book.pageCount}' : ''),
-              InfoRow('معلم هوشمند', book.includeInRag ? 'فعال' : 'غیرفعال'),
-              InfoRow('آخرین به‌روزرسانی', formatDate(book.updatedAt)),
+                InfoRow(context.tr('academy.pdfFileLabel'),
+                    '${book.pdfFileName}${book.fileSizeMb > 0 ? ' · ${book.fileSizeMb} MB' : ''}'),
+              InfoRow(context.tr('academy.pageCountLabel'), book.pageCount > 0 ? '${book.pageCount}' : ''),
+              InfoRow(context.tr('academy.aiTeacherLabel'),
+                  book.includeInRag ? context.tr('academy.activeLabel') : context.tr('academy.inactiveLabel')),
+              InfoRow(context.tr('academy.lastUpdatedLabel'), formatDate(book.updatedAt)),
               const Divider(height: 24),
               Wrap(
                 spacing: 8,
@@ -334,23 +378,29 @@ class BookDetailSheet extends ConsumerWidget {
                       foregroundColor: published ? AppColors.ink500 : AppColors.green600,
                     ),
                     onPressed: () async {
-                      AcademyStore().setBookStatus(
+                      ref.read(academyStoreProvider).setBookStatus(
                           book.id, published ? PublishStatus.draft : PublishStatus.published);
                       _refresh(ref);
                       if (!published) {
                         NotificationCenter.instance.push(
-                          title: 'کتاب جدید در کتابخانه 📚',
-                          body: '«${book.title}» (${book.subject} · ${book.gradeLabel}) اکنون در دسترس است.',
+                          title: context.tr('academy.newBookNotifTitle'),
+                          body: context.tr('academy.newBookNotifBody', {
+                            'title': book.title,
+                            'subject': book.subject,
+                            'grade': gradeLabel(context, book.gradeId),
+                          }),
                           kind: NotificationKind.book,
                         );
                       }
                       if (context.mounted) {
                         Navigator.pop(context);
-                        _toast(context, published ? 'از انتشار خارج شد' : 'منتشر شد');
+                        _toast(context, published
+                            ? context.tr('academy.unpublishedNotice')
+                            : context.tr('academy.publishedNotice'));
                       }
                     },
                     icon: Icon(published ? Icons.unpublished_rounded : Icons.publish_rounded, size: 18),
-                    label: Text(published ? 'خارج‌کردن از انتشار' : 'انتشار'),
+                    label: Text(published ? context.tr('academy.unpublishButton') : context.tr('academy.publishButton')),
                   ),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -358,7 +408,7 @@ class BookDetailSheet extends ConsumerWidget {
                       showAcademySheet(context, BookFormSheet(existing: book));
                     },
                     icon: const Icon(Icons.edit_rounded, size: 18),
-                    label: const Text('ویرایش'),
+                    label: Text(context.tr('academy.editButton')),
                   ),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
@@ -367,7 +417,7 @@ class BookDetailSheet extends ConsumerWidget {
                     ),
                     onPressed: () => _confirmDelete(context, ref),
                     icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                    label: const Text('حذف'),
+                    label: Text(context.tr('academy.deleteButton')),
                   ),
                 ],
               ),
@@ -394,53 +444,63 @@ class BookDetailSheet extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف این کتاب؟'),
-        content: const Text('این عمل قابل بازگشت نیست.'),
+        title: Text(context.tr('academy.deleteBookConfirmTitle')),
+        content: Text(context.tr('academy.actionIrreversible')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(context.tr('common.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف'),
+            child: Text(context.tr('academy.deleteButton')),
           ),
         ],
       ),
     );
     if (ok == true) {
-      AcademyStore().deleteBook(book.id);
+      ref.read(academyStoreProvider).deleteBook(book.id);
       _refresh(ref);
       if (context.mounted) {
         Navigator.pop(context);
-        _toast(context, 'حذف شد');
+        _toast(context, context.tr('academy.deletedNotice'));
       }
     }
   }
 }
 
 // ═══════════════════════ STUDENT BOOK VIEW (library) ═══════════════════════
-class StudentBookSheet extends StatefulWidget {
+class StudentBookSheet extends ConsumerStatefulWidget {
   final LibraryBook book;
   const StudentBookSheet({super.key, required this.book});
   @override
-  State<StudentBookSheet> createState() => _StudentBookSheetState();
+  ConsumerState<StudentBookSheet> createState() => _StudentBookSheetState();
 }
 
-class _StudentBookSheetState extends State<StudentBookSheet> {
+class _StudentBookSheetState extends ConsumerState<StudentBookSheet> {
   bool _downloading = false;
 
+  /// دانلود واقعی — رفع اشکال: قبلاً این فقط یک تأخیر ۵۰۰ میلی‌ثانیه‌ای +
+  /// پیام موفقیت جعلی بود؛ هیچ فایلی واقعاً دریافت/ذخیره نمی‌شد. اکنون
+  /// بایت‌های واقعی از سرور گرفته و روی دستگاه ذخیره می‌شود (یا در وب،
+  /// دانلود مرورگر آغاز می‌شود).
   Future<void> _download() async {
     final book = widget.book;
+    if (!book.hasPdf) {
+      _toast(context, context.tr('academy.noPdfAvailable'));
+      return;
+    }
     setState(() => _downloading = true);
     try {
-      // شبیه‌سازی دانلود (سازگار با وب و موبایل). در فاز اتصال به Backend،
-      // اینجا فایل واقعی از سرور دریافت/ذخیره می‌شود.
-      await Future.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      if (book.pdfFileName.isEmpty && !book.hasPdf) {
-        _toast(context, 'برای این کتاب فعلاً فایلی موجود نیست');
-      } else {
-        _toast(context, 'کتاب «${book.title}» دانلود شد ✓');
+      final bytes = await ref.read(academyStoreProvider).downloadBookPdf(book.pdfKey);
+      if (bytes == null || bytes.isEmpty) {
+        if (mounted) _toast(context, context.tr('academy.downloadFailedRetry'));
+        return;
       }
+      final fileName = book.pdfFileName.isNotEmpty ? book.pdfFileName : '${book.title}.pdf';
+      await savePdfBytes(fileName, bytes);
+      if (!mounted) return;
+      _toast(context, context.tr('academy.bookDownloadedNotice', {'title': book.title}));
+    } catch (e) {
+      if (mounted) _toast(context, context.tr('academy.downloadError', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _downloading = false);
     }
@@ -484,15 +544,16 @@ class _StudentBookSheetState extends State<StudentBookSheet> {
               const SizedBox(height: 6),
               Center(
                 child: Wrap(spacing: 6, runSpacing: 6, alignment: WrapAlignment.center, children: [
-                  _pill(context, '${book.subject} · ${book.gradeLabel}'),
+                  _pill(context, '${book.subject} · ${gradeLabel(context, book.gradeId)}'),
                   _pill(context, book.category),
                   if (book.fileSizeMb > 0) _pill(context, '${book.fileSizeMb} MB'),
-                  if (book.pageCount > 0) _pill(context, '${book.pageCount} صفحه'),
+                  if (book.pageCount > 0)
+                    _pill(context, context.tr('academy.pagesCountSuffix', {'count': '${book.pageCount}'})),
                 ]),
               ),
               const SizedBox(height: 16),
-              if (book.author.isNotEmpty) InfoRow('نویسنده / ناشر', book.author),
-              if (book.description.isNotEmpty) InfoRow('دربارهٔ کتاب', book.description),
+              if (book.author.isNotEmpty) InfoRow(context.tr('academy.authorPublisherLabel'), book.author),
+              if (book.description.isNotEmpty) InfoRow(context.tr('academy.aboutBookLabel'), book.description),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
@@ -501,11 +562,11 @@ class _StudentBookSheetState extends State<StudentBookSheet> {
                   icon: _downloading
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.download_rounded),
-                  label: Text(_downloading ? 'در حال دانلود…' : 'دانلود کتاب'),
+                  label: Text(_downloading ? context.tr('academy.downloadingInProgress') : context.tr('academy.downloadBookButton')),
                 ),
               ),
               const SizedBox(height: 8),
-              Text('برای آموزش این کتاب می‌توانی از «معلم هوشمند» هم کمک بگیری.',
+              Text(context.tr('academy.aiTeacherHelpHint'),
                   style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
             ],
           ),

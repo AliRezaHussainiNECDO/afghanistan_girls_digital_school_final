@@ -30,8 +30,8 @@ type Bindings = {
 const seminars = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function auth(c: any): Promise<{ sub: string; role: string } | null> {
@@ -54,10 +54,10 @@ async function loadOwnedSeminar(
 ): Promise<{ ok: true; row: any } | { ok: false; response: Response }> {
   const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?').bind(id).first<any>();
   if (!row) {
-    return { ok: false, response: c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404) };
+    return { ok: false, response: c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404) };
   }
   if (me.role !== 'super_admin' && row.instructor_id !== me.sub) {
-    return { ok: false, response: c.json(fail('FORBIDDEN', 'شما مالک این سمینار نیستید', 'Not the owner'), 403) };
+    return { ok: false, response: c.json(fail('FORBIDDEN', 'شما مالک این سمینار نیستید', 'Not the owner', 'تاسو د دې سیمینار خاوند نه یاست', 'Vous n\'êtes pas le propriétaire de ce séminaire'), 403) };
   }
   return { ok: true, row };
 }
@@ -160,7 +160,7 @@ seminars.get('/seminars/:id', async (c) => {
   const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?')
     .bind(c.req.param('id'))
     .first<any>();
-  if (!row) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404);
+  if (!row) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404);
   return c.json({ seminar: await toSeminarJson(c, row) });
 });
 
@@ -168,7 +168,7 @@ seminars.get('/seminars/:id', async (c) => {
 seminars.get('/seminars/:id/registrations', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
   if (!owned.ok) return owned.response;
@@ -201,11 +201,11 @@ seminars.get('/seminars/:id/registrations', async (c) => {
 seminars.post('/seminars', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const b = await c.req.json<any>().catch(() => null);
   if (!b?.title || !b?.scheduledStart) {
-    return c.json(fail('BAD_REQUEST', 'عنوان و زمان الزامی است', 'Missing fields'), 400);
+    return c.json(fail('BAD_REQUEST', 'عنوان و زمان الزامی است', 'Missing fields', 'سرلیک او وخت اړین دي', 'Le titre et l\'heure sont requis'), 400);
   }
   // مالک واقعی سمینار: به‌طور پیش‌فرض خودِ سازنده. فقط مدیر ارشد می‌تواند با
   // فرستادن instructorId، سمینار را به‌نمایندگی از یک استاد واقعیِ دیگر
@@ -216,7 +216,7 @@ seminars.post('/seminars', async (c) => {
       .bind(b.instructorId.trim())
       .first<{ id: string }>();
     if (!target) {
-      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found'), 400);
+      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found', 'ټاکل شوی استاد ونه موندل شو', 'L\'enseignant sélectionné est introuvable'), 400);
     }
     instructorId = target.id;
   }
@@ -247,6 +247,34 @@ seminars.post('/seminars', async (c) => {
       String(b.meetingLink ?? ''),
     )
     .run();
+
+  // اعلان سمینار تازه به مخاطبِ همان سمینار — طبق منطق داشبورد
+  // شاگرد/والد: «فعالیت جدید» یعنی سمینار تازه‌ای که برایشان برگزار
+  // می‌شود، دقیقاً مثل اعلان نمرهٔ امتحان یا پیام والدین که همین جدول را
+  // پر می‌کنند (رفع اشکال: نوع `seminar` در `NotificationKind` از قبل
+  // تعریف شده بود ولی هیچ‌جای سرور آن را واقعاً نمی‌ساخت — یعنی شاگردها و
+  // والدین هرگز اعلان سمینار نمی‌دیدند مگر با سر زدن دستی به فهرست
+  // سمینارها).
+  if (String(b.status ?? 'published') === 'published') {
+    const audienceRole = b.audience === 'parents' ? 'parent' : 'student';
+    const { results: recipients } = await c.env.DB.prepare('SELECT id FROM users WHERE role = ?')
+      .bind(audienceRole)
+      .all<{ id: string }>();
+    if (recipients.length > 0) {
+      const notifStatements = recipients.map((r) =>
+        c.env.DB.prepare(
+          "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'seminar')",
+        ).bind(
+          uid(),
+          r.id,
+          'سمینار جدید 🎥',
+          `«${String(b.title)}» با استاد ${instructorName || 'مکتب'} برگزار می‌شود.`,
+        ),
+      );
+      await c.env.DB.batch(notifStatements);
+    }
+  }
+
   const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?').bind(id).first<any>();
   return c.json({ seminar: await toSeminarJson(c, row) }, 201);
 });
@@ -255,22 +283,22 @@ seminars.post('/seminars', async (c) => {
 
 seminars.post('/seminars/:id/register', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const seminarId = c.req.param('id');
   const s = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?')
     .bind(seminarId)
     .first<any>();
-  if (!s) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found'), 404);
+  if (!s) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404);
 
   const already = await c.env.DB.prepare(
     'SELECT 1 FROM seminar_registrations WHERE seminar_id = ? AND user_id = ?',
   )
     .bind(seminarId, me.sub)
     .first();
-  if (already) return c.json(fail('ALREADY_REGISTERED', 'شما قبلاً ثبت‌نام کرده‌اید', 'Already registered'), 409);
+  if (already) return c.json(fail('ALREADY_REGISTERED', 'شما قبلاً ثبت‌نام کرده‌اید', 'Already registered', 'تاسو دمخه ثبت‌نام کړی دی', 'Vous êtes déjà inscrit(e)'), 409);
 
   if (s.status === 'registrationClosed' || s.status === 'ended' || s.status === 'archived') {
-    return c.json(fail('REGISTRATION_CLOSED', 'ثبت‌نام این سمینار بسته است', 'Registration closed'), 400);
+    return c.json(fail('REGISTRATION_CLOSED', 'ثبت‌نام این سمینار بسته است', 'Registration closed', 'د دې سیمینار ثبت‌نام تړلی دی', 'Les inscriptions à ce séminaire sont fermées'), 400);
   }
   if (s.capacity != null) {
     const { results } = await c.env.DB.prepare(
@@ -279,7 +307,7 @@ seminars.post('/seminars/:id/register', async (c) => {
       .bind(seminarId)
       .all<{ n: number }>();
     if ((results[0]?.n ?? 0) >= s.capacity) {
-      return c.json(fail('FULL', 'ظرفیت تکمیل است', 'Seminar full'), 400);
+      return c.json(fail('FULL', 'ظرفیت تکمیل است', 'Seminar full', 'ظرفیت ډکه ده', 'Le séminaire est complet'), 400);
     }
   }
   await c.env.DB.prepare(
@@ -295,13 +323,13 @@ seminars.post('/seminars/:id/register', async (c) => {
 seminars.put('/seminars/:id', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
   const owned = await loadOwnedSeminar(c, id, me);
   if (!owned.ok) return owned.response;
   const b = await c.req.json<any>().catch(() => null);
-  if (!b) return c.json(fail('BAD_REQUEST', 'بدنهٔ نامعتبر', 'Invalid body'), 400);
+  if (!b) return c.json(fail('BAD_REQUEST', 'بدنهٔ نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
 
   // واگذاری سمینار به استاد واقعی دیگر — فقط مدیر ارشد مجاز است (بخش ۱۵.۲).
   let instructorId: string | null = null;
@@ -310,7 +338,7 @@ seminars.put('/seminars/:id', async (c) => {
       .bind(b.instructorId.trim())
       .first<{ id: string }>();
     if (!target) {
-      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found'), 400);
+      return c.json(fail('INSTRUCTOR_NOT_FOUND', 'استاد انتخاب‌شده یافت نشد', 'Instructor not found', 'ټاکل شوی استاد ونه موندل شو', 'L\'enseignant sélectionné est introuvable'), 400);
     }
     instructorId = target.id;
   }
@@ -349,7 +377,7 @@ seminars.put('/seminars/:id', async (c) => {
 seminars.delete('/seminars/:id', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
   const owned = await loadOwnedSeminar(c, id, me);
@@ -366,14 +394,14 @@ seminars.delete('/seminars/:id', async (c) => {
 seminars.patch('/seminars/:id/status', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
   if (!owned.ok) return owned.response;
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const valid = ['draft', 'published', 'registrationClosed', 'live', 'ended', 'archived'];
   if (!b?.status || !valid.includes(b.status)) {
-    return c.json(fail('BAD_REQUEST', 'وضعیت نامعتبر', 'Invalid status'), 400);
+    return c.json(fail('BAD_REQUEST', 'وضعیت نامعتبر', 'Invalid status', 'ناسمه وضعیت', 'Statut invalide'), 400);
   }
   await c.env.DB.prepare('UPDATE seminars SET status = ? WHERE id = ?')
     .bind(b.status, c.req.param('id'))
@@ -388,7 +416,7 @@ seminars.patch('/seminars/:id/status', async (c) => {
 seminars.post('/seminars/:id/go-live', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
   const owned = await loadOwnedSeminar(c, id, me);
@@ -431,7 +459,7 @@ seminars.post('/seminars/:id/go-live', async (c) => {
       const data = (await res.json()) as any;
       if (!res.ok || !data?.result) {
         return c.json(
-          fail('STREAM_ERROR', 'ساخت پخش زنده ناموفق بود', 'Failed to create live input'),
+          fail('STREAM_ERROR', 'ساخت پخش زنده ناموفق بود', 'Failed to create live input', 'د ژوندۍ خپرونې جوړول ناکام شول', 'Échec de la création de la diffusion en direct'),
           502,
         );
       }
@@ -458,7 +486,7 @@ seminars.post('/seminars/:id/go-live', async (c) => {
     });
   } catch (e) {
     return c.json(
-      fail('STREAM_ERROR', 'خطا در ارتباط با Cloudflare Stream', 'Cloudflare Stream request failed'),
+      fail('STREAM_ERROR', 'خطا در ارتباط با Cloudflare Stream', 'Cloudflare Stream request failed', 'د Cloudflare Stream سره د اړیکې تېروتنه', 'Erreur de connexion avec Cloudflare Stream'),
       502,
     );
   }
@@ -468,12 +496,19 @@ seminars.post('/seminars/:id/go-live', async (c) => {
 seminars.post('/seminars/:id/end-live', async (c) => {
   const me = await auth(c);
   if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
   const owned = await loadOwnedSeminar(c, id, me);
   if (!owned.ok) return owned.response;
-  await c.env.DB.prepare("UPDATE seminars SET status = 'ended' WHERE id = ?").bind(id).run();
+  // نشانی پخش را هم پاک می‌کنیم (نه فقط status) — رفع اشکال: `stream_uid`
+  // نگه داشته می‌شود تا go-live بعدی همان ورودی زنده را بازیابی کند، اما
+  // `stream_playback_url` باید خالی شود وگرنه `Seminar.hasLiveStream` (که
+  // فقط این فیلد را چک می‌کند) برای همیشه true می‌ماند و کارت سمینار حتی
+  // بعد از پایان جلسه ممکن است کاربر را به یک پخش مرده هدایت کند.
+  await c.env.DB.prepare("UPDATE seminars SET status = 'ended', stream_playback_url = '' WHERE id = ?")
+    .bind(id)
+    .run();
   return c.json({ success: true });
 });
 

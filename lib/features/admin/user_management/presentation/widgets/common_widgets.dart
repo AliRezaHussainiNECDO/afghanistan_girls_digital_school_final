@@ -3,6 +3,7 @@
 library;
 import 'package:flutter/material.dart';
 
+import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/student_entities.dart';
 
 class AppPalette {
@@ -21,10 +22,10 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
-      AccountStatus.active => ('فعال', AppPalette.green),
-      AccountStatus.suspended => ('مسدود', AppPalette.red),
-      AccountStatus.pendingVerification => ('در انتظار تأیید', AppPalette.amber),
-      AccountStatus.deleted => ('حذف‌شده', Colors.grey),
+      AccountStatus.active => (context.tr('adminCommon.statusActive'), AppPalette.green),
+      AccountStatus.suspended => (context.tr('adminCommon.statusSuspended'), AppPalette.red),
+      AccountStatus.pendingVerification => (context.tr('adminCommon.statusPendingVerification'), AppPalette.amber),
+      AccountStatus.deleted => (context.tr('adminCommon.statusDeleted'), Colors.grey),
     };
     return _Pill(label: label, color: color);
   }
@@ -38,9 +39,9 @@ class RiskBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     if (level == RiskLevel.none) return const SizedBox.shrink();
     final (label, color) = switch (level) {
-      RiskLevel.high => ('در معرض خطر', AppPalette.red),
-      RiskLevel.medium => ('نیاز به توجه', AppPalette.amber),
-      _ => ('پیگیری', Colors.blueGrey),
+      RiskLevel.high => (context.tr('adminCommon.riskHigh'), AppPalette.red),
+      RiskLevel.medium => (context.tr('adminCommon.riskMedium'), AppPalette.amber),
+      _ => (context.tr('adminCommon.riskLow'), Colors.blueGrey),
     };
     return _Pill(label: label, color: color, icon: Icons.warning_amber_rounded);
   }
@@ -166,7 +167,7 @@ class AttendanceHeatmap extends StatelessWidget {
         children: days
             .map((d) => Tooltip(
                   message:
-                      '${d.date.year}/${d.date.month}/${d.date.day} — ${d.present ? 'حاضر' : 'غایب'}',
+                      '${d.date.year}/${d.date.month}/${d.date.day} — ${d.present ? context.tr('adminCommon.attendancePresent') : context.tr('adminCommon.attendanceAbsent')}',
                   child: Container(
                     width: 18,
                     height: 18,
@@ -190,14 +191,14 @@ class StressGauge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color, fill) = switch (level) {
-      StressLevel.low => ('کم', AppPalette.green, .25),
-      StressLevel.medium => ('متوسط', AppPalette.amber, .6),
-      StressLevel.high => ('بالا', AppPalette.red, .95),
+      StressLevel.low => (context.tr('adminCommon.stressLow'), AppPalette.green, .25),
+      StressLevel.medium => (context.tr('adminCommon.stressMedium'), AppPalette.amber, .6),
+      StressLevel.high => (context.tr('adminCommon.stressHigh'), AppPalette.red, .95),
     };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        const Text('سطح استرس',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(context.tr('adminCommon.stressLevelLabel'),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
         Text(label,
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.bold, color: color)),

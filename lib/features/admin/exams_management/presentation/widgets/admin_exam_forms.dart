@@ -13,24 +13,24 @@ const List<int> kExamGrades = [7, 8, 9, 10, 11, 12];
 String examTypeLabel(BuildContext context, ExamType t) {
   switch (t) {
     case ExamType.dailyQuiz:
-      return 'کوییز روزانه';
+      return context.tr('examAdmin.typeDailyQuiz');
     case ExamType.homework:
-      return 'کارخانگی';
+      return context.tr('examAdmin.typeHomework');
     case ExamType.monthly:
-      return 'امتحان ماهانه';
+      return context.tr('examAdmin.typeMonthly');
     case ExamType.finalExam:
-      return 'امتحان نهایی';
+      return context.tr('examAdmin.typeFinalExam');
   }
 }
 
-String examStatusLabel(ExamAdminStatus s) {
+String examStatusLabel(BuildContext context, ExamAdminStatus s) {
   switch (s) {
     case ExamAdminStatus.draft:
-      return 'پیش‌نویس';
+      return context.tr('examAdmin.statusDraft');
     case ExamAdminStatus.published:
-      return 'منتشرشده';
+      return context.tr('examAdmin.statusPublished');
     case ExamAdminStatus.closed:
-      return 'بسته‌شده';
+      return context.tr('examAdmin.statusClosed');
   }
 }
 
@@ -155,7 +155,7 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
 
   Future<void> _save() async {
     if (_title.text.trim().isEmpty) {
-      _toast(context, 'عنوان امتحان لازم است');
+      _toast(context, context.tr('examAdmin.titleRequired'));
       return;
     }
     setState(() => _saving = true);
@@ -174,10 +174,10 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
       ref.invalidate(adminExamsProvider);
       if (mounted) {
         Navigator.pop(context);
-        _toast(context, 'ذخیره شد');
+        _toast(context, context.tr('examAdmin.saved'));
       }
     } catch (e) {
-      if (mounted) _toast(context, 'خطا: $e');
+      if (mounted) _toast(context, context.tr('examAdmin.errorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -186,16 +186,16 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
   @override
   Widget build(BuildContext context) {
     return _SheetScaffold(
-      title: widget.existing == null ? 'امتحان جدید' : 'ویرایش امتحان',
+      title: widget.existing == null ? context.tr('examAdmin.newExamTitle') : context.tr('examAdmin.editExamTitle'),
       onSave: _saving ? () async {} : _save,
       children: [
-        _field(_title, 'عنوان امتحان'),
+        _field(_title, context.tr('examAdmin.examTitleField')),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<int>(
             initialValue: _grade,
-            decoration: const InputDecoration(label: Text('صنف'), border: OutlineInputBorder(), isDense: true),
-            items: kExamGrades.map((g) => DropdownMenuItem(value: g, child: Text('صنف $g'))).toList(),
+            decoration: InputDecoration(label: Text(context.tr('examAdmin.gradeField')), border: const OutlineInputBorder(), isDense: true),
+            items: kExamGrades.map((g) => DropdownMenuItem(value: g, child: Text(context.tr('bulkImport.gradeOption', {'grade': '$g'})))).toList(),
             onChanged: (v) => setState(() => _grade = v ?? kExamGrades.first),
           ),
         ),
@@ -203,7 +203,7 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<String>(
             initialValue: _subjectId,
-            decoration: const InputDecoration(label: Text('مضمون'), border: OutlineInputBorder(), isDense: true),
+            decoration: InputDecoration(label: Text(context.tr('examAdmin.subjectField')), border: const OutlineInputBorder(), isDense: true),
             items: mockSubjects.map((s) => DropdownMenuItem(value: s.id, child: Text(s.nameFa))).toList(),
             onChanged: (v) => setState(() => _subjectId = v ?? mockSubjects.first.id),
           ),
@@ -212,21 +212,21 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
           padding: const EdgeInsets.only(bottom: 12),
           child: DropdownButtonFormField<ExamType>(
             initialValue: _type,
-            decoration: const InputDecoration(label: Text('نوع امتحان'), border: OutlineInputBorder(), isDense: true),
+            decoration: InputDecoration(label: Text(context.tr('examAdmin.examTypeField')), border: const OutlineInputBorder(), isDense: true),
             items: ExamType.values
                 .map((t) => DropdownMenuItem(value: t, child: Text(examTypeLabel(context, t))))
                 .toList(),
             onChanged: (v) => setState(() => _type = v ?? ExamType.dailyQuiz),
           ),
         ),
-        _field(_duration, 'مدت (دقیقه)', keyboard: TextInputType.number),
+        _field(_duration, context.tr('examAdmin.durationMinutesField'), keyboard: TextInputType.number),
         Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: DropdownButtonFormField<ExamAdminStatus>(
             initialValue: _status,
-            decoration: const InputDecoration(label: Text('وضعیت'), border: OutlineInputBorder(), isDense: true),
+            decoration: InputDecoration(label: Text(context.tr('examAdmin.statusField')), border: const OutlineInputBorder(), isDense: true),
             items: ExamAdminStatus.values
-                .map((s) => DropdownMenuItem(value: s, child: Text(examStatusLabel(s))))
+                .map((s) => DropdownMenuItem(value: s, child: Text(examStatusLabel(context, s))))
                 .toList(),
             onChanged: (v) => setState(() => _status = v ?? ExamAdminStatus.draft),
           ),
@@ -235,7 +235,7 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              'این امتحان «نهایی» است — کامیابی در آن (+ تکمیل همهٔ مضامین) شرط ارتقای شاگرد به صنف بعدی است.',
+              context.tr('examAdmin.finalExamNotice'),
               style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
@@ -276,7 +276,7 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
   Future<void> _save() async {
     final opts = _opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
     if (_text.text.trim().isEmpty || opts.length < 2) {
-      _toast(context, 'متن سؤال و حداقل ۲ گزینه لازم است');
+      _toast(context, context.tr('examAdmin.questionAndOptionsRequired'));
       return;
     }
     final correctIndex = _correctIndex >= opts.length ? 0 : _correctIndex;
@@ -295,10 +295,10 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
       ref.invalidate(adminExamsProvider);
       if (mounted) {
         Navigator.pop(context);
-        _toast(context, 'ذخیره شد');
+        _toast(context, context.tr('examAdmin.saved'));
       }
     } catch (e) {
-      if (mounted) _toast(context, 'خطا: $e');
+      if (mounted) _toast(context, context.tr('examAdmin.errorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -308,12 +308,12 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return _SheetScaffold(
-      title: widget.existing == null ? 'سؤال جدید' : 'ویرایش سؤال',
+      title: widget.existing == null ? context.tr('examAdmin.newQuestionTitle') : context.tr('examAdmin.editQuestionTitle'),
       onSave: _saving ? () async {} : _save,
       children: [
-        _field(_text, 'متن سؤال', maxLines: 2),
+        _field(_text, context.tr('examAdmin.questionTextField'), maxLines: 2),
         const SizedBox(height: 4),
-        Text('گزینه‌ها (پاسخ صحیح را با دکمهٔ رادیویی مشخص کنید)',
+        Text(context.tr('examAdmin.optionsHint'),
             style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
         const SizedBox(height: 8),
         ...List.generate(4, (i) {
@@ -330,7 +330,7 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
                   child: TextField(
                     controller: _opts[i],
                     decoration: InputDecoration(
-                      label: Text('گزینهٔ ${i + 1}'),
+                      label: Text(context.tr('examAdmin.optionField', {'number': '${i + 1}'})),
                       border: const OutlineInputBorder(),
                       isDense: true,
                     ),

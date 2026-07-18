@@ -42,6 +42,9 @@ class DashboardRemoteDataSource implements DashboardDataSource {
       pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,
       pointsLevel: (m['pointsLevel'] as num?)?.toInt() ?? 1,
       pointsLevelTitleFa: m['pointsLevelTitleFa'] as String? ?? 'نوآموز',
+      pointsNextLevelAt: (m['pointsNextLevelAt'] as num?)?.toInt(),
+      pointsNextLevelTitleFa: m['pointsNextLevelTitleFa'] as String?,
+      pointsProgressToNextPercent: (m['pointsProgressToNextPercent'] as num?)?.toDouble() ?? 0,
       certificatesCount: (m['certificatesCount'] as num?)?.toInt() ?? 0,
     );
   }

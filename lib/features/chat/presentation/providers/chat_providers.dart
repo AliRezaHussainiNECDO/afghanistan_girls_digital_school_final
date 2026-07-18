@@ -70,6 +70,14 @@ final messagesProvider = FutureProvider.family<List<PeerMessage>, String>((ref, 
   return result.fold((f) => throw f, (v) => v);
 });
 
+/// شناسهٔ گفتگوی «ارتباط با مدیریت» برای کاربر جاری — با هر نقشی (شاگرد،
+/// والد، استاد) صدا زده شود، همان گفتگوی واحد و همیشگی با مدیریت مکتب را
+/// برمی‌گرداند (یا در صورت نبود، می‌سازد).
+final contactAdminConversationProvider = FutureProvider.autoDispose<String>((ref) async {
+  final result = await ref.read(startConversationUseCaseProvider).call('admin');
+  return result.fold((f) => throw f, (id) => id);
+});
+
 // --- State: دید مدیر (نظارت صنف‌به‌صنف) ---
 final classChatSummariesProvider = FutureProvider<List<ClassChatSummary>>((ref) async {
   final result = await ref.read(getClassChatSummariesUseCaseProvider).call(const NoParams());

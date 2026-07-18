@@ -6,6 +6,7 @@ import '../../../../../core/widgets/loading_view.dart';
 import '../../domain/entities/admin_exam_entities.dart';
 import '../providers/admin_exams_providers.dart';
 import '../widgets/admin_exam_forms.dart';
+import '../../../../../core/localization/app_localizations.dart';
 
 /// مدیریت سؤالاتِ یک امتحان — تنها راه واقعیِ افزودن سؤال به جدول
 /// `questions` (قبلاً هیچ‌جایی از برنامه این امکان را نداشت).
@@ -27,11 +28,11 @@ class AdminExamQuestionsScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showExamSheet(context, ExamQuestionFormSheet(examId: examId)),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('سؤال جدید'),
+        label: Text(context.tr('examQuestions.newQuestionButton')),
       ),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (questions) {
           if (questions.isEmpty) {
             return Center(
@@ -40,7 +41,7 @@ class AdminExamQuestionsScreen extends ConsumerWidget {
                 children: [
                   Icon(Icons.quiz_outlined, size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
-                  Text('هنوز سؤالی افزوده نشده', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  Text(context.tr('examQuestions.emptyState'), style: TextStyle(color: scheme.onSurfaceVariant)),
                 ],
               ),
             );
@@ -90,14 +91,14 @@ class _QuestionCard extends ConsumerWidget {
                     final ok = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text('حذف سؤال؟'),
-                        content: const Text('این عملیات قابل بازگشت نیست.'),
+                        title: Text(ctx.tr('examQuestions.deleteQuestionTitle')),
+                        content: Text(ctx.tr('examQuestions.deleteQuestionConfirm')),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
                           FilledButton(
                             style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
                             onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('حذف'),
+                            child: Text(ctx.tr('common.delete')),
                           ),
                         ],
                       ),
@@ -109,9 +110,9 @@ class _QuestionCard extends ConsumerWidget {
                     }
                   }
                 },
-                itemBuilder: (ctx) => const [
-                  PopupMenuItem(value: 'edit', child: Text('ویرایش')),
-                  PopupMenuItem(value: 'delete', child: Text('حذف')),
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(value: 'edit', child: Text(ctx.tr('examAdmin.editMenuItem'))),
+                  PopupMenuItem(value: 'delete', child: Text(ctx.tr('common.delete'))),
                 ],
               ),
             ],

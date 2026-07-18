@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 
 /// دکمهٔ «پاک‌سازی کامل نصاب و شروع از صفر» — طبق درخواست صریح کاربر که
@@ -19,51 +21,77 @@ class WipeAllCurriculumButton extends ConsumerStatefulWidget {
 
 class _WipeAllCurriculumButtonState extends ConsumerState<WipeAllCurriculumButton> {
   bool _running = false;
-  static const String _confirmPhrase = 'پاک کن';
+  String get _confirmPhrase => context.tr('wipeAll.confirmPhrase');
 
   Future<void> _confirmAndRun() async {
     final controller = TextEditingController();
     final scheme = Theme.of(context).colorScheme;
+    // رفع اشکال «هیچ درسی وجود ندارد اما امتیازات موجود است»: پاک‌سازی
+    // نصاب عمداً امتیاز/تاریخچهٔ یادگیری شاگردان را دست‌نخورده می‌گذارد
+    // (امتیاز یک دستاورد تاریخی است، نه بخشی از نصاب — حذف کتاب نباید
+    // امتیاز قبلاً کسب‌شده را از شاگرد بگیرد). اما در پاک‌سازی‌های آزمایشی
+    // که واقعاً «شروع از صفر» مدنظر است، امتیازهای قدیمیِ باقی‌مانده
+    // گیج‌کننده به نظر می‌رسند — این چک‌باکس اختیاری (پیش‌فرض خاموش) همان
+    // را هم پاک می‌کند.
+    var resetLearningData = false;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.warning_amber_rounded, color: scheme.error, size: 36),
-        title: const Text('پاک‌سازی کامل نصاب'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'این کار همهٔ کتاب‌های کتابخانه، فصل‌ها و درس‌های ساخته‌شده در همهٔ صنف‌ها و مضامین را برای همیشه حذف می‌کند. شاگردان تا آپلود دوبارهٔ کتاب‌ها، هیچ درسی نخواهند دید. این عملیات غیرقابل بازگشت است.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          icon: Icon(Icons.warning_amber_rounded, color: scheme.error, size: 36),
+          title: Text(ctx.tr('wipeAll.dialogTitle')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ctx.tr('wipeAll.warningBody')),
+                const SizedBox(height: 10),
+                CheckboxListTile(
+                  value: resetLearningData,
+                  onChanged: (v) => setDialogState(() => resetLearningData = v ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(
+                    ctx.tr('wipeAll.resetLearningTitle'),
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    ctx.tr('wipeAll.resetLearningSubtitle'),
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(ctx.tr('wipeAll.confirmPhraseInstruction', {'phrase': _confirmPhrase}),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    hintText: _confirmPhrase,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 14),
-            Text('برای تأیید، عبارت «$_confirmPhrase» را دقیقاً تایپ کنید:',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                hintText: 'پاک کن',
-              ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: scheme.error),
+              onPressed: () => Navigator.pop(ctx, controller.text.trim() == _confirmPhrase),
+              child: Text(ctx.tr('wipeAll.confirmButton')),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: scheme.error),
-            onPressed: () => Navigator.pop(ctx, controller.text.trim() == _confirmPhrase),
-            child: const Text('پاک‌سازی کامل'),
-          ),
-        ],
       ),
     );
     if (confirmed != true) {
       if (mounted && controller.text.trim().isNotEmpty && controller.text.trim() != _confirmPhrase) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('عبارت تأیید درست وارد نشد — پاک‌سازی انجام نشد.')));
+            .showSnackBar(SnackBar(content: Text(context.tr('wipeAll.wrongPhraseNotice'))));
       }
       return;
     }
@@ -72,22 +100,38 @@ class _WipeAllCurriculumButtonState extends ConsumerState<WipeAllCurriculumButto
     try {
       final data = await ref.read(apiClientProvider).post(
         '/admin/curriculum-library/wipe-all',
-        data: {'confirm': 'WIPE_ALL_CURRICULUM'},
+        data: {'confirm': 'WIPE_ALL_CURRICULUM', 'resetLearningData': resetLearningData},
       );
       final map = Map<String, dynamic>.from(data as Map? ?? {});
       final deleted = Map<String, dynamic>.from(map['deleted'] as Map? ?? {});
       if (!mounted) return;
+      final learningNote = resetLearningData
+          ? context.tr('wipeAll.learningResetNote')
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'نصاب پاک شد: ${deleted['books'] ?? 0} کتاب، ${deleted['chapters'] ?? 0} فصل، ${deleted['lessons'] ?? 0} درس حذف شد. اکنون می‌توانید کتاب‌ها را دوباره آپلود کنید.'),
+              context.tr('wipeAll.successNotice', {
+            'books': '${deleted['books'] ?? 0}',
+            'chapters': '${deleted['chapters'] ?? 0}',
+            'lessons': '${deleted['lessons'] ?? 0}',
+            'learningNote': learningNote,
+          })),
           duration: const Duration(seconds: 7),
         ),
       );
       ref.invalidate(booksForSubjectProvider);
+      // نصاب شاگردان (فصل‌ها/درس‌ها) هم باید بلافاصله خالی نشان داده شود —
+      // نه فقط بعد از خروج/ورود دوباره به برنامه. با autoDispose این
+      // Providerها معمولاً خودشان با خروج از صفحه تازه می‌شوند، ولی برای
+      // هر صفحه‌ای که همین الان (مثلاً پیش‌نمایش مدیر) باز مانده، invalidate
+      // صریح لازم است.
+      ref.invalidate(chaptersProvider);
+      ref.invalidate(lessonsProvider);
+      ref.invalidate(lessonProvider);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطا در پاک‌سازی: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('wipeAll.wipeErrorWithReason', {'error': '$e'}))));
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -118,10 +162,10 @@ class _WipeAllCurriculumButtonState extends ConsumerState<WipeAllCurriculumButto
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('پاک‌سازی کامل نصاب و شروع از صفر',
+                    Text(context.tr('wipeAll.buttonTitle'),
                         style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onErrorContainer)),
                     Text(
-                      'همهٔ کتاب‌ها/فصل‌ها/درس‌های فعلی حذف می‌شود — غیرقابل بازگشت',
+                      context.tr('wipeAll.buttonSubtitle'),
                       style: TextStyle(fontSize: 12, color: scheme.onErrorContainer),
                     ),
                   ],

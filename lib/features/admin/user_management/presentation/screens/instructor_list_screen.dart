@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../../core/instructor/instructor_directory.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/network/network_providers.dart';
 import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../../../instructor/presentation/providers/instructor_providers.dart';
@@ -52,7 +53,7 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                     const SizedBox(height: 12),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text('اتصال به سرور برقرار نشد: ${dir.lastError}',
+                      child: Text(context.tr('instructorList.connectionFailedWithReason', {'error': '${dir.lastError}'}),
                           textAlign: TextAlign.center),
                     ),
                     const SizedBox(height: 12),
@@ -60,7 +61,7 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                       onPressed: () => InstructorDirectory.instance
                           .loadFromBackend(ref.read(apiClientProvider)),
                       icon: const Icon(Icons.refresh),
-                      label: const Text('تلاش دوباره'),
+                      label: Text(context.tr('common.retry')),
                     ),
                   ]),
                 );
@@ -77,8 +78,8 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                 flexibleSpace: FlexibleSpaceBar(
                   titlePadding:
                       const EdgeInsetsDirectional.only(start: 16, bottom: 14),
-                  title: const Text('مدیریت استادان',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(context.tr('instructorList.screenTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   background: Container(
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
@@ -92,7 +93,7 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 52, 16, 0),
                         child: Text(
-                          '${InstructorDirectory.instance.all.length} استاد ثبت‌شده',
+                          context.tr('instructorList.totalRegisteredCount', {'count': '${InstructorDirectory.instance.all.length}'}),
                           style: TextStyle(
                               color: Colors.white.withValues(alpha: .85),
                               fontSize: 13),
@@ -108,7 +109,7 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                   child: TextField(
                     onChanged: (v) => setState(() => _query = v),
                     decoration: InputDecoration(
-                      hintText: 'جستجوی نام، ایمیل یا تخصص استاد…',
+                      hintText: context.tr('instructorList.searchHint'),
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
                       fillColor: Colors.white,
@@ -122,9 +123,9 @@ class _InstructorListScreenState extends ConsumerState<InstructorListScreen> {
                 ),
               ),
               instructors.isEmpty
-                  ? const SliverFillRemaining(
+                  ? SliverFillRemaining(
                       child:
-                          Center(child: Text('استادی با این فیلتر یافت نشد')))
+                          Center(child: Text(context.tr('instructorList.noResultsForFilter'))))
                   : SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                       sliver: SliverList.separated(
@@ -213,20 +214,20 @@ class _InstructorCard extends ConsumerWidget {
                     Wrap(spacing: 6, runSpacing: 6, children: [
                       _StatChip(
                           icon: Icons.co_present_rounded,
-                          label: '${seminars.length} سمینار'),
+                          label: context.tr('instructorList.seminarsCountChip', {'count': '${seminars.length}'})),
                       if (liveCount > 0)
                         _StatChip(
                             icon: Icons.podcasts_rounded,
-                            label: '$liveCount زنده',
+                            label: context.tr('instructorList.liveCountChip', {'count': '$liveCount'}),
                             color: AppPalette.red),
                       if (upcoming > 0)
                         _StatChip(
                             icon: Icons.event_rounded,
-                            label: '$upcoming پیش رو',
+                            label: context.tr('instructorList.upcomingCountChip', {'count': '$upcoming'}),
                             color: AppPalette.amber),
                       _StatChip(
                           icon: Icons.group_rounded,
-                          label: '$totalRegistrations ثبت‌نام'),
+                          label: context.tr('instructorList.registrationsCountChip', {'count': '$totalRegistrations'})),
                     ]),
                   ]),
             ),
@@ -252,7 +253,7 @@ class _SuspendPill extends StatelessWidget {
         color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(suspended ? 'مسدود' : 'فعال',
+      child: Text(suspended ? context.tr('adminCommon.statusSuspended') : context.tr('adminCommon.statusActive'),
           style: TextStyle(
               color: color, fontSize: 11, fontWeight: FontWeight.bold)),
     );

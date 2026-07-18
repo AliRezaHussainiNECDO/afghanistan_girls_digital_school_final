@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/subject.dart';
 import '../../domain/entities/chat_message.dart';
 import '../providers/ai_teacher_providers.dart';
@@ -142,13 +143,13 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
       if (!mounted) return;
       setState(() => _transcribing = false);
       if (text == null || text.trim().isEmpty) {
-        _snack('صدا تشخیص داده نشد؛ لطفاً دوباره تلاش کنید یا تایپ کنید.');
+        _snack(context.tr('aiTeacher.voiceNotRecognized'));
         return;
       }
       await _sendText(text);
     } else {
       if (!await _recorder.hasPermission()) {
-        _snack('برای صحبت با معلم، دسترسی میکروفون لازم است.');
+        _snack(context.tr('aiTeacher.micPermissionRequired'));
         return;
       }
       final dir = await getTemporaryDirectory();
@@ -173,7 +174,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     if (!mounted) return;
     if (path == null) {
       setState(() => _speakingId = null);
-      _snack('پخش صوتی در حال حاضر در دسترس نیست.');
+      _snack(context.tr('curriculum.audioUnavailable'));
       return;
     }
     await _player.play(DeviceFileSource(path));
@@ -217,14 +218,14 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('پرسش از معلم — ${widget.lessonTitle}',
+                      Text(context.tr('aiTeacher.askAboutLesson', {'lesson': widget.lessonTitle}),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w800)),
                       Text(
                         voiceEnabled
-                            ? '${_subject.nameFa} · میکروفون را بزنید و دربارهٔ همین درس بپرسید'
-                            : '${_subject.nameFa} · سوال خود را دربارهٔ همین درس تایپ کنید',
+                            ? context.tr('aiTeacher.tapMicHint', {'subject': _subject.nameFa})
+                            : context.tr('aiTeacher.typeQuestionHint', {'subject': _subject.nameFa}),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
@@ -252,7 +253,10 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          p.completed ? 'درس کامل شد 🎉' : 'بخش ${p.current} از ${p.total}',
+                          p.completed
+                              ? context.tr('aiTeacher.lessonCompleted')
+                              : context.tr('aiTeacher.sectionProgress',
+                                  {'current': '${p.current}', 'total': '${p.total}'}),
                           style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -292,8 +296,8 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                 ? Center(
                     child: Text(
                       voiceEnabled
-                          ? 'روی میکروفون بزنید و دربارهٔ همین درس سوال کنید.'
-                          : 'سوال خود را دربارهٔ همین درس بنویسید.',
+                          ? context.tr('aiTeacher.emptyStateMic')
+                          : context.tr('aiTeacher.emptyStateType'),
                       style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
@@ -308,7 +312,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                           alignment: Alignment.centerRight,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Text('معلم در حال فکر کردن است...',
+                            child: Text(context.tr('aiTeacher.thinking'),
                                 style: Theme.of(context).textTheme.bodySmall),
                           ),
                         );
@@ -355,7 +359,9 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                                             ),
                                             const SizedBox(width: 4),
                                             Text(
-                                              _speakingId == msg.id ? 'توقف' : 'شنیدن',
+                                              _speakingId == msg.id
+                                                  ? context.tr('curriculum.stopListening')
+                                                  : context.tr('aiTeacher.listen'),
                                               style: TextStyle(
                                                   fontSize: 11, color: scheme.primary),
                                             ),
@@ -384,8 +390,8 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                       controller: _controller,
                       decoration: InputDecoration(
                         hintText: _isRecording
-                            ? 'در حال ضبط صدا... برای ارسال، دوباره میکروفون را بزنید'
-                            : 'سوال خود را بپرسید...',
+                            ? context.tr('aiTeacher.recordingHint')
+                            : context.tr('aiTeacher.askYourQuestion'),
                         border:
                             OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
                         contentPadding:
@@ -409,7 +415,9 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                                 child: CircularProgressIndicator(strokeWidth: 2)),
                           )
                         : IconButton.filledTonal(
-                            tooltip: _isRecording ? 'توقف و ارسال' : 'صحبت با معلم',
+                            tooltip: _isRecording
+                                ? context.tr('aiTeacher.stopAndSend')
+                                : context.tr('aiTeacher.talkToTeacher'),
                             icon: Icon(
                               _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
                               color: _isRecording ? Colors.red : null,

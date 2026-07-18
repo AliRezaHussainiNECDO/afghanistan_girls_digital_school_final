@@ -14,6 +14,7 @@ import '../../features/admin/cms/presentation/screens/cms_screen.dart';
 import '../../features/admin/dashboard/presentation/screens/admin_dashboard_screen.dart';
 import '../../features/admin/exams_management/presentation/screens/admin_exams_screen.dart';
 import '../../features/admin/reports/presentation/screens/reports_screen.dart';
+import '../../features/admin/audit_logs/presentation/screens/admin_audit_logs_screen.dart';
 import '../../features/admin/safety_queue/presentation/screens/safety_queue_screen.dart';
 import '../../features/admin/seminars/presentation/screens/admin_seminars_screen.dart';
 import '../../features/admin/user_management/presentation/screens/instructor_detail_screen.dart';
@@ -38,6 +39,7 @@ import '../../features/auth/presentation/screens/register_role_select_screen.dar
 import '../../features/auth/presentation/screens/register_student_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
 import '../../features/chat/presentation/screens/chat_thread_screen.dart';
+import '../../features/chat/presentation/screens/contact_admin_screen.dart';
 import '../../features/collective_memory/presentation/screens/collective_memory_screen.dart';
 import '../../features/curriculum/presentation/screens/chapters_screen.dart';
 import '../../features/curriculum/presentation/screens/curriculum_screen.dart';
@@ -49,7 +51,9 @@ import '../../features/grade_map/presentation/screens/grade_map_screen.dart';
 import '../../features/instructor/presentation/screens/instructor_home_screen.dart';
 import '../../features/library/presentation/screens/library_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
+import '../../features/onboarding/presentation/providers/language_select_providers.dart';
 import '../../features/onboarding/presentation/providers/onboarding_providers.dart';
+import '../../features/onboarding/presentation/screens/language_select_screen.dart';
 import '../../features/onboarding/presentation/screens/welcome_screen.dart';
 import '../../features/parent_dashboard/presentation/screens/parent_dashboard_screen.dart';
 import '../../features/parent_dashboard/presentation/screens/parent_seminars_screen.dart';
@@ -73,7 +77,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
       final user = ref.read(authSessionProvider);
-      final loggingIn = state.matchedLocation == AppRoutes.welcome ||
+      final loggingIn = state.matchedLocation == AppRoutes.languageSelect ||
+          state.matchedLocation == AppRoutes.welcome ||
           state.matchedLocation == AppRoutes.login ||
           state.matchedLocation == AppRoutes.registerRoleSelect ||
           state.matchedLocation == AppRoutes.registerStudent ||
@@ -82,6 +87,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           state.matchedLocation == AppRoutes.forgotPassword;
 
       if (user == null) {
+        // طبق درخواست صریح کاربر: در اولین بار باز کردن برنامه پس از نصب،
+        // پیش از هر صفحهٔ دیگری — حتی پیش از خوش‌آمدید — باید زبان برنامه
+        // پرسیده شود. تا وقتی این پرچم false نشده (یعنی هنوز از حافظه
+        // خوانده نشده یا صراحتاً false است)، کاربر اینجا نگه داشته می‌شود.
+        final languageChosen = ref.read(languageChosenProvider);
+        if (languageChosen == false && state.matchedLocation != AppRoutes.languageSelect) {
+          return AppRoutes.languageSelect;
+        }
         // برای کاربران کاملاً جدید (که هنوز صفحهٔ خوش‌آمدید را ندیده‌اند)،
         // پیش از صفحهٔ ورود، صفحهٔ معرفی برنامه نشان داده می‌شود.
         final onboardingSeen = ref.read(onboardingSeenProvider);
@@ -116,6 +129,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+          path: AppRoutes.languageSelect,
+          pageBuilder: (c, s) => fadePage(s, const LanguageSelectScreen())),
       GoRoute(path: AppRoutes.welcome, pageBuilder: (c, s) => fadePage(s, const WelcomeScreen())),
       GoRoute(path: AppRoutes.login, pageBuilder: (c, s) => fadePage(s, const LoginScreen())),
       GoRoute(
@@ -214,6 +230,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: AppRoutes.parentSeminars,
           pageBuilder: (c, s) => fadeSlidePage(s, const ParentSeminarsScreen())),
+      GoRoute(
+          path: AppRoutes.parentContactAdmin,
+          pageBuilder: (c, s) => fadeSlidePage(s, const ContactAdminScreen())),
+      GoRoute(
+          path: AppRoutes.parentNotifications,
+          pageBuilder: (c, s) => fadeSlidePage(s, const NotificationsScreen())),
 
       // اتاق ویدیو کنفرانس سمینار (همهٔ نقش‌ها؛ کنترل دسترسی داخل صفحه)
       GoRoute(
@@ -236,6 +258,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: AppRoutes.instructorProfile,
           pageBuilder: (c, s) => fadeSlidePage(s, const ProfileScreen())),
+      GoRoute(
+          path: AppRoutes.instructorContactAdmin,
+          pageBuilder: (c, s) => fadeSlidePage(s, const ContactAdminScreen())),
+      GoRoute(
+          path: AppRoutes.instructorNotifications,
+          pageBuilder: (c, s) => fadeSlidePage(s, const NotificationsScreen())),
 
       // Collective Memory (shared across all roles)
       GoRoute(
@@ -287,6 +315,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: AppRoutes.adminSafetyQueue,
           pageBuilder: (c, s) => fadeSlidePage(s, const SafetyQueueScreen())),
       GoRoute(
+          path: AppRoutes.adminAuditLogs,
+          pageBuilder: (c, s) => fadeSlidePage(s, const AdminAuditLogsScreen())),
+      GoRoute(
           path: AppRoutes.adminChats,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminChatMonitoringScreen())),
       GoRoute(
@@ -308,6 +339,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: AppRoutes.adminSubmissions,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminSubmissionsScreen())),
+      GoRoute(
+          path: AppRoutes.adminNotifications,
+          pageBuilder: (c, s) => fadeSlidePage(s, const NotificationsScreen())),
       GoRoute(
           path: AppRoutes.adminProfile, pageBuilder: (c, s) => fadeSlidePage(s, const ProfileScreen())),
     ],
@@ -335,6 +369,9 @@ class _AuthListenable extends ChangeNotifier {
       notifyListeners();
     });
     ref.listen(onboardingSeenProvider, (previous, next) {
+      notifyListeners();
+    });
+    ref.listen(languageChosenProvider, (previous, next) {
       notifyListeners();
     });
   }

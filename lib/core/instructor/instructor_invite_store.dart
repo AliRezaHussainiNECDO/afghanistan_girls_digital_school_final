@@ -134,27 +134,57 @@ class InstructorInviteStore extends ChangeNotifier {
 
   // ─────────────────── سمت استاد (راجستر) ───────────────────
 
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'invalidCode': 'کد دعوت استاد نامعتبر است. این کد را باید مدیریت مکتب برای شما ساخته باشد.',
+      'revokedCode': 'این کد توسط مدیریت باطل شده است. لطفاً با مدیریت تماس بگیرید.',
+      'usedCode': 'این کد قبلاً استفاده شده است. هر کد فقط برای یک استاد معتبر است.',
+      'expiredCode': 'این کد منقضی شده است. از مدیریت بخواهید کد جدید بسازد.',
+    },
+    'en': {
+      'invalidCode': 'The instructor invite code is invalid. This code must have been generated for you by the school administration.',
+      'revokedCode': 'This code has been revoked by the administration. Please contact the administration.',
+      'usedCode': 'This code has already been used. Each code is valid for only one instructor.',
+      'expiredCode': 'This code has expired. Ask the administration to generate a new one.',
+    },
+    'ps': {
+      'invalidCode': 'د استاد بلنې کوډ ناسم دی. دا کوډ باید ستاسو لپاره د ښوونځي ادارې لخوا جوړ شوی وي.',
+      'revokedCode': 'دا کوډ د ادارې لخوا لغوه شوی دی. مهرباني وکړئ له ادارې سره اړیکه ونیسئ.',
+      'usedCode': 'دا کوډ دمخه کارول شوی دی. هر کوډ یوازې د یو استاد لپاره معتبر دی.',
+      'expiredCode': 'دا کوډ ختم شوی دی. له ادارې وغواړئ چې نوی کوډ جوړ کړي.',
+    },
+    'fr': {
+      'invalidCode': 'Le code d’invitation instructeur est invalide. Ce code doit avoir été créé pour vous par l’administration de l’école.',
+      'revokedCode': 'Ce code a été révoqué par l’administration. Veuillez contacter l’administration.',
+      'usedCode': 'Ce code a déjà été utilisé. Chaque code n’est valide que pour un seul instructeur.',
+      'expiredCode': 'Ce code a expiré. Demandez à l’administration d’en générer un nouveau.',
+    },
+  };
+
+  String _tr(String localeCode, String key) => _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+
   /// فعال‌سازی حساب استاد با کد. یک‌بارمصرف؛ خطاهای خوانا برای هر حالت.
   InstructorInviteCode redeem({
     required String rawCode,
     required String fullName,
     required String email,
     required String specialty,
+    String localeCode = 'fa',
   }) {
     final code = _normalize(rawCode);
     final idx = _codes.indexWhere((c) => _normalize(c.code) == code);
     if (code.isEmpty || idx == -1) {
-      throw 'کد دعوت استاد نامعتبر است. این کد را باید مدیریت مکتب برای شما ساخته باشد.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'invalidCode'); // ignore: only_throw_errors
     }
     final invite = _codes[idx];
     if (invite.status == InstructorCodeStatus.revoked) {
-      throw 'این کد توسط مدیریت باطل شده است. لطفاً با مدیریت تماس بگیرید.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'revokedCode'); // ignore: only_throw_errors
     }
     if (invite.status == InstructorCodeStatus.used) {
-      throw 'این کد قبلاً استفاده شده است. هر کد فقط برای یک استاد معتبر است.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'usedCode'); // ignore: only_throw_errors
     }
     if (invite.expired) {
-      throw 'این کد منقضی شده است. از مدیریت بخواهید کد جدید بسازد.'; // ignore: only_throw_errors
+      throw _tr(localeCode, 'expiredCode'); // ignore: only_throw_errors
     }
     final used = invite.copyWith(
       status: InstructorCodeStatus.used,

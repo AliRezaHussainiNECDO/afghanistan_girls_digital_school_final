@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
 import '../../../../shared_models/app_notification.dart';
 import '../../data/academy_store.dart';
@@ -13,12 +14,12 @@ void _refreshQ(WidgetRef ref) {
 }
 
 /// اعلانِ «امتحان به‌روزرسانی شد» هنگام انتشار یک سؤال.
-void _notifyExamUpdated(BankQuestion q) {
+void _notifyExamUpdated(BuildContext context, BankQuestion q) {
   if (q.status != PublishStatus.published) return;
-  final grade = q.gradeId == 0 ? 'عمومی' : 'صنف ${q.gradeId}';
   NotificationCenter.instance.push(
-    title: 'امتحان جدید در دسترس است 📝',
-    body: 'یک سؤال تازه به امتحان «${q.subject} · $grade» اضافه شد.',
+    title: context.tr('academy.newExamNotifTitle'),
+    body: context.tr('academy.newExamNotifBody',
+        {'subject': q.subject, 'grade': gradeLabel(context, q.gradeId)}),
     kind: NotificationKind.exam,
   );
 }
@@ -78,14 +79,14 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
   /// اعتبارسنجی و ساخت رکورد سؤال؛ در صورت نامعتبربودن null برمی‌گرداند.
   BankQuestion? _build() {
     if (_text.text.trim().isEmpty) {
-      _toast(context, 'متن سؤال اجباری است');
+      _toast(context, context.tr('academy.questionTextRequired'));
       return null;
     }
     final opts = _kind == QuestionKind.mcq
         ? _opts.map((c) => c.text.trim()).where((t) => t.isNotEmpty).toList()
         : <String>[];
     if (_kind == QuestionKind.mcq && opts.length < 2) {
-      _toast(context, 'حداقل دو گزینه لازم است');
+      _toast(context, context.tr('academy.minTwoOptionsRequired'));
       return null;
     }
     return BankQuestion(
@@ -111,10 +112,10 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
     if (q == null) return;
     AcademyStore().saveQuestion(q);
     _refreshQ(ref);
-    _notifyExamUpdated(q);
+    _notifyExamUpdated(context, q);
     if (mounted) {
       Navigator.pop(context);
-      _toast(context, 'سؤال ذخیره شد');
+      _toast(context, context.tr('academy.questionSaved'));
     }
   }
 
@@ -125,7 +126,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
     if (q == null) return;
     AcademyStore().saveQuestion(q);
     _refreshQ(ref);
-    _notifyExamUpdated(q);
+    _notifyExamUpdated(context, q);
     setState(() {
       _text.clear();
       _model.clear();
@@ -134,7 +135,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
       }
       _correctIndex = 0;
     });
-    _toast(context, 'ذخیره شد ✓ سؤال بعدی را وارد کن');
+    _toast(context, context.tr('academy.savedEnterNext'));
   }
 
   @override
@@ -149,28 +150,29 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.existing == null ? 'سؤال جدید' : 'ویرایش سؤال',
+              Text(widget.existing == null ? context.tr('academy.newQuestionTitle') : context.tr('academy.editQuestionTitle'),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
               const SizedBox(height: 16),
-              _dropdown<String>('مضمون', _subject, kSubjects.map((s) => (s, s)).toList(),
+              _dropdown<String>(context.tr('academy.subjectLabel'), _subject, kSubjects.map((s) => (s, s)).toList(),
                   (v) => setState(() => _subject = v)),
-              _dropdown<int>('صنف', _grade, kGrades.where((g) => g != 0).map((g) => (g, gradeLabel(g))).toList(),
+              _dropdown<int>(context.tr('common.grade'), _grade,
+                  kGrades.where((g) => g != 0).map((g) => (g, gradeLabel(context, g))).toList(),
                   (v) => setState(() => _grade = v)),
-              academyField(_chapter, 'فصل کتاب (مثلاً: فصل ۳ — معادلات)'),
-              _dropdown<QuestionKind>('نوع سؤال', _kind, const [
-                (QuestionKind.mcq, 'چهارجوابه'),
-                (QuestionKind.trueFalse, 'صحیح / غلط'),
-                (QuestionKind.essay, 'تشریحی'),
+              academyField(_chapter, context.tr('academy.chapterFieldHint')),
+              _dropdown<QuestionKind>(context.tr('academy.questionKindLabel'), _kind, [
+                (QuestionKind.mcq, context.tr('academy.kindMcq')),
+                (QuestionKind.trueFalse, context.tr('academy.kindTrueFalse')),
+                (QuestionKind.essay, context.tr('academy.kindEssay')),
               ], (v) => setState(() => _kind = v)),
-              academyField(_text, 'متن سؤال', maxLines: 2),
+              academyField(_text, context.tr('academy.questionTextLabel'), maxLines: 2),
               ..._buildTypeFields(context),
-              academyField(_points, 'امتیاز', keyboard: TextInputType.number),
+              academyField(_points, context.tr('academy.pointsFieldLabel'), keyboard: TextInputType.number),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: _publish,
                 onChanged: (v) => setState(() => _publish = v),
-                title: const Text('انتشار برای امتحان', style: TextStyle(fontSize: 14)),
-                subtitle: const Text('در امتحانات شاگردان همان مضمون/صنف نمایش داده شود', style: TextStyle(fontSize: 11)),
+                title: Text(context.tr('academy.publishForExamTitle'), style: const TextStyle(fontSize: 14)),
+                subtitle: Text(context.tr('academy.publishForExamSubtitle'), style: const TextStyle(fontSize: 11)),
               ),
               const SizedBox(height: 8),
               if (widget.existing == null) ...[
@@ -179,18 +181,18 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
                   child: OutlinedButton.icon(
                     onPressed: _saveAndNew,
                     icon: const Icon(Icons.playlist_add_rounded, size: 18),
-                    label: const Text('ذخیره و افزودن سؤال بعدی'),
+                    label: Text(context.tr('academy.saveAndAddNext')),
                   ),
                 ),
                 const SizedBox(height: 8),
               ],
               Row(
                 children: [
-                  Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف'))),
+                  Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('common.cancel')))),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                        onPressed: _save, icon: const Icon(Icons.check_rounded, size: 18), label: const Text('ذخیره')),
+                        onPressed: _save, icon: const Icon(Icons.check_rounded, size: 18), label: Text(context.tr('common.save'))),
                   ),
                 ],
               ),
@@ -206,7 +208,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
     switch (_kind) {
       case QuestionKind.mcq:
         return [
-          Text('گزینه‌ها (گزینهٔ درست را انتخاب کن)',
+          Text(context.tr('academy.optionsPickCorrectHint'),
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 6),
           ...List.generate(4, (i) {
@@ -219,7 +221,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
                     child: TextField(
                       controller: _opts[i],
                       decoration: InputDecoration(
-                        labelText: 'گزینهٔ ${i + 1}',
+                        labelText: context.tr('academy.optionNumberLabel', {'number': '${i + 1}'}),
                         border: const OutlineInputBorder(),
                         isDense: true,
                       ),
@@ -235,9 +237,9 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: true, label: Text('صحیح'), icon: Icon(Icons.check_rounded)),
-                ButtonSegment(value: false, label: Text('غلط'), icon: Icon(Icons.close_rounded)),
+              segments: [
+                ButtonSegment(value: true, label: Text(context.tr('academy.correctLabel')), icon: const Icon(Icons.check_rounded)),
+                ButtonSegment(value: false, label: Text(context.tr('academy.incorrectLabel')), icon: const Icon(Icons.close_rounded)),
               ],
               selected: {_correctBool},
               onSelectionChanged: (s) => setState(() => _correctBool = s.first),
@@ -245,7 +247,7 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
           ),
         ];
       case QuestionKind.essay:
-        return [academyField(_model, 'پاسخ نمونه / کلیدواژه‌ها (مبنای نمره‌دهی هوش مصنوعی)', maxLines: 3)];
+        return [academyField(_model, context.tr('academy.modelAnswerFieldHint'), maxLines: 3)];
     }
   }
 }
@@ -279,18 +281,18 @@ class QuestionDetailSheet extends ConsumerWidget {
                       color: AppColors.info.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(AppRadii.pill),
                     ),
-                    child: const Text('ساختهٔ هوش مصنوعی',
-                        style: TextStyle(fontSize: 11, color: AppColors.info, fontWeight: FontWeight.w700)),
+                    child: Text(context.tr('academy.aiGeneratedBadge'),
+                        style: const TextStyle(fontSize: 11, color: AppColors.info, fontWeight: FontWeight.w700)),
                   ),
               ]),
               const SizedBox(height: 12),
               Text(q.text, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, height: 1.5)),
               const SizedBox(height: 14),
-              InfoRow('مضمون / صنف', '${q.subject} · ${q.gradeId == 0 ? 'عمومی' : 'صنف ${q.gradeId}'}'),
-              InfoRow('فصل', q.chapter),
-              InfoRow('امتیاز', '${q.points}'),
+              InfoRow(context.tr('academy.subjectGradeLabel'), '${q.subject} · ${gradeLabel(context, q.gradeId)}'),
+              InfoRow(context.tr('academy.chapterLabel'), q.chapter),
+              InfoRow(context.tr('academy.pointsFieldLabel'), '${q.points}'),
               if (q.kind == QuestionKind.mcq) ...[
-                Text('گزینه‌ها', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
+                Text(context.tr('academy.optionsLabel'), style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 ...List.generate(q.options.length, (i) {
                   final correct = i == q.correctIndex;
@@ -312,8 +314,9 @@ class QuestionDetailSheet extends ConsumerWidget {
                 }),
               ],
               if (q.kind == QuestionKind.trueFalse)
-                InfoRow('پاسخ درست', q.correctBool ? 'صحیح' : 'غلط'),
-              if (q.kind == QuestionKind.essay) InfoRow('پاسخ نمونه', q.modelAnswer),
+                InfoRow(context.tr('academy.correctAnswerLabel'),
+                    q.correctBool ? context.tr('academy.correctLabel') : context.tr('academy.incorrectLabel')),
+              if (q.kind == QuestionKind.essay) InfoRow(context.tr('academy.modelAnswerLabel'), q.modelAnswer),
               const Divider(height: 24),
               Wrap(spacing: 8, runSpacing: 8, children: [
                 FilledButton.tonalIcon(
@@ -325,10 +328,10 @@ class QuestionDetailSheet extends ConsumerWidget {
                     AcademyStore().setQuestionStatus(q.id, published ? PublishStatus.draft : PublishStatus.published);
                     _refreshQ(ref);
                     Navigator.pop(context);
-                    _toast(context, published ? 'از انتشار خارج شد' : 'منتشر شد');
+                    _toast(context, published ? context.tr('academy.unpublishedNotice') : context.tr('academy.publishedNotice'));
                   },
                   icon: Icon(published ? Icons.unpublished_rounded : Icons.publish_rounded, size: 18),
-                  label: Text(published ? 'خارج‌کردن از انتشار' : 'انتشار'),
+                  label: Text(published ? context.tr('academy.unpublishButton') : context.tr('academy.publishButton')),
                 ),
                 OutlinedButton.icon(
                   onPressed: () {
@@ -336,7 +339,7 @@ class QuestionDetailSheet extends ConsumerWidget {
                     showAcademySheet(context, QuestionFormSheet(existing: q));
                   },
                   icon: const Icon(Icons.edit_rounded, size: 18),
-                  label: const Text('ویرایش'),
+                  label: Text(context.tr('academy.editButton')),
                 ),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
@@ -347,10 +350,10 @@ class QuestionDetailSheet extends ConsumerWidget {
                     AcademyStore().deleteQuestion(q.id);
                     _refreshQ(ref);
                     Navigator.pop(context);
-                    _toast(context, 'حذف شد');
+                    _toast(context, context.tr('academy.deletedNotice'));
                   },
                   icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                  label: const Text('حذف'),
+                  label: Text(context.tr('academy.deleteButton')),
                 ),
               ]),
             ],
@@ -385,7 +388,7 @@ class _AiGenerateSheetState extends ConsumerState<AiGenerateSheet> {
 
   Future<void> _generate() async {
     if (_kinds.isEmpty) {
-      _toast(context, 'حداقل یک نوع سؤال را انتخاب کن');
+      _toast(context, context.tr('academy.selectAtLeastOneKind'));
       return;
     }
     setState(() => _busy = true);
@@ -407,17 +410,21 @@ class _AiGenerateSheetState extends ConsumerState<AiGenerateSheet> {
       AcademyStore().addQuestions(generated);
       _refreshQ(ref);
       NotificationCenter.instance.push(
-        title: 'سؤالات جدید با هوش مصنوعی ساخته شد 🤖',
-        body: '${generated.length} سؤال برای «$_subject · ${gradeLabel(_grade)}» آماده بازبینی و انتشار است.',
+        title: context.tr('academy.aiQuestionsGeneratedNotifTitle'),
+        body: context.tr('academy.aiQuestionsGeneratedNotifBody', {
+          'count': '${generated.length}',
+          'subject': _subject,
+          'grade': gradeLabel(context, _grade),
+        }),
         kind: NotificationKind.exam,
         priority: NotificationPriority.low,
       );
       if (mounted) {
         Navigator.pop(context);
-        _toast(context, '${generated.length} سؤال ساخته شد (به‌صورت پیش‌نویس).');
+        _toast(context, context.tr('academy.aiQuestionsGeneratedToast', {'count': '${generated.length}'}));
       }
     } catch (_) {
-      if (mounted) _toast(context, 'ساخت سؤال ناموفق بود');
+      if (mounted) _toast(context, context.tr('academy.aiGenerateFailed'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -440,32 +447,33 @@ class _AiGenerateSheetState extends ConsumerState<AiGenerateSheet> {
                 Container(
                   width: 42,
                   height: 42,
-                  decoration: BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
                   child: const Icon(Icons.auto_awesome_rounded, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('ساخت سؤال با هوش مصنوعی',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                Expanded(
+                  child: Text(context.tr('academy.aiGenerateTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
                 ),
               ]),
               const SizedBox(height: 6),
-              Text('هوش مصنوعی مطابق مضمون، صنف و فصل‌های انتخاب‌شده سؤال می‌سازد.',
+              Text(context.tr('academy.aiGenerateExplain'),
                   style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               const SizedBox(height: 16),
-              _dropdown<String>('مضمون', _subject, kSubjects.map((s) => (s, s)).toList(),
+              _dropdown<String>(context.tr('academy.subjectLabel'), _subject, kSubjects.map((s) => (s, s)).toList(),
                   (v) => setState(() => _subject = v)),
-              _dropdown<int>('صنف', _grade, kGrades.where((g) => g != 0).map((g) => (g, gradeLabel(g))).toList(),
+              _dropdown<int>(context.tr('common.grade'), _grade,
+                  kGrades.where((g) => g != 0).map((g) => (g, gradeLabel(context, g))).toList(),
                   (v) => setState(() => _grade = v)),
-              academyField(_chapters, 'فصل‌ها (با کامَه جدا کن — می‌تواند چند فصل باشد)', maxLines: 2),
-              academyField(_count, 'تعداد سؤال', keyboard: TextInputType.number),
+              academyField(_chapters, context.tr('academy.chaptersFieldHint'), maxLines: 2),
+              academyField(_count, context.tr('academy.questionCountFieldLabel'), keyboard: TextInputType.number),
               const SizedBox(height: 4),
-              Text('نوع سؤال‌ها', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+              Text(context.tr('academy.questionKindsLabel'), style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               const SizedBox(height: 6),
               Wrap(spacing: 8, children: [
-                _kindChoice('چهارجوابه', QuestionKind.mcq),
-                _kindChoice('صحیح/غلط', QuestionKind.trueFalse),
-                _kindChoice('تشریحی', QuestionKind.essay),
+                _kindChoice(context.tr('academy.kindMcq'), QuestionKind.mcq),
+                _kindChoice(context.tr('academy.kindTrueFalse'), QuestionKind.trueFalse),
+                _kindChoice(context.tr('academy.kindEssay'), QuestionKind.essay),
               ]),
               const SizedBox(height: 18),
               FilledButton.icon(
@@ -473,7 +481,7 @@ class _AiGenerateSheetState extends ConsumerState<AiGenerateSheet> {
                 icon: _busy
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.auto_awesome_rounded),
-                label: Text(_busy ? 'در حال ساخت…' : 'ساخت سؤال‌ها'),
+                label: Text(_busy ? context.tr('academy.generatingInProgress') : context.tr('academy.generateQuestionsButton')),
               ),
             ],
           ),

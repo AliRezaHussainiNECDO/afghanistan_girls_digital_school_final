@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/localization/locale_provider.dart';
 import '../../../core/network/network_providers.dart';
 import '../../../core/student/selected_grade_provider.dart';
 import '../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
@@ -23,7 +24,10 @@ final academyHydrationProvider = FutureProvider<bool>((ref) async {
 });
 
 final aiAssessmentServiceProvider = Provider<AiAssessmentService>(
-  (ref) => AiAssessmentService(ref.watch(activeAiEngineProvider)),
+  (ref) => AiAssessmentService(
+    ref.watch(activeAiEngineProvider),
+    localeCode: ref.watch(localeProvider).languageCode,
+  ),
 );
 
 /// شاگرد فعلی — از نشست کاربر ساخته می‌شود و صنفِ فعالش از
@@ -46,11 +50,16 @@ final cmsBooksListProvider = FutureProvider<List<LibraryBook>>((ref) async {
 /// جستجوی کتابخانهٔ شاگرد.
 final librarySearchProvider = StateProvider<String>((ref) => '');
 
-/// کتاب‌های منتشرشده برای شاگرد (فقط published).
+/// کتاب‌های منتشرشده برای شاگرد (فقط published) — رفع اشکال: اکنون فقط
+/// کتاب‌های «عمومی» + صنف فعلیِ همان شاگرد نمایش داده می‌شود (قبلاً همهٔ
+/// صنوف مخلوط نمایش داده می‌شد).
 final publishedBooksProvider = FutureProvider<List<LibraryBook>>((ref) async {
   await ref.watch(academyHydrationProvider.future);
   final q = ref.watch(librarySearchProvider);
-  return ref.watch(academyStoreProvider).getBooks(publishedOnly: true, query: q);
+  final student = ref.watch(currentStudentProvider);
+  return ref
+      .watch(academyStoreProvider)
+      .getBooks(publishedOnly: true, query: q, gradeIds: student.gradeIds);
 });
 
 // ─────────────────────── بانک سؤالات ───────────────────────

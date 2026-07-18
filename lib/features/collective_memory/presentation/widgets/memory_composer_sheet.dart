@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
@@ -55,7 +56,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
 
   Future<void> _pickImage() async {
     if (_images.length >= _maxImagesPerPost) {
-      setState(() => _error = 'حداکثر $_maxImagesPerPost عکس برای هر روایت مجاز است.');
+      setState(() => _error = context.tr('memory.maxImagesError', {'max': '$_maxImagesPerPost'}));
       return;
     }
     setState(() {
@@ -70,7 +71,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
         setState(() => _images.add(base64Encode(bytes)));
       }
     } catch (_) {
-      if (mounted) setState(() => _error = 'انتخاب تصویر ناموفق بود.');
+      if (mounted) setState(() => _error = context.tr('memory.imagePickFailed'));
     } finally {
       if (mounted) setState(() => _pickingImage = false);
     }
@@ -79,7 +80,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
   Future<void> _submit() async {
     final text = _controller.text.trim();
     if (text.isEmpty) {
-      setState(() => _error = 'لطفاً روایت خود را بنویسید.');
+      setState(() => _error = context.tr('memory.writeStoryRequired'));
       return;
     }
     setState(() {
@@ -110,7 +111,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
       ref.read(memoryPostsRefreshProvider.notifier).state++;
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) setState(() => _error = 'ثبت روایت ناموفق بود: $e');
+      if (mounted) setState(() => _error = context.tr('memory.submitFailed', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -160,7 +161,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _isEdit ? 'ویرایش روایت' : 'روایت تازه در حافظهٔ جمعی',
+                        _isEdit ? context.tr('memory.editStoryTitle') : context.tr('memory.newStoryTitle'),
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
                     ),
@@ -179,7 +180,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
                           maxLength: 4000,
                           textDirection: TextDirection.rtl,
                           decoration: InputDecoration(
-                            hintText: 'تجربه، بازدید یا داستان خودت را این‌جا بنویس... صدای تو مهم است.',
+                            hintText: context.tr('memory.composerHint'),
                             filled: true,
                             fillColor: scheme.surfaceContainerLow,
                             border: OutlineInputBorder(
@@ -229,7 +230,7 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
                               icon: _pickingImage
                                   ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                                   : const Icon(Icons.image_outlined, size: 18),
-                              label: const Text('افزودن عکس'),
+                              label: Text(context.tr('memory.addPhoto')),
                             ),
                             const SizedBox(width: 8),
                             Text('${_images.length}/$_maxImagesPerPost',
@@ -254,7 +255,9 @@ class _MemoryComposerSheetState extends ConsumerState<_MemoryComposerSheet> {
                         ? const SizedBox(
                             width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : Icon(_isEdit ? Icons.check_rounded : Icons.send_rounded, size: 20),
-                    label: Text(_submitting ? 'در حال ثبت...' : (_isEdit ? 'ذخیرهٔ تغییرات' : 'انتشار روایت')),
+                    label: Text(_submitting
+                        ? context.tr('memory.submitting')
+                        : (_isEdit ? context.tr('memory.saveChanges') : context.tr('memory.publishStory'))),
                     style: FilledButton.styleFrom(
                       backgroundColor: scheme.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.pill)),

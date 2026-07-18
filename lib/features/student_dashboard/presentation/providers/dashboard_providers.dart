@@ -23,7 +23,18 @@ final dashboardRepositoryProvider = Provider<DashboardRepository>(
 final getDashboardSummaryUseCaseProvider =
     Provider((ref) => GetDashboardSummaryUseCase(ref.watch(dashboardRepositoryProvider)));
 
-final dashboardSummaryProvider = FutureProvider.family<DashboardSummary, String>((ref, studentId) async {
-  final result = await ref.read(getDashboardSummaryUseCaseProvider).call(studentId);
+// رفع اشکال «پیشرفت/امتیاز خانهٔ شاگرد به‌روز نمی‌شود»: این Provider نه
+// `autoDispose` بود نه هیچ‌جای برنامه بعد از رویدادهای امتیازآور (دیدن درس،
+// تکمیل فصل، امتحان) invalidate می‌شد — یعنی بعد از باز شدن اولین‌بارهٔ خانهٔ
+// شاگرد در یک نشست برنامه، «پیشرفت کلی» و «امتیاز» تا وقتی برنامه کاملاً
+// بسته/باز نمی‌شد ثابت می‌ماندند، حتی اگر شاگرد همان لحظه چند درس را تمام
+// کرده و امتیاز واقعی گرفته باشد. با `autoDispose`، هر بار که این صفحه از
+// درخت ویجت خارج شود (مثلاً رفتن به تب دیگر که خانه را کاملاً dispose کند)
+// و دوباره باز شود، دوباره از سرور خوانده می‌شود؛ علاوه بر آن، محل واقعیِ
+// «دیدن درس» (`lesson_detail_screen.dart`) اکنون صریحاً همین Provider را هم
+// invalidate می‌کند تا حتی وقتی خانه در پس‌زمینه (تب) زنده مانده، بلافاصله
+// به‌روز شود.
+final dashboardSummaryProvider = FutureProvider.autoDispose.family<DashboardSummary, String>((ref, studentId) async {
+  final result = await ref.watch(getDashboardSummaryUseCaseProvider).call(studentId);
   return result.fold((failure) => throw failure, (summary) => summary);
 });

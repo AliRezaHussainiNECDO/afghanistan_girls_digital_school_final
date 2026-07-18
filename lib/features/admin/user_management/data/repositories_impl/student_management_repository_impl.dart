@@ -23,10 +23,10 @@ class StudentManagementRepositoryImpl implements StudentManagementRepository {
       }
       if (e.response?.statusCode == 403) return const Left(PermissionFailure());
       return Left(ServerFailure(
-          e.response?.data?['message']?.toString() ?? 'خطای سرور رخ داد',
+          e.response?.data?['message']?.toString() ?? e.message ?? e.toString(),
           code: e.response?.statusCode?.toString()));
-    } catch (_) {
-      return const Left(ServerFailure('خطای سرور رخ داد'));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
     }
   }
 

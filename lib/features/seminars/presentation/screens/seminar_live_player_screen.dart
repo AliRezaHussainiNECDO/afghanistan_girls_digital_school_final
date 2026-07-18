@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/seminar.dart';
 import '../providers/seminars_providers.dart';
 
@@ -83,7 +84,7 @@ class _SeminarLivePlayerScreenState extends ConsumerState<SeminarLivePlayerScree
     } catch (e) {
       // پخش زنده ممکن است چند ثانیه بعد از go-live آماده شود؛ اجازه بده poll دوباره تلاش کند.
       _activeUrl = null;
-      if (mounted) setState(() => _error = 'در حال اتصال به پخش زنده… ');
+      if (mounted) setState(() => _error = context.tr('seminars.connectingLive'));
     } finally {
       _initializing = false;
       if (mounted) setState(() {});
@@ -100,7 +101,7 @@ class _SeminarLivePlayerScreenState extends ConsumerState<SeminarLivePlayerScree
         error: (e, _) => _StageBackground(
           child: _MessageState(
             icon: Icons.error_outline_rounded,
-            title: 'خطا در بارگذاری سمینار',
+            title: context.tr('seminars.loadError'),
             subtitle: '$e',
             onBack: () => context.pop(),
           ),
@@ -114,8 +115,8 @@ class _SeminarLivePlayerScreenState extends ConsumerState<SeminarLivePlayerScree
             return _StageBackground(
               child: _MessageState(
                 icon: Icons.stop_circle_outlined,
-                title: 'این سمینار به پایان رسیده است',
-                subtitle: 'اگر ضبط موجود باشد، بعداً در همین بخش نمایش داده می‌شود.',
+                title: context.tr('seminars.hasEndedTitle'),
+                subtitle: context.tr('seminars.recordingNotice'),
                 onBack: () => context.pop(),
               ),
             );
@@ -137,8 +138,8 @@ class _SeminarLivePlayerScreenState extends ConsumerState<SeminarLivePlayerScree
           _StageBackground(
             child: _MessageState(
               icon: Icons.live_tv_rounded,
-              title: _error ?? 'در حال اتصال به پخش زنده…',
-              subtitle: 'لطفاً چند لحظه صبر کنید.',
+              title: _error ?? context.tr('seminars.connectingLive'),
+              subtitle: context.tr('seminars.pleaseWaitMoment'),
               spinner: true,
             ),
           ),
@@ -167,7 +168,7 @@ class _SeminarLivePlayerScreenState extends ConsumerState<SeminarLivePlayerScree
                       ),
                       if (seminar.instructorName.isNotEmpty)
                         Text(
-                          'استاد: ${seminar.instructorName}',
+                          context.tr('seminars.instructorPrefix', {'name': seminar.instructorName}),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -256,8 +257,8 @@ class _LiveBadgeState extends State<_LiveBadge> with SingleTickerProviderStateMi
             ),
           ),
           const SizedBox(width: 6),
-          const Text('زنده',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+          Text(context.tr('room.live'),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
         ],
       ),
     );
@@ -327,7 +328,7 @@ class _MessageState extends StatelessWidget {
               TextButton.icon(
                 onPressed: onBack,
                 icon: const Icon(Icons.arrow_back_rounded, color: Colors.white70, size: 18),
-                label: const Text('بازگشت', style: TextStyle(color: Colors.white70)),
+                label: Text(context.tr('common.back'), style: const TextStyle(color: Colors.white70)),
               ),
             ],
           ],
@@ -407,18 +408,18 @@ class _WaitingStateState extends State<_WaitingState> with SingleTickerProviderS
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
-            const Text('در انتظار شروع پخش توسط استاد…',
+            Text(context.tr('seminars.waitingForInstructor'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 14)),
+                style: const TextStyle(color: Colors.white70, fontSize: 14)),
             const SizedBox(height: 6),
-            const Text('این صفحه به‌طور خودکار به‌روزرسانی می‌شود.',
+            Text(context.tr('seminars.autoUpdateNotice'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 12)),
+                style: const TextStyle(color: Colors.white38, fontSize: 12)),
             const SizedBox(height: 26),
             TextButton.icon(
               onPressed: widget.onBack,
               icon: const Icon(Icons.arrow_back_rounded, color: Colors.white70, size: 18),
-              label: const Text('بازگشت', style: TextStyle(color: Colors.white70)),
+              label: Text(context.tr('common.back'), style: const TextStyle(color: Colors.white70)),
             ),
           ],
         ),

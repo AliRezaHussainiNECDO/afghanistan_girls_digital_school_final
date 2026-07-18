@@ -4,7 +4,7 @@ import 'package:equatable/equatable.dart';
 enum NotificationPriority { low, medium, high }
 
 /// نوع رویداد اعلان — برای انتخاب آیکن/رنگ متناسب در UI.
-enum NotificationKind { book, exam, grade, seminar, safety, general }
+enum NotificationKind { book, exam, grade, seminar, safety, general, chat }
 
 class AppNotification extends Equatable {
   final String id;

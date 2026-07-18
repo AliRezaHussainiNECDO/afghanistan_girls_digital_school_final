@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/subject.dart';
@@ -29,7 +30,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
     if (mounted) {
       setState(() => _regenerating = false);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('برنامهٔ نو ساخته شد ✅')));
+          SnackBar(content: Text(context.tr('studyPlan.regenerated'))));
     }
   }
 
@@ -43,11 +44,11 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
     final grade = ref.watch(activeGradeProvider);
 
     return AppScaffold(
-      title: 'تقسیم اوقات هفتگی من',
+      title: context.tr('studyPlan.title'),
       role: AppUserRole.student,
       body: planAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('خطا: $e')),
+        error: (e, _) => Center(child: Text(context.tr('studyPlan.errorLoading', {'error': '$e'}))),
         data: (plan) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
@@ -73,15 +74,17 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
                       children: [
                         Text(
                           plan.generatedBy == 'ai'
-                              ? 'ساخته‌شده توسط هوش مصنوعی (Ollama)'
-                              : 'ساخته‌شده با اولویت‌بندی هوشمند',
+                              ? context.tr('studyPlan.generatedByAi')
+                              : context.tr('studyPlan.generatedBySmart'),
                           style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
                               fontSize: 13),
                         ),
                         const SizedBox(height: 2),
-                        Text('صنف $grade — هفتهٔ ${plan.weekKey}',
+                        Text(
+                            context.tr('studyPlan.gradeWeek',
+                                {'grade': '$grade', 'week': '${plan.weekKey}'}),
                             style: TextStyle(
                                 color: Colors.white.withValues(alpha: .9),
                                 fontSize: 11)),
@@ -89,7 +92,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'تولید دوبارهٔ برنامه',
+                    tooltip: context.tr('studyPlan.regenerateTooltip'),
                     onPressed: _regenerating ? null : _regenerate,
                     icon: _regenerating
                         ? const SizedBox(
@@ -110,7 +113,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
             // برچسب و کل برنامهٔ هفتگی خودکار به‌روز می‌شود.
             Row(
               children: [
-                Text('صنف من:',
+                Text(context.tr('studyPlan.myGradeLabel'),
                     style: TextStyle(
                         fontSize: 13, color: scheme.onSurfaceVariant)),
                 const SizedBox(width: 8),
@@ -121,7 +124,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
                     color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(AppRadii.pill),
                   ),
-                  child: Text('صنف $grade',
+                  child: Text(context.tr('grade.label', {'grade': '$grade'}),
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -177,7 +180,7 @@ class _DayCard extends ConsumerWidget {
                     color: scheme.primary.withValues(alpha: .12),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Text('امروز',
+                  child: Text(context.tr('studyPlan.today'),
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
@@ -189,8 +192,8 @@ class _DayCard extends ConsumerWidget {
           if (day.isRestDay as bool)
             Text(
               day.weekday == DateTime.friday
-                  ? 'رخصتی — استراحت و مرور آزاد 🌸'
-                  : 'برنامه‌ای ثبت نشده',
+                  ? context.tr('studyPlan.holiday')
+                  : context.tr('studyPlan.noPlanRecorded'),
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             )
           else
@@ -233,7 +236,7 @@ class _SubjectChip extends ConsumerWidget {
     return ActionChip(
       avatar: Icon(Icons.play_circle_fill_rounded,
           size: 18, color: enabled ? color : color.withValues(alpha: .4)),
-      label: Text('$label · $minutes دقیقه'),
+      label: Text(context.tr('studyPlan.subjectMinutes', {'label': label, 'minutes': '$minutes'})),
       labelStyle: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w700,

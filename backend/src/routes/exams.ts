@@ -22,7 +22,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
-import { promoteIfEligible } from '../lib/progress';
+import { promoteIfEligible, PROMOTION_EXAM_PASS_PERCENT } from '../lib/progress';
 
 type Bindings = {
   DB: D1Database;
@@ -32,8 +32,8 @@ type Bindings = {
 const exams = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function auth(c: any): Promise<{ sub: string; role: string } | null> {
@@ -61,19 +61,28 @@ exams.get('/exams/available', async (c) => {
       .first<{ current_grade: number | null }>();
     grade = u?.current_grade ?? 0;
   }
+  // رفع اشکال: قبلاً این فهرست هیچ اطلاعی از تلاش‌های قبلیِ همین شاگرد
+  // نمی‌داد، پس رابط کاربری همیشه فقط دکمهٔ «شروع» نشان می‌داد — حتی برای
+  // امتحانی که شاگرد قبلاً با نمرهٔ خوب کامیاب شده بود. اکنون بهترین نمرهٔ
+  // قبلیِ همین کاربر هم همراه هر امتحان برگردانده می‌شود (پارامتری — نه
+  // درج مستقیم در متن SQL — تا از تزریق SQL جلوگیری شود).
+  const userIdParam = me?.sub ?? '';
+  const bestScoreSql = me
+    ? `, (SELECT MAX(a.score_percent) FROM exam_attempts a WHERE a.exam_id = e.id AND a.user_id = ?) AS best_score`
+    : '';
   const query = grade
     ? c.env.DB.prepare(
         `SELECT e.id, e.type, e.duration_minutes, e.grade_number, s.name_fa AS subject_name_fa,
-           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
+           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count${bestScoreSql}
          FROM exams e JOIN subjects s ON s.id = e.subject_id
          WHERE e.status='published' AND e.grade_number = ? ORDER BY e.created_at DESC`,
-      ).bind(grade)
+      ).bind(...(me ? [userIdParam] : []), grade)
     : c.env.DB.prepare(
         `SELECT e.id, e.type, e.duration_minutes, e.grade_number, s.name_fa AS subject_name_fa,
-           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
+           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count${bestScoreSql}
          FROM exams e JOIN subjects s ON s.id = e.subject_id
          WHERE e.status='published' ORDER BY e.created_at DESC`,
-      );
+      ).bind(...(me ? [userIdParam] : []));
   const { results } = await query.all<any>();
   const list = results.map((e) => ({
     id: e.id,
@@ -81,6 +90,9 @@ exams.get('/exams/available', async (c) => {
     type: TYPE_MAP[e.type as string] ?? 'dailyQuiz',
     durationMinutes: e.duration_minutes,
     questionCount: e.question_count,
+    gradeNumber: e.grade_number,
+    bestScorePercent: e.best_score ?? null,
+    passed: (e.best_score ?? 0) >= PROMOTION_EXAM_PASS_PERCENT,
   }));
   return c.json({ exams: list });
 });
@@ -107,7 +119,7 @@ exams.get('/exams/:examId/questions', async (c) => {
 
 exams.post('/exams/:examId/submit', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const examId = c.req.param('examId');
   const body = await c.req.json<{ answers?: Record<string, number> }>().catch(() => null);
   const answers = body?.answers ?? {};
@@ -118,7 +130,7 @@ exams.post('/exams/:examId/submit', async (c) => {
     .bind(examId)
     .all<{ id: string; correct_index: number }>();
   if (results.length === 0) {
-    return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found'), 404);
+    return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found', 'ازموینه ونه موندل شوه', 'Examen introuvable'), 404);
   }
 
   let correct = 0;
@@ -168,7 +180,7 @@ exams.post('/exams/:examId/submit', async (c) => {
 
 exams.get('/students/:studentId/certificates', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   // شاگرد فقط گواهی خودش؛ مدیر همه (بخش ۱۳ب.۳/۱۵.۲).
   const target = me.role === 'super_admin' ? c.req.param('studentId') : me.sub;
   const { results } = await c.env.DB.prepare(
@@ -181,9 +193,9 @@ exams.get('/students/:studentId/certificates', async (c) => {
 
 exams.post('/admin/certificates', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<any>().catch(() => null);
-  if (!b?.studentId) return c.json(fail('BAD_REQUEST', 'ورودی ناقص', 'Missing fields'), 400);
+  if (!b?.studentId) return c.json(fail('BAD_REQUEST', 'ورودی ناقص', 'Missing fields', 'نیمګړی ننوت', 'Entrée incomplète'), 400);
   const id = uid();
   const grade = Number(b.grade ?? 7);
   const serial = `AGDS-${grade}-${Date.now()}`;
@@ -209,7 +221,7 @@ exams.post('/admin/certificates', async (c) => {
 
 exams.delete('/admin/certificates/:id', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   await c.env.DB.prepare('DELETE FROM certificates WHERE id = ?').bind(c.req.param('id')).run();
   return c.json({ success: true });
 });
@@ -262,14 +274,14 @@ const ADMIN_EXAM_SELECT = `
 
 exams.get('/admin/exams', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(`${ADMIN_EXAM_SELECT} ORDER BY e.grade_number, e.created_at DESC`).all<any>();
   return c.json({ exams: results.map(adminExamJson) });
 });
 
 exams.post('/admin/exams', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req
     .json<{
       id?: string;
@@ -288,7 +300,7 @@ exams.post('/admin/exams', async (c) => {
   const status = EXAM_STATUSES.has(String(b?.status)) ? String(b!.status) : 'draft';
   const durationMinutes = Number(b?.durationMinutes ?? 10);
   if (!subjectId || !gradeNumber || !title) {
-    return c.json(fail('BAD_REQUEST', 'مضمون، صنف و عنوان لازم است', 'Missing fields'), 400);
+    return c.json(fail('BAD_REQUEST', 'مضمون، صنف و عنوان لازم است', 'Missing fields', 'مضمون، ټولګی او سرلیک اړین دي', 'La matière, la classe et le titre sont requis'), 400);
   }
 
   const id = b?.id && String(b.id).trim().length > 0 ? String(b.id).trim() : uid();
@@ -314,7 +326,7 @@ exams.post('/admin/exams', async (c) => {
 
 exams.patch('/admin/exams/:id/status', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = EXAM_STATUSES.has(String(b?.status)) ? String(b!.status) : 'draft';
   await c.env.DB.prepare('UPDATE exams SET status = ? WHERE id = ?').bind(status, c.req.param('id')).run();
@@ -323,7 +335,7 @@ exams.patch('/admin/exams/:id/status', async (c) => {
 
 exams.delete('/admin/exams/:id', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const examId = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM exam_attempts WHERE exam_id = ?').bind(examId).run();
   await c.env.DB.prepare('DELETE FROM questions WHERE exam_id = ?').bind(examId).run();
@@ -335,7 +347,7 @@ exams.delete('/admin/exams/:id', async (c) => {
 
 exams.get('/admin/exams/:examId/questions', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(
     'SELECT id, exam_id, text, options, correct_index, order_index FROM questions WHERE exam_id = ? ORDER BY order_index',
   )
@@ -354,10 +366,10 @@ exams.get('/admin/exams/:examId/questions', async (c) => {
 
 exams.post('/admin/exams/:examId/questions', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const examId = c.req.param('examId');
   const examExists = await c.env.DB.prepare('SELECT id FROM exams WHERE id = ?').bind(examId).first();
-  if (!examExists) return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found'), 404);
+  if (!examExists) return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found', 'ازموینه ونه موندل شوه', 'Examen introuvable'), 404);
 
   const b = await c.req
     .json<{
@@ -373,7 +385,7 @@ exams.post('/admin/exams/:examId/questions', async (c) => {
   const correctIndex = Number(b?.correctIndex ?? -1);
   if (!text || options.length < 2 || correctIndex < 0 || correctIndex >= options.length) {
     return c.json(
-      fail('BAD_REQUEST', 'متن سؤال، حداقل ۲ گزینه و پاسخ صحیح معتبر لازم است', 'Missing/invalid fields'),
+      fail('BAD_REQUEST', 'متن سؤال، حداقل ۲ گزینه و پاسخ صحیح معتبر لازم است', 'Missing/invalid fields', 'د پوښتنې متن، لږترلږه ۲ ټاکنې او سم ځواب اړین دي', 'Le texte de la question, au moins 2 choix et une réponse correcte valide sont requis'),
       400,
     );
   }
@@ -405,7 +417,7 @@ exams.post('/admin/exams/:examId/questions', async (c) => {
 
 exams.delete('/admin/questions/:id', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   await c.env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(c.req.param('id')).run();
   return c.json({ success: true });
 });

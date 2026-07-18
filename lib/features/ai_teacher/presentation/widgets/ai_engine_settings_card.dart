@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../providers/ai_engine_settings_provider.dart';
 
 /// کارت تنظیمات موتور معلم هوشمند در پنل مدیریت — به‌صورت پیش‌فرض خاموش
@@ -51,9 +52,9 @@ class _AiEngineSettingsCardState extends ConsumerState<AiEngineSettingsCard> {
             children: [
               const Icon(Icons.memory_rounded, color: Colors.white),
               const SizedBox(width: 10),
-              const Expanded(
-                child: Text('موتور هوش مصنوعی (Ollama محلی)',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+              Expanded(
+                child: Text(context.tr('aiEngine.title'),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
               ),
               Switch(
                 value: settings.useOllama,
@@ -65,8 +66,8 @@ class _AiEngineSettingsCardState extends ConsumerState<AiEngineSettingsCard> {
           const SizedBox(height: 4),
           Text(
             settings.useOllama
-                ? 'فعال — پاسخ‌ها ابتدا از Ollama گرفته می‌شود؛ اگر در دسترس نباشد، به‌طور خودکار به موتور محلی رایگان برمی‌گردد.'
-                : 'خاموش — معلم هوشمند از موتور محلی رایگان (بدون نیاز به نصب چیزی) استفاده می‌کند. برای فعال‌سازی هوش مصنوعی واقعی: نصب Ollama از ollama.com، سپس دستور «ollama pull llama3.1» در ترمینال، سپس این گزینه را روشن کنید.',
+                ? context.tr('aiEngine.enabledDesc')
+                : context.tr('aiEngine.disabledDesc'),
             style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.6),
           ),
           if (settings.useOllama) ...[
@@ -75,7 +76,7 @@ class _AiEngineSettingsCardState extends ConsumerState<AiEngineSettingsCard> {
               children: [
                 Expanded(
                   child: _MiniField(
-                    label: 'آدرس سرور',
+                    label: context.tr('aiEngine.serverUrl'),
                     controller: _urlController,
                     onSubmitted: (v) =>
                         ref.read(aiEngineSettingsProvider.notifier).update(baseUrl: v.trim()),
@@ -84,7 +85,7 @@ class _AiEngineSettingsCardState extends ConsumerState<AiEngineSettingsCard> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _MiniField(
-                    label: 'نام مدل',
+                    label: context.tr('aiEngine.modelName'),
                     controller: _modelController,
                     onSubmitted: (v) =>
                         ref.read(aiEngineSettingsProvider.notifier).update(model: v.trim()),

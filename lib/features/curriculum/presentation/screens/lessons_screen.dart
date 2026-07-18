@@ -25,14 +25,14 @@ class LessonsScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.tr('curriculum.lessons'))),
       body: lessonsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (lessons) {
           if (lessons.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'هنوز درسی برای این فصل منتشر نشده است.',
+                  context.tr('curriculum.noLessonsYet'),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
@@ -54,10 +54,11 @@ class LessonsScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SubjectProgressBar(label: 'پیشرفت این فصل', percent: percent, light: true),
+                    SubjectProgressBar(label: context.tr('curriculum.chapterProgress'), percent: percent, light: true),
                     const SizedBox(height: 10),
                     Text(
-                      '$viewedCount از ${lessons.length} درس دیده‌شده',
+                      context.tr('curriculum.lessonsViewedOfCount',
+                          {'viewed': '$viewedCount', 'total': '${lessons.length}'}),
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
                     ),
                   ],

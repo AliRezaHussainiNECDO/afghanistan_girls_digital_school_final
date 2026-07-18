@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { embedText, cosineSimilarity } from '../lib/embeddings';
 import { awardPoints } from '../lib/progress';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
@@ -37,8 +38,8 @@ type Bindings = {
 
 const ai = new Hono<{ Bindings: Bindings }>();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function requireUser(c: any): Promise<string | null> {
@@ -58,12 +59,12 @@ function escapeXml(s: string): string {
 ai.post('/ai-teacher/chat', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!payload?.['sub']) {
-    return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+    return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   }
   if (!c.env.AI_PROVIDER_KEY) {
     // کلید تنظیم نشده → کلاینت (FallbackAiEngine) خودکار به موتور محلی برمی‌گردد.
     return c.json(
-      fail('AI_NOT_CONFIGURED', 'موتور هوش مصنوعی سرور پیکربندی نشده است', 'AI provider not configured'),
+      fail('AI_NOT_CONFIGURED', 'موتور هوش مصنوعی سرور پیکربندی نشده است', 'AI provider not configured', 'د سرور د مصنوعي هوښیارتیا انجن تنظیم شوی نه دی', 'Le moteur d\'IA du serveur n\'est pas configuré'),
       503,
     );
   }
@@ -73,7 +74,7 @@ ai.post('/ai-teacher/chat', async (c) => {
     .catch(() => null);
   const messages = body?.messages;
   if (!messages || messages.length === 0) {
-    return c.json(fail('BAD_REQUEST', 'پیام نامعتبر', 'Invalid messages'), 400);
+    return c.json(fail('BAD_REQUEST', 'پیام نامعتبر', 'Invalid messages', 'ناسم پیغام', 'Messages invalides'), 400);
   }
   const subjectId = String(body?.subjectId ?? 'unknown').trim() || 'unknown';
 
@@ -96,32 +97,61 @@ ai.post('/ai-teacher/chat', async (c) => {
     });
     if (!res.ok) {
       const text = await res.text();
+      // Auditability (بخش ۵.۶/۲۰.۳): فراخوانی ناموفق هم با Prompt کامل ثبت می‌شود.
+      c.executionCtx.waitUntil(
+        logAudit(c.env.DB, {
+          actorId: payload['sub'] as string,
+          actorRole: (payload['role'] as string | undefined) ?? null,
+          actionType: 'ai_invocation',
+          targetTable: 'ai_teacher_chat_logs',
+          ipAddress: clientIp(c),
+          detail: { subjectId, model, outcome: 'upstream_error', status: res.status, error: text.slice(0, 300), prompt: messages },
+        }),
+      );
       return c.json(
-        { ...fail('AI_UPSTREAM_ERROR', 'خطا از سرویس هوش مصنوعی', 'AI upstream error'), detail: text.slice(0, 300) },
+        { ...fail('AI_UPSTREAM_ERROR', 'خطا از سرویس هوش مصنوعی', 'AI upstream error', 'د مصنوعي هوښیارتیا له خدمت نه تېروتنه', 'Erreur du service d\'intelligence artificielle'), detail: text.slice(0, 300) },
         502,
       );
     }
     const data = (await res.json()) as any;
     const reply = data?.choices?.[0]?.message?.content?.trim() ?? '';
     if (!reply) {
-      return c.json(fail('AI_EMPTY', 'پاسخ خالی از سرویس هوش مصنوعی', 'Empty AI reply'), 502);
+      return c.json(fail('AI_EMPTY', 'پاسخ خالی از سرویس هوش مصنوعی', 'Empty AI reply', 'د مصنوعي هوښیارتیا له خدمت نه تشه ځواب راغی', 'Réponse vide du service d\'intelligence artificielle'), 502);
     }
 
-    // ── لاگ سبک برای آمار حقیقی پنل «مدیریت معلم هوشمند» — هرگز نباید پاسخ
-    // شاگرد را کند یا مختل کند، پس خطای لاگ کاملاً بی‌صدا بلعیده می‌شود.
-    try {
-      await c.env.DB.prepare(
-        'INSERT INTO ai_teacher_chat_logs (id, student_id, subject_id) VALUES (?, ?, ?)',
-      )
-        .bind(`log_${crypto.randomUUID()}`, payload['sub'], subjectId)
-        .run();
-    } catch (_) {
-      // جدول ممکن است هنوز روی این دیتابیس مهاجرت نشده باشد — نادیده گرفته می‌شود.
-    }
+    // Auditability (بخش ۵.۶/۲۰.۳ سند): هر فراخوانی AI با **Prompt کامل ارسالی**
+    // (آرایهٔ messages شامل system + تاریخچه + پیام شاگرد) در audit_logs ثبت
+    // می‌شود — در پس‌زمینه تا پاسخ شاگرد معطل نشود.
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: payload['sub'] as string,
+        actorRole: (payload['role'] as string | undefined) ?? null,
+        actionType: 'ai_invocation',
+        targetTable: 'ai_teacher_chat_logs',
+        ipAddress: clientIp(c),
+        detail: {
+          subjectId,
+          model,
+          outcome: 'ok',
+          prompt: messages,
+          replyPreview: reply.slice(0, 400),
+          replyLength: reply.length,
+        },
+      }),
+    );
 
+    // رفع اشکال ریشه‌ای «مدیریت معلم هوشمند وصل نیست»: قبلاً لاگِ آمار
+    // (تعداد پیام‌ها/شاگردان فعال) فقط همین‌جا، یعنی فقط وقتی موتور ابری LLM
+    // واقعاً پاسخ می‌داد، ثبت می‌شد. اما وقتی AI_PROVIDER_KEY تنظیم نشده
+    // (حالت رایگان/پیش‌فرض این پروژه)، `FallbackAiEngine` سمت کلاینت بی‌صدا
+    // به موتور محلی رایگان برمی‌گشت — یعنی هیچ‌وقت این Endpoint صدا زده
+    // نمی‌شد و پنل مدیر برای همیشه صفر پیام/صفر شاگرد فعال نشان می‌داد، حتی
+    // اگر صدها شاگرد واقعاً با معلم هوشمند (رایگان) در حال گفتگو بودند. لاگ
+    // اکنون در `POST /ai-teacher/log-message` متمرکز شده که کلاینت بعد از
+    // **هر** پاسخ معلم هوشمند (چه ابری چه محلی) صدا می‌زند — پایین همین فایل.
     return c.json({ reply });
   } catch (e: any) {
-    return c.json(fail('AI_NETWORK', 'اتصال به سرویس هوش مصنوعی ناموفق بود', 'AI network error'), 502);
+    return c.json(fail('AI_NETWORK', 'اتصال به سرویس هوش مصنوعی ناموفق بود', 'AI network error', 'د مصنوعي هوښیارتیا له خدمت سره اړیکه ونشوه', 'Échec de la connexion au service d\'intelligence artificielle'), 502);
   }
 });
 
@@ -141,10 +171,10 @@ ai.post('/ai-teacher/chat', async (c) => {
 // خروجی: بایت‌های audio/mpeg (استریم). در نبود هر دو → 503 (کلاینت Fail-safe).
 
 ai.post('/ai-teacher/tts', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const body = await c.req.json<{ text?: string }>().catch(() => null);
   const text = (body?.text ?? '').trim();
-  if (!text) return c.json(fail('BAD_REQUEST', 'متن خالی است', 'Empty text'), 400);
+  if (!text) return c.json(fail('BAD_REQUEST', 'متن خالی است', 'Empty text', 'متن تش دی', 'Le texte est vide'), 400);
 
   // ۱) Azure — نزدیک‌ترین صدای خانمِ واقعاً موجود (فارسی ایران؛ دری هنوز در
   //    Azure پشتیبانی نمی‌شود — بالا را ببینید). با AZURE_TTS_VOICE قابل تغییر.
@@ -200,26 +230,26 @@ ai.post('/ai-teacher/tts', async (c) => {
       if (res.ok) {
         return new Response(res.body, { headers: { 'Content-Type': 'audio/mpeg' } });
       }
-      return c.json(fail('TTS_UPSTREAM', 'خطا از سرویس صدا', 'TTS upstream error'), 502);
+      return c.json(fail('TTS_UPSTREAM', 'خطا از سرویس صدا', 'TTS upstream error', 'د غږ له خدمت نه تېروتنه', 'Erreur du service de synthèse vocale'), 502);
     } catch (_) {
-      return c.json(fail('TTS_NETWORK', 'اتصال به سرویس صدا ناموفق بود', 'TTS network error'), 502);
+      return c.json(fail('TTS_NETWORK', 'اتصال به سرویس صدا ناموفق بود', 'TTS network error', 'د غږ له خدمت سره اړیکه ونشوه', 'Échec de la connexion au service de synthèse vocale'), 502);
     }
   }
 
-  return c.json(fail('TTS_NOT_CONFIGURED', 'سرویس صدا پیکربندی نشده است', 'TTS not configured'), 503);
+  return c.json(fail('TTS_NOT_CONFIGURED', 'سرویس صدا پیکربندی نشده است', 'TTS not configured', 'د غږ خدمت تنظیم شوی نه دی', 'Le service de synthèse vocale n\'est pas configuré'), 503);
 });
 
 // ═══════════════════════ STT — گفتار به متن (Whisper) ════════════════════════
 // بدنه = بایت‌های صوتی خام (audio/m4a). خروجی: {text}. زبان: دری/فارسی.
 
 ai.post('/ai-teacher/stt', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   if (!c.env.AI_PROVIDER_KEY) {
-    return c.json(fail('STT_NOT_CONFIGURED', 'سرویس تبدیل گفتار پیکربندی نشده است', 'STT not configured'), 503);
+    return c.json(fail('STT_NOT_CONFIGURED', 'سرویس تبدیل گفتار پیکربندی نشده است', 'STT not configured', 'د خبرو بدلون خدمت تنظیم شوی نه دی', 'Le service de reconnaissance vocale n\'est pas configuré'), 503);
   }
   const bytes = await c.req.arrayBuffer();
   if (bytes.byteLength === 0) {
-    return c.json(fail('BAD_REQUEST', 'فایل صوتی خالی است', 'Empty audio'), 400);
+    return c.json(fail('BAD_REQUEST', 'فایل صوتی خالی است', 'Empty audio', 'غږیز فایل تش دی', 'Le fichier audio est vide'), 400);
   }
   try {
     const form = new FormData();
@@ -232,12 +262,12 @@ ai.post('/ai-teacher/stt', async (c) => {
       body: form,
     });
     if (!res.ok) {
-      return c.json(fail('STT_UPSTREAM', 'خطا از سرویس تبدیل گفتار', 'STT upstream error'), 502);
+      return c.json(fail('STT_UPSTREAM', 'خطا از سرویس تبدیل گفتار', 'STT upstream error', 'د خبرو بدلون له خدمت نه تېروتنه', 'Erreur du service de reconnaissance vocale'), 502);
     }
     const data = (await res.json()) as any;
     return c.json({ text: (data?.text ?? '').trim() });
   } catch (_) {
-    return c.json(fail('STT_NETWORK', 'اتصال به سرویس تبدیل گفتار ناموفق بود', 'STT network error'), 502);
+    return c.json(fail('STT_NETWORK', 'اتصال به سرویس تبدیل گفتار ناموفق بود', 'STT network error', 'د خبرو بدلون له خدمت سره اړیکه ونشوه', 'Échec de la connexion au service de reconnaissance vocale'), 502);
   }
 });
 
@@ -248,7 +278,7 @@ ai.post('/ai-teacher/stt', async (c) => {
 // (کلید تنظیم‌نشده یا هنوز نمایه نشده)، لیست خالی برمی‌گردد تا کلاینت بی‌صدا
 // به روش قبلی (تطابق کلمه‌ای محلی) برگردد — هرگز خطا نمی‌دهد.
 ai.post('/ai-teacher/semantic-search', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const body = await c.req
     .json<{ subjectId?: string; gradeId?: number; query?: string; topN?: number }>()
     .catch(() => null);
@@ -312,7 +342,7 @@ const POINTS_PER_AI_CORRECT_ANSWER = 5;
 ai.post('/ai-teacher/log-attempt', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const studentId = payload?.['sub'] as string | undefined;
-  if (!studentId) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!studentId) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
 
   const body = await c.req
     .json<{ subjectId?: string; gradeId?: number; wasCorrect?: boolean }>()
@@ -332,6 +362,32 @@ ai.post('/ai-teacher/log-attempt', async (c) => {
     }
   } catch (_) {
     // جدول لاگ ممکن است هنوز مهاجرت نشده باشد — بی‌صدا نادیده گرفته می‌شود.
+  }
+  return c.json({ success: true });
+});
+
+// ═══════════ لاگ سبک هر پیام معلم هوشمند — مستقل از موتور (رفع اشکال) ═══════
+// قبلاً این لاگ فقط داخل `/ai-teacher/chat` (موتور ابری LLM) ثبت می‌شد؛
+// موتور محلی رایگان (که پیش‌فرض این پروژه است، چون AI_PROVIDER_KEY هزینه‌بر
+// و اختیاری است) هیچ‌وقت اینجا سر نمی‌زد، پس پنل «مدیریت معلم هوشمند» همیشه
+// صفر پیام/شاگرد فعال نشان می‌داد. کلاینت اکنون این Endpoint را بعد از **هر**
+// پاسخ معلم هوشمند (چه ابری چه محلی) صدا می‌زند — طبق همان الگوی Fire-and-
+// forget کاملاً بی‌اثر روی گفتگوی شاگرد که در `/ai-teacher/log-attempt`
+// استفاده شده.
+ai.post('/ai-teacher/log-message', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const studentId = payload?.['sub'] as string | undefined;
+  if (!studentId) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const body = await c.req.json<{ subjectId?: string }>().catch(() => null);
+  const subjectId = String(body?.subjectId ?? '').trim() || 'unknown';
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO ai_teacher_chat_logs (id, student_id, subject_id) VALUES (?, ?, ?)',
+    )
+      .bind(`log_${crypto.randomUUID()}`, studentId, subjectId)
+      .run();
+  } catch (_) {
+    // جدول ممکن است هنوز روی این دیتابیس مهاجرت نشده باشد — نادیده گرفته می‌شود.
   }
   return c.json({ success: true });
 });
@@ -374,7 +430,7 @@ function personaJson(r: any) {
 // شخصیت پیش‌فرض گرم و تشویق‌کننده برگردانده می‌شود (بدون درج در دیتابیس تا
 // وقتی مدیر واقعاً آن را تغییر دهد).
 ai.get('/ai-teacher/personas', async (c) => {
-  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare('SELECT * FROM ai_teacher_personas').all<any>();
   const bySubject = new Map(results.map((r) => [r.subject_id, r]));
   const list = SUBJECT_SEED.map((s) => {
@@ -389,7 +445,7 @@ ai.get('/ai-teacher/personas', async (c) => {
 // شخصیتِ یک مضمون — بدون تأخیر مصنوعی، چون در هر پیام چت با معلم هوشمند صدا
 // زده می‌شود (مصرف‌کنندهٔ این Endpoint خودِ موتور AI است، نه فقط پنل مدیر).
 ai.get('/ai-teacher/personas/:subjectId', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const row = await c.env.DB.prepare('SELECT * FROM ai_teacher_personas WHERE subject_id = ?')
     .bind(c.req.param('subjectId'))
     .first<any>();
@@ -397,13 +453,13 @@ ai.get('/ai-teacher/personas/:subjectId', async (c) => {
 });
 
 ai.patch('/admin/ai-teacher/personas/:subjectId', async (c) => {
-  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const subjectId = c.req.param('subjectId');
   const seed = SUBJECT_SEED.find((s) => s.id === subjectId);
   const b = await c.req.json<{ personaDescription?: string }>().catch(() => null);
   const description = String(b?.personaDescription ?? '').trim();
   if (!description) {
-    return c.json(fail('BAD_REQUEST', 'توضیح شخصیت نمی‌تواند خالی باشد', 'Persona description required'), 400);
+    return c.json(fail('BAD_REQUEST', 'توضیح شخصیت نمی‌تواند خالی باشد', 'Persona description required', 'د شخصیت تشریح نشي کولی خالي وي', 'La description du personnage est requise'), 400);
   }
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const adminId = (payload?.['sub'] as string | undefined) ?? null;
@@ -434,7 +490,7 @@ ai.patch('/admin/ai-teacher/personas/:subjectId', async (c) => {
 // نمایشیِ فرضی)، دقیقاً طبق همان اصل «آمار واقعی» که در بقیهٔ داشبوردهای
 // برنامه (مدیر/شاگرد/والد) رعایت شده است.
 ai.get('/admin/ai-teacher/stats', async (c) => {
-  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
 
   const zero = {
     totalMessages: 0,
@@ -530,3 +586,4 @@ ai.get('/admin/ai-teacher/stats', async (c) => {
 });
 
 export default ai;
+// (audit wiring v1 — بخش ۲۰.۳)

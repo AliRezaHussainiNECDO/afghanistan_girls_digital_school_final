@@ -16,8 +16,8 @@ type Bindings = {
 
 const engage = new Hono<{ Bindings: Bindings }>();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function auth(c: any): Promise<{ sub: string; role: string } | null> {
@@ -32,7 +32,7 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
 
 engage.get('/attendance/:studentId/summary', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const target = me.role === 'super_admin' ? c.req.param('studentId') : me.sub;
 
   // تاریخ‌های دارای فعالیت در ۱۴ روز اخیر (بازدید درس یا تلاش امتحان).
@@ -68,7 +68,7 @@ engage.get('/attendance/:studentId/summary', async (c) => {
 
 engage.get('/notifications', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100',
   )
@@ -88,7 +88,7 @@ engage.get('/notifications', async (c) => {
 
 engage.patch('/notifications/:id/read', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   await c.env.DB.prepare(
     "UPDATE notifications SET read_at = datetime('now') WHERE id = ? AND user_id = ?",
   )

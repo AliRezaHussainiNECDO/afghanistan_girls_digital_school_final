@@ -9,6 +9,14 @@ class ExamSummary extends Equatable {
   final ExamType type;
   final int durationMinutes;
   final int questionCount;
+  final int gradeNumber;
+
+  /// بهترین نمرهٔ قبلیِ همین شاگرد در این امتحان (اگر قبلاً تلاش کرده)، یا
+  /// null اگر هنوز هرگز نکرده — رفع اشکال: قبلاً این اطلاع اصلاً وجود
+  /// نداشت، پس UI همیشه فقط دکمهٔ «شروع» نشان می‌داد، حتی برای امتحانی که
+  /// شاگرد قبلاً کامیاب شده بود.
+  final double? bestScorePercent;
+  final bool passed;
 
   const ExamSummary({
     required this.id,
@@ -16,10 +24,16 @@ class ExamSummary extends Equatable {
     required this.type,
     required this.durationMinutes,
     required this.questionCount,
+    this.gradeNumber = 0,
+    this.bestScorePercent,
+    this.passed = false,
   });
 
+  bool get isFinal => type == ExamType.finalExam;
+  bool get attempted => bestScorePercent != null;
+
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [id, bestScorePercent];
 }
 
 class ExamQuestion extends Equatable {

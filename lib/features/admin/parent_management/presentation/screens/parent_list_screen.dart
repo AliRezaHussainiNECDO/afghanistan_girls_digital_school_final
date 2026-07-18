@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../user_management/presentation/widgets/common_widgets.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/parent_entities.dart';
 import '../providers/parent_management_providers.dart';
 
@@ -31,7 +32,7 @@ class ParentListScreen extends ConsumerWidget {
             foregroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsetsDirectional.only(start: 16, bottom: 14),
-              title: const Text('مدیریت والدین', style: TextStyle(fontWeight: FontWeight.bold)),
+              title: Text(context.tr('parentList.title'), style: const TextStyle(fontWeight: FontWeight.bold)),
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -45,7 +46,7 @@ class ParentListScreen extends ConsumerWidget {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 52, 16, 0),
                     child: parents.maybeWhen(
-                      data: (p) => Text('${p.total} والد ثبت‌شده',
+                      data: (p) => Text(context.tr('parentList.totalRegistered', {'count': '${p.total}'}),
                           style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
                       orElse: () => const SizedBox.shrink(),
                     ),
@@ -61,7 +62,7 @@ class ParentListScreen extends ConsumerWidget {
                 onChanged: (v) => ref.read(parentListFilterProvider.notifier).state =
                     filter.copyWith(query: v, page: 1),
                 decoration: InputDecoration(
-                  hintText: 'جستجوی نام یا ایمیل والد…',
+                  hintText: context.tr('parentList.searchHint'),
                   prefixIcon: const Icon(Icons.search),
                   filled: true,
                   fillColor: Colors.white,
@@ -87,13 +88,13 @@ class ParentListScreen extends ConsumerWidget {
                   FilledButton.icon(
                     onPressed: () => ref.invalidate(parentsProvider),
                     icon: const Icon(Icons.refresh),
-                    label: const Text('تلاش دوباره'),
+                    label: Text(context.tr('common.retry')),
                   ),
                 ]),
               ),
             ),
             data: (page) => page.items.isEmpty
-                ? const SliverFillRemaining(child: Center(child: Text('والدی با این فیلتر یافت نشد')))
+                ? SliverFillRemaining(child: Center(child: Text(context.tr('parentList.noParentsFound'))))
                 : SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                     sliver: SliverList.separated(
@@ -155,12 +156,12 @@ class _ParentCard extends StatelessWidget {
                 Wrap(spacing: 6, runSpacing: 6, children: [
                   _Chip(
                       icon: Icons.family_restroom_rounded,
-                      label: '${parent.linkedChildrenCount} فرزند لینک‌شده',
+                      label: context.tr('parentList.linkedChildrenChip', {'count': '${parent.linkedChildrenCount}'}),
                       color: AppPalette.green),
                   if (parent.pendingChildrenCount > 0)
                     _Chip(
                         icon: Icons.hourglass_top_rounded,
-                        label: '${parent.pendingChildrenCount} در انتظار تأیید',
+                        label: context.tr('parentList.pendingApprovalChip', {'count': '${parent.pendingChildrenCount}'}),
                         color: AppPalette.amber),
                 ]),
               ]),

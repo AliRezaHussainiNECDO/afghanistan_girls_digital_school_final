@@ -113,17 +113,27 @@ class AiTeacherEngineDataSource {
   /// دقت پنل مدیر + امتیاز مشترک). Fire-and-forget؛ هرگز گفتگو را کند نمی‌کند.
   final Future<void> Function(String subjectId, int grade, bool wasCorrect)? _logAttempt;
 
+  /// رفع اشکال «مدیریت معلم هوشمند وصل نیست»: لاگ سبکِ **هر** پیام معلم
+  /// هوشمند — مستقل از اینکه موتور ابری LLM یا موتور محلی رایگان پاسخ داده.
+  /// قبلاً این آمار فقط داخل موتور ابری ثبت می‌شد؛ چون این پروژه به‌طور
+  /// پیش‌فرض بدون کلید LLM پولی کار می‌کند (موتور رایگان محلی)، پنل مدیر
+  /// همیشه صفر پیام/شاگرد فعال نشان می‌داد، حتی وقتی شاگردان واقعاً فعال
+  /// بودند. Fire-and-forget؛ هرگز گفتگو را کند/مختل نمی‌کند.
+  final Future<void> Function(String subjectId)? _logMessage;
+
   AiTeacherEngineDataSource({
     required CurriculumLibraryDataSource library,
     required AiEngine Function() engineProvider,
     Future<String?> Function(String subjectId)? personaLookup,
     Future<List<BookSection>> Function(String subjectId, int grade, String query)? semanticSearch,
     Future<void> Function(String subjectId, int grade, bool wasCorrect)? logAttempt,
+    Future<void> Function(String subjectId)? logMessage,
   })  : _library = library,
         _engineProvider = engineProvider,
         _personaLookup = personaLookup,
         _semanticSearch = semanticSearch,
-        _logAttempt = logAttempt;
+        _logAttempt = logAttempt,
+        _logMessage = logMessage;
 
   String _convKey(String subjectId, int grade) =>
       LearningProgressDataSource.conversationKey(subjectId, grade);
@@ -369,6 +379,9 @@ class AiTeacherEngineDataSource {
     );
     updatedHistory.add(aiMessage);
     await _writeConversation(subjectId, grade, updatedHistory);
+    if (_logMessage != null) {
+      unawaited(_logMessage(subjectId).catchError((_) {}));
+    }
     return aiMessage;
   }
 
@@ -609,6 +622,9 @@ class AiTeacherEngineDataSource {
     updatedHistory.add(aiMessage);
     await prefs.setString(
         _lessonConvKey(lessonId), jsonEncode(updatedHistory.map(_messageToJson).toList()));
+    if (_logMessage != null) {
+      unawaited(_logMessage(subjectId).catchError((_) {}));
+    }
     return aiMessage;
   }
 }

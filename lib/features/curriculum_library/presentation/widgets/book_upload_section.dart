@@ -6,13 +6,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../domain/entities/curriculum_book.dart';
 import '../../domain/services/chapter_detector.dart';
 import '../../domain/usecases/curriculum_library_usecases.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 import '../screens/lesson_editor_screen.dart';
+
+/// هر جا کتابخانهٔ نصاب تغییر می‌کند (آپلود/حذف/انتشار فصل/بازسازی)،
+/// کش نصاب شاگردان هم باید همراه آن باطل شود — وگرنه شاگردی که همین صفحه
+/// را همان لحظه باز دارد (مثلاً پیش‌نمایش مدیر) دیتای قدیمی می‌بیند.
+void _invalidateStudentCurriculumCaches(WidgetRef ref) {
+  ref.invalidate(chaptersProvider);
+  ref.invalidate(lessonsProvider);
+  ref.invalidate(lessonProvider);
+}
 
 /// بخش «کتاب‌های نصاب تعلیمی» برای هر مضمون — مدیر از این‌جا کتاب پی‌دی‌اف
 /// رسمی وزارت معارف را برای هر صنف (۷ الی ۱۲) به‌طور جداگانه آپلود می‌کند؛
@@ -51,7 +62,7 @@ class BookUploadSection extends ConsumerWidget {
               Icon(Icons.menu_book_rounded, size: 18, color: scheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('کتاب‌های نصاب — $subjectNameFa (صنف ۷ الی ۱۲)',
+                child: Text(context.tr('curriculumBook.sectionTitle', {'subject': subjectNameFa}),
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               ),
             ],
@@ -62,7 +73,7 @@ class BookUploadSection extends ConsumerWidget {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: LinearProgressIndicator(),
             ),
-            error: (e, st) => Text('خطا: $e', style: TextStyle(color: scheme.error, fontSize: 12)),
+            error: (e, st) => Text(context.tr('curriculumBook.errorPrefix', {'error': '$e'}), style: TextStyle(color: scheme.error, fontSize: 12)),
             data: (books) {
               final byGrade = <int, CurriculumBook>{
                 for (final b in books.where((b) => AppConstants.grades.contains(b.gradeId))) b.gradeId: b,
@@ -170,8 +181,8 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
     _stopwatch.stop();
   }
 
-  String get _elapsedLabel =>
-      '${(_stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} ثانیه';
+  String get _elapsedLabel => context.tr('curriculumBook.secondsSuffix',
+      {'seconds': (_stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)});
 
   Future<void> _pickAndUpload() async {
     setState(() {
@@ -189,14 +200,14 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
         withData: true,
       );
     } catch (e) {
-      if (mounted) setState(() => _extractError = 'انتخاب فایل ناموفق بود: $e');
+      if (mounted) setState(() => _extractError = context.tr('curriculumBook.filePickFailed', {'error': '$e'}));
       return;
     }
     if (!mounted || result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final bytes = file.bytes;
     if (bytes == null) {
-      setState(() => _extractError = 'خواندن فایل ناموفق بود.');
+      setState(() => _extractError = context.tr('curriculumBook.fileReadFailed'));
       return;
     }
 
@@ -232,7 +243,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
       if (text.trim().isEmpty) {
         setState(() {
           _extracting = false;
-          _extractError = 'متنی از این پی‌دی‌اف استخراج نشد (شاید اسکن‌شده/تصویری باشد).';
+          _extractError = context.tr('curriculumBook.noTextExtracted');
         });
         return;
       }
@@ -246,6 +257,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
             extractedText: text,
           ));
       ref.invalidate(booksForSubjectProvider(widget.subjectId));
+      _invalidateStudentCurriculumCaches(ref);
 
       // ── انتشار فصل‌ها و درس‌های شناسایی‌شده — تضمین می‌کند نصاب شاگردان هرگز
       // به‌خاطر شکست یک هیوریستیک خالی نماند:
@@ -257,7 +269,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
       await addResult.fold((_) async {}, (book) async {
         if (!kUseLiveBackend) {
           if (mounted) {
-            setState(() => _chapterInfo = 'حالت آزمایشی محلی — فصل‌بندی فقط روی سرور واقعی انجام می‌شود.');
+            setState(() => _chapterInfo = context.tr('curriculumBook.localModeChapterNotice'));
           }
           return;
         }
@@ -280,10 +292,11 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
               },
             );
             if (mounted) {
-              setState(() => _chapterInfo =
-                  '${detectedChapters.length} فصل و $lessonCount درس شناسایی و منتشر شد ✓');
+              setState(() => _chapterInfo = context.tr('curriculumBook.chaptersDetectedPublished',
+                  {'chapters': '${detectedChapters.length}', 'lessons': '$lessonCount'}));
             }
             ref.invalidate(booksForSubjectProvider(widget.subjectId));
+      _invalidateStudentCurriculumCaches(ref);
             return;
           } catch (_) {
             // مسیر مبتنی بر تشخیص کلاینت شکست خورد → به مسیر ایمن سرور می‌رویم.
@@ -307,7 +320,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
       if (!mounted) return;
       setState(() {
         _extracting = false;
-        _extractError = 'خطا در پردازش پی‌دی‌اف: $e';
+        _extractError = context.tr('curriculumBook.pdfProcessErrorWithReason', {'error': '$e'});
       });
     } finally {
       _stopProgressClock();
@@ -334,17 +347,18 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
       final lessonsCreated = (map['lessonsCreated'] as num?)?.toInt() ?? 0;
       if (mounted) {
         setState(() => _chapterInfo = chaptersCreated > 0
-            ? '$chaptersCreated فصل و $lessonsCreated درس به‌صورت خودکار ساختاربندی شد ✓'
-            : 'ساختاربندی خودکار چیزی برای این کتاب تولید نکرد.');
+            ? context.tr('curriculumBook.autoStructuredNotice', {'chapters': '$chaptersCreated', 'lessons': '$lessonsCreated'})
+            : context.tr('curriculumBook.autoStructureEmpty'));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _chapterInfo = isFallback
-            ? 'آپلود موفق بود؛ ساختاربندی خودکار نصاب ناموفق شد — از دکمهٔ «بازسازی نصاب» دوباره تلاش کنید.'
-            : 'بازسازی نصاب ناموفق بود. لطفاً دوباره تلاش کنید.');
+            ? context.tr('curriculumBook.uploadOkStructureFailed')
+            : context.tr('curriculumBook.rebuildFailedRetry'));
       }
     } finally {
       ref.invalidate(booksForSubjectProvider(widget.subjectId));
+      _invalidateStudentCurriculumCaches(ref);
     }
   }
 
@@ -353,7 +367,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
   /// شده بودند) — بدون نیاز به آپلود دوبارهٔ فایل PDF.
   Future<void> _rebuildFromExisting(String bookId) async {
     if (!kUseLiveBackend) {
-      setState(() => _chapterInfo = 'حالت آزمایشی محلی — بازسازی فقط روی سرور واقعی ممکن است.');
+      setState(() => _chapterInfo = context.tr('curriculumBook.localModeRebuildNotice'));
       return;
     }
     setState(() {
@@ -402,7 +416,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))
-                    : Text('هنوز آپلود نشده',
+                    : Text(context.tr('curriculumBook.notUploadedYet'),
                         style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
               ),
               if (book != null) ...[
@@ -412,13 +426,13 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                   onRebuild: () => _rebuildFromExisting(book.id),
                 ),
                 const SizedBox(width: 6),
-                Text('${book.pageCount} صفحه',
+                Text(context.tr('curriculumBook.pageCountSuffix', {'count': '${book.pageCount}'}),
                     style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                 IconButton(
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,
                   icon: Icon(Icons.edit_note_rounded, color: scheme.secondary),
-                  tooltip: 'ویرایش دروس این کتاب',
+                  tooltip: context.tr('curriculumBook.editLessonsTooltip'),
                   onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => LessonEditorScreen(
                       subjectId: widget.subjectId,
@@ -432,7 +446,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                   visualDensity: VisualDensity.compact,
                   icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
                   onPressed: () => _delete(book.id),
-                  tooltip: 'حذف',
+                  tooltip: context.tr('common.delete'),
                 ),
               ] else
                 TextButton.icon(
@@ -440,7 +454,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                   icon: _extracting
                       ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.upload_file_rounded, size: 16),
-                  label: Text(_extracting ? 'در حال آپلود...' : 'آپلود', style: const TextStyle(fontSize: 12.5)),
+                  label: Text(_extracting ? context.tr('curriculumBook.uploadingLabel') : context.tr('curriculumBook.uploadLabel'), style: const TextStyle(fontSize: 12.5)),
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
                 ),
             ],
@@ -478,9 +492,9 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                               child: const Icon(Icons.cloud_upload_rounded, color: Colors.white, size: 20),
                             ),
                             const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text('در حال آپلود و پردازش کتاب...',
-                                  style: TextStyle(
+                            Expanded(
+                              child: Text(context.tr('curriculumBook.uploadingProcessingNotice'),
+                                  style: const TextStyle(
                                       color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5)),
                             ),
                             AnimatedSwitcher(
@@ -540,8 +554,10 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'کتاب صنف ${widget.grade} با موفقیت آپلود شد ✓  '
-                            '(${(_lastUploadDuration.inMilliseconds / 1000).toStringAsFixed(1)} ثانیه)',
+                            context.tr('curriculumBook.uploadSuccessWithGradeAndDuration', {
+                              'grade': '${widget.grade}',
+                              'seconds': (_lastUploadDuration.inMilliseconds / 1000).toStringAsFixed(1),
+                            }),
                             style: const TextStyle(
                                 color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
                           ),
@@ -593,7 +609,9 @@ class _ChapterSyncChip extends StatelessWidget {
     final synced = !book.needsStructuring;
     final color = synced ? AppColors.green600 : AppColors.orange600;
     final bg = synced ? AppColors.green50 : AppColors.orange50;
-    final label = synced ? '${book.chapterCount} فصل' : 'فصل‌بندی نشده';
+    final label = synced
+        ? context.tr('curriculumBook.chapterCountChip', {'count': '${book.chapterCount}'})
+        : context.tr('curriculumBook.notStructuredChip');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),

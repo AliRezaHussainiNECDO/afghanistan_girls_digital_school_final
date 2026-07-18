@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../localization/locale_provider.dart';
 import 'api_client.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════════
@@ -66,7 +68,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       // (Router) بر اساس خالی‌شدن نشست انجام می‌شود.
       tokens.clear();
     },
-    // در Build تولیدی لاگ را خاموش کنید تا اطلاعات حساس در کنسول چاپ نشود.
-    enableLogging: true,
+    // فقط در Build توسعه (Debug) لاگ شود؛ در Release اطلاعات حساس (توکن/رمز)
+    // در کنسول چاپ نمی‌شود.
+    enableLogging: kDebugMode,
+    localeCode: ref.watch(localeProvider).languageCode,
   );
 });

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/network/network_providers.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../domain/entities/ai_teacher_stats.dart';
 import '../providers/ai_teacher_management_providers.dart';
@@ -25,7 +26,7 @@ class AiTeacherStatsSection extends ConsumerWidget {
         padding: EdgeInsets.symmetric(vertical: 18),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (e, st) => ErrorView(message: e.toString()),
+      error: (e, st) => ErrorView(error: e),
       data: (stats) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -33,8 +34,8 @@ class AiTeacherStatsSection extends ConsumerWidget {
             children: [
               Icon(Icons.query_stats_rounded, size: 18, color: scheme.primary),
               const SizedBox(width: 6),
-              const Text('آمار حقیقی معلم هوشمند',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Text(context.tr('aiTeacherStats.sectionTitle'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             ],
           ),
           const SizedBox(height: 10),
@@ -48,31 +49,31 @@ class AiTeacherStatsSection extends ConsumerWidget {
             children: [
               _StatCard(
                 icon: Icons.forum_rounded,
-                label: 'کل پیام‌ها',
+                label: context.tr('aiTeacherStats.totalMessages'),
                 value: '${stats.totalMessages}',
                 gradient: AppColors.heroGradient,
               ),
               _StatCard(
                 icon: Icons.today_rounded,
-                label: 'پیام‌های امروز',
+                label: context.tr('aiTeacherStats.messagesToday'),
                 value: '${stats.messagesToday}',
                 gradient: AppColors.successGradient,
               ),
               _StatCard(
                 icon: Icons.person_rounded,
-                label: 'شاگردان فعال امروز',
+                label: context.tr('aiTeacherStats.activeStudentsToday'),
                 value: '${stats.activeStudentsToday}',
                 gradient: AppColors.heroGradientWarm,
               ),
               _StatCard(
                 icon: Icons.groups_rounded,
-                label: 'شاگردان فعال این هفته',
+                label: context.tr('aiTeacherStats.activeStudentsWeek'),
                 value: '${stats.activeStudentsWeek}',
                 gradient: AppColors.sunriseGradient,
               ),
               _StatCard(
                 icon: Icons.track_changes_rounded,
-                label: 'دقت پاسخ‌ها (تطبیقی)',
+                label: context.tr('aiTeacherStats.accuracyLabel'),
                 value: stats.accuracyPercent != null
                     ? '${stats.accuracyPercent!.toStringAsFixed(0)}٪'
                     : '—',
@@ -80,7 +81,7 @@ class AiTeacherStatsSection extends ConsumerWidget {
               ),
               _StatCard(
                 icon: Icons.auto_awesome_rounded,
-                label: 'پوشش بازیابی معنایی',
+                label: context.tr('aiTeacherStats.embeddingCoverageLabel'),
                 value: stats.embeddingCoveragePercent != null
                     ? '${stats.embeddingCoveragePercent!.toStringAsFixed(0)}٪'
                     : '—',
@@ -90,7 +91,7 @@ class AiTeacherStatsSection extends ConsumerWidget {
           ),
           if (stats.bySubject.isNotEmpty) ...[
             const SizedBox(height: 14),
-            Text('پرکاربردترین مضمون‌ها',
+            Text(context.tr('aiTeacherStats.topSubjectsLabel'),
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: scheme.onSurfaceVariant)),
             const SizedBox(height: 8),
             ...[
@@ -114,7 +115,7 @@ class AiTeacherStatsSection extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'هنوز هیچ گفتگویی با معلم هوشمند ثبت نشده — به‌محض این‌که شاگردان از طریق موتور ابری چت کنند، این آمار زنده به‌روزرسانی می‌شود.',
+                      context.tr('aiTeacherStats.noConversationsYet'),
                       style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
                     ),
                   ),
@@ -153,12 +154,12 @@ class _EmbeddingBackfillButtonState extends ConsumerState<_EmbeddingBackfillButt
       final queued = (data is Map ? data['queued'] as num? : null) ?? 0;
       messenger.showSnackBar(SnackBar(
         content: Text(queued > 0
-            ? '$queued درس در صف نمایه‌سازی معنایی قرار گرفت — چند دقیقهٔ دیگر پوشش کامل می‌شود.'
-            : 'همهٔ درس‌های منتشرشده از قبل نمایه شده‌اند.'),
+            ? context.tr('aiTeacherStats.embeddingQueuedToast', {'count': '$queued'})
+            : context.tr('aiTeacherStats.embeddingAlreadyDoneToast')),
       ));
       ref.invalidate(aiTeacherStatsProvider);
     } catch (e) {
-      messenger.showSnackBar(const SnackBar(content: Text('نمایه‌سازی ناموفق بود — دوباره تلاش کنید.')));
+      messenger.showSnackBar(SnackBar(content: Text(context.tr('aiTeacherStats.embeddingFailedToast'))));
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -173,7 +174,7 @@ class _EmbeddingBackfillButtonState extends ConsumerState<_EmbeddingBackfillButt
           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
           : const Icon(Icons.auto_awesome_rounded, size: 16),
       label: Text(
-        _running ? 'در حال نمایه‌سازی...' : 'بازسازی نمایهٔ معنایی (همهٔ صنوف/مضامین)',
+        _running ? context.tr('aiTeacherStats.embeddingInProgress') : context.tr('aiTeacherStats.embeddingBackfillButton'),
         style: const TextStyle(fontSize: 12),
       ),
       style: OutlinedButton.styleFrom(

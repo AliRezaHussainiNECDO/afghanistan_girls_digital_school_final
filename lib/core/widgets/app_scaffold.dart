@@ -4,6 +4,7 @@ import '../../app/theme/design_tokens.dart';
 import '../../features/auth/domain/entities/app_user.dart';
 import 'app_drawer.dart';
 import 'language_theme_menu.dart';
+import 'notification_bell.dart';
 
 /// Scaffold مشترک تمام صفحات داخل اپ (بعد از ورود) — AppBar گرادیانی گرم +
 /// Drawer وابسته به نقش + دکمهٔ زبان/تم، طبق سیستم طراحی جدید.
@@ -59,6 +60,9 @@ class AppScaffold extends ConsumerWidget {
               leading: canPop ? const _ModernBackButton() : null,
               actions: [
                 ...?actions,
+                // زنگ اعلان زنده — در سربرگ همهٔ داشبوردها (شاگرد/والد/مدیر/استاد)
+                // یکسان و همیشه در دسترس، طبق طراحی مشترک AppScaffold.
+                NotificationBell(role: role),
                 const LanguageThemeMenu(),
                 const SizedBox(width: 8),
               ],

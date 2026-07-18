@@ -1,4 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/localization/locale_provider.dart';
+import '../../../../core/localization/translations/en.dart';
+import '../../../../core/localization/translations/fa.dart';
+import '../../../../core/localization/translations/fr.dart';
+import '../../../../core/localization/translations/ps.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../admin/ai_teacher_management/presentation/providers/ai_teacher_management_providers.dart';
@@ -95,6 +100,21 @@ final aiTeacherDataSourceProvider = Provider((ref) => AiTeacherEngineDataSource(
               }
             }
           : null,
+      // رفع اشکال «مدیریت معلم هوشمند وصل نیست»: لاگ سبک هر پیام — مستقل از
+      // اینکه پاسخ را موتور ابری LLM داد یا موتور محلی رایگان (پیش‌فرض
+      // پروژه). قبلاً فقط موتور ابری لاگ می‌کرد، پس با نبود کلید LLM پولی،
+      // پنل مدیر همیشه صفر پیام/شاگرد فعال نشان می‌داد.
+      logMessage: kUseLiveBackend
+          ? (subjectId) async {
+              try {
+                await ref.read(apiClientProvider).post('/ai-teacher/log-message', data: {
+                  'subjectId': subjectId,
+                });
+              } catch (_) {
+                // Fail-safe — هرگز گفتگو را مختل نمی‌کند.
+              }
+            }
+          : null,
     ));
 final aiTeacherRepositoryProvider =
     Provider<AiTeacherRepository>((ref) => AiTeacherRepositoryImpl(ref.watch(aiTeacherDataSourceProvider)));
@@ -102,6 +122,20 @@ final getConversationUseCaseProvider =
     Provider((ref) => GetConversationUseCase(ref.watch(aiTeacherRepositoryProvider)));
 final sendMessageUseCaseProvider =
     Provider((ref) => SendMessageUseCase(ref.watch(aiTeacherRepositoryProvider)));
+
+/// ترجمهٔ یک کلید بدون نیاز به BuildContext — برای استفاده در Notifierهایی
+/// که خارج از درخت ویجت‌ها (فقط با `ref`) اجرا می‌شوند (مثل پیام خطای
+/// Fallback زیر). چهار زبان را طبق `localeProvider` فعلی می‌خواند.
+String _trWithRef(Ref ref, String key) {
+  final code = ref.read(localeProvider).languageCode;
+  final map = switch (code) {
+    'ps' => psStrings,
+    'en' => enStrings,
+    'fr' => frStrings,
+    _ => faStrings,
+  };
+  return map[key] ?? key;
+}
 
 /// وضعیت گفتگو per مضمون — طبق بخش ۵.۷ سند (State Machine چت AI Teacher).
 ///
@@ -151,7 +185,7 @@ class AiConversationNotifier extends StateNotifier<List<AiChatMessage>> {
         AiChatMessage(
           id: 'err_${DateTime.now().millisecondsSinceEpoch}',
           sender: ChatSender.ai,
-          body: 'یک مشکل موقت پیش آمد و نتوانستم پاسخ بدهم. لطفاً دوباره تلاش کن. 🌸',
+          body: _trWithRef(ref, 'aiTeacher.tempError'),
           timestamp: DateTime.now(),
         ),
       ],
@@ -228,7 +262,7 @@ class AiLessonConversationNotifier extends StateNotifier<List<AiChatMessage>> {
         AiChatMessage(
           id: 'err_${DateTime.now().millisecondsSinceEpoch}',
           sender: ChatSender.ai,
-          body: 'یک مشکل موقت پیش آمد و نتوانستم پاسخ بدهم. لطفاً دوباره تلاش کن. 🌸',
+          body: _trWithRef(ref, 'aiTeacher.tempError'),
           timestamp: DateTime.now(),
         ),
       ];

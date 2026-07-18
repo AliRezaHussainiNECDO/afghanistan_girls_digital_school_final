@@ -1,4 +1,6 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../shared_models/seminar.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -9,6 +11,26 @@ import '../../data/services/seminar_registrations_service.dart';
 import '../../data/repositories_impl/seminars_repository_impl.dart';
 import '../../domain/repositories/seminars_repository.dart';
 import '../../domain/usecases/seminars_usecases.dart';
+
+/// نگاشت پیام‌های خطای منبع دادهٔ Mock فاز ۱ (`SeminarStore`) به کلیدهای
+/// ترجمه — در فاز ۲ که با کد خطای سرور واقعی جایگزین شود، این نگاشت هم به
+/// همان کدها منتقل می‌شود.
+String localizeSeminarFailureMessage(BuildContext context, String raw) {
+  switch (raw) {
+    case 'سمینار یافت نشد':
+      return context.tr('seminars.notFound');
+    case 'شما قبلاً در این سمینار ثبت‌نام کرده‌اید':
+      return context.tr('seminars.alreadyRegistered');
+    case 'این سمینار پایان یافته است':
+      return context.tr('seminars.hasEndedError');
+    case 'ثبت‌نام این سمینار بسته شده است':
+      return context.tr('seminars.registrationClosedError');
+    case 'ظرفیت این سمینار تکمیل شده است':
+      return context.tr('seminars.capacityFullError');
+    default:
+      return raw;
+  }
+}
 
 /// Mock (فاز ۱) یا Backend واقعی — طبق سوییچ `kUseLiveBackend`.
 final seminarsDataSourceProvider = Provider<SeminarsDataSource>((ref) {

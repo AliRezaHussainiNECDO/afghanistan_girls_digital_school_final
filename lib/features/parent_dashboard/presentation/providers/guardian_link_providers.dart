@@ -2,9 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/student/guardian_link_store.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import 'parent_providers.dart' show guardianLinkStoreProvider;
+
+const Map<String, String> _unknownParentLabels = {
+  'fa': 'والد/سرپرست',
+  'en': 'Parent/guardian',
+  'ps': 'مور/پلار یا کفیل',
+  'fr': 'Parent/tuteur',
+};
 
 /// یک درخواست پیوند والد در انتظار تأیید دانش‌آموز — مدل مشترک UI برای هر
 /// دو حالت Mock و Live.
@@ -30,6 +38,7 @@ final pendingParentLinksProvider =
 
   if (kUseLiveBackend) {
     final api = ref.watch(apiClientProvider);
+    final localeCode = ref.watch(localeProvider).languageCode;
     final data = await api.get('/students/me/parent-links',
         queryParameters: {'status': 'pending_student_approval'});
     final list = (data['links'] as List? ?? []);
@@ -37,7 +46,8 @@ final pendingParentLinksProvider =
         .map((l) => PendingParentLink(
               id: l['id'] as String,
               parentId: l['parentId'] as String? ?? '',
-              parentName: l['parentName'] as String? ?? 'والد/سرپرست',
+              parentName: l['parentName'] as String? ??
+                  (_unknownParentLabels[localeCode] ?? _unknownParentLabels['fa']!),
             ))
         .toList();
   }

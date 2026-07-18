@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 
 /// ابزارهای مشترک UI چت — آواتار گرادیانی، زمان نسبی و جداکنندهٔ تاریخ.
 /// هم در صفحات شاگرد و هم در صفحات نظارتی مدیر استفاده می‌شوند تا زبان
@@ -74,23 +75,25 @@ class ChatAvatar extends StatelessWidget {
       );
 }
 
-/// زمان نسبی فارسی — «همین حالا»، «۵ دقیقه پیش»، «دیروز»، یا تاریخ.
-String relativeTimeFa(DateTime time) {
+/// زمان نسبی — طبق زبان فعال («همین حالا»، «۵ دقیقه پیش»، «دیروز»، یا تاریخ).
+String relativeTimeFa(BuildContext context, DateTime time) {
   final diff = DateTime.now().difference(time);
-  if (diff.inMinutes < 1) return 'همین حالا';
-  if (diff.inMinutes < 60) return '${diff.inMinutes} دقیقه پیش';
-  if (diff.inHours < 24 && time.day == DateTime.now().day) return '${diff.inHours} ساعت پیش';
-  if (diff.inHours < 48) return 'دیروز';
+  if (diff.inMinutes < 1) return context.tr('notifications.justNow');
+  if (diff.inMinutes < 60) return context.tr('notifications.minutesAgo', {'count': '${diff.inMinutes}'});
+  if (diff.inHours < 24 && time.day == DateTime.now().day) {
+    return context.tr('notifications.hoursAgo', {'count': '${diff.inHours}'});
+  }
+  if (diff.inHours < 48) return context.tr('notifications.bucketYesterday');
   return '${time.year}/${time.month.toString().padLeft(2, '0')}/${time.day.toString().padLeft(2, '0')}';
 }
 
 /// برچسب جداکنندهٔ تاریخ بین پیام‌ها — «امروز»، «دیروز» یا تاریخ کامل.
-String dateLabelFa(DateTime time) {
+String dateLabelFa(BuildContext context, DateTime time) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(time.year, time.month, time.day);
-  if (day == today) return 'امروز';
-  if (day == today.subtract(const Duration(days: 1))) return 'دیروز';
+  if (day == today) return context.tr('notifications.bucketToday');
+  if (day == today.subtract(const Duration(days: 1))) return context.tr('notifications.bucketYesterday');
   return '${time.year}/${time.month.toString().padLeft(2, '0')}/${time.day.toString().padLeft(2, '0')}';
 }
 
@@ -117,7 +120,7 @@ class DateSeparator extends StatelessWidget {
               color: scheme.surfaceContainer,
               borderRadius: BorderRadius.circular(AppRadii.pill),
             ),
-            child: Text(dateLabelFa(date),
+            child: Text(dateLabelFa(context, date),
                 style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
           ),
           Expanded(child: Divider(color: scheme.outlineVariant)),

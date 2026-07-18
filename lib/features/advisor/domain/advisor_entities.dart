@@ -26,7 +26,7 @@ class AdvisorMessage extends Equatable {
     required this.text,
     required this.createdAt,
     this.flagged = false,
-    this.topic = 'عمومی',
+    this.topic = 'general',
   });
 
   @override

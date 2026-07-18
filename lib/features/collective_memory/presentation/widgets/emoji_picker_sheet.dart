@@ -1,23 +1,41 @@
 import 'package:flutter/material.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 
 /// مجموعهٔ کامل ایموجی‌ها برای واکنش — دسته‌بندی‌شده و مناسب فضای «حافظهٔ جمعی».
+/// کلیدها پایدار/مستقل از زبان‌اند؛ برچسبِ نمایشی از `_categoryLabel` گرفته
+/// می‌شود تا با تغییر زبان هماهنگ بماند.
 const Map<String, List<String>> kEmojiCategories = {
-  'قلب و همدلی': [
+  'heartsEmpathy': [
     '❤️', '🧡', '💛', '💚', '💙', '💜', '🤍', '🖤', '💗', '💕', '💞', '💖',
   ],
-  'احساسات': [
+  'emotions': [
     '😢', '😭', '🥹', '😔', '😞', '😡', '😠', '🥺', '😨', '😰', '💔', '😤',
     '🙂', '😊', '🥰', '😍', '🤗', '😌', '✨', '🌟', '⭐', '🎉', '😎', '🤲',
   ],
-  'همبستگی و قدرت': [
+  'solidarityStrength': [
     '💪', '✊', '🤝', '🙏', '👏', '🫶', '🤲', '☝️', '✌️', '🖐️', '👍', '🫂',
   ],
-  'طبیعت و امید': [
+  'natureHope': [
     '🌸', '🌺', '🌹', '🌷', '🌻', '🌼', '🌱', '🌿', '🕊️', '🦋', '🌈', '☀️',
     '🌙', '💫', '🔥', '💧', '🏔️', '🌍', '📚', '✏️', '🕯️', '🎗️',
   ],
 };
+
+String _categoryLabel(BuildContext context, String key) {
+  switch (key) {
+    case 'heartsEmpathy':
+      return context.tr('memory.categoryHeartsEmpathy');
+    case 'emotions':
+      return context.tr('memory.categoryEmotions');
+    case 'solidarityStrength':
+      return context.tr('memory.categorySolidarityStrength');
+    case 'natureHope':
+      return context.tr('memory.categoryNatureHope');
+    default:
+      return key;
+  }
+}
 
 /// یک Bottom Sheet مدرن برای انتخاب ایموجی از میان ده‌ها گزینه.
 /// ایموجی انتخاب‌شده را برمی‌گرداند (یا null اگر بسته شود).
@@ -61,8 +79,8 @@ class _EmojiPickerSheet extends StatelessWidget {
                 children: [
                   Icon(Icons.emoji_emotions_rounded, size: 18, color: scheme.primary),
                   const SizedBox(width: 8),
-                  const Text('انتخاب ایموجی برای واکنش',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  Text(context.tr('memory.pickEmojiTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 ],
               ),
             ),
@@ -77,7 +95,7 @@ class _EmojiPickerSheet extends StatelessWidget {
                     children: [
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Text(entry.key,
+                        child: Text(_categoryLabel(context, entry.key),
                             style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,

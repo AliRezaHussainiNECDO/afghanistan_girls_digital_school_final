@@ -252,20 +252,20 @@ class InviteStatusChip extends StatelessWidget {
     switch (status) {
       case 'used':
         c = AppColors.info;
-        label = 'استفاده‌شده';
+        label = context.tr('cms.inviteStatusUsed');
         break;
       case 'revoked':
         c = AppColors.danger;
-        label = 'باطل‌شده';
+        label = context.tr('cms.inviteStatusRevoked');
         break;
       case 'expired':
         c = AppColors.ink500;
-        label = 'منقضی';
+        label = context.tr('cms.inviteStatusExpired');
         break;
       case 'unused':
       default:
         c = AppColors.green600;
-        label = 'استفاده‌نشده';
+        label = context.tr('cms.inviteStatusUnused');
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

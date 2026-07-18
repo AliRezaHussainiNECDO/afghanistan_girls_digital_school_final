@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 
 /// دکمهٔ رفع اشکالِ «کتاب را از مدیریت پاک کردم اما هنوز در بخش شاگردان
@@ -32,15 +34,18 @@ class _CleanupOrphanedButtonState extends ConsumerState<CleanupOrphanedButton> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(chapters > 0
-              ? 'پاک‌سازی شد: $chapters فصل و $lessons درسِ باقی‌مانده از کتاب‌های قبلاً حذف‌شده حذف شد ✓'
-              : 'چیزی برای پاک‌سازی نبود — همه‌چیز از قبل هماهنگ بود.'),
+              ? context.tr('cleanupOrphaned.successWithCounts', {'chapters': '$chapters', 'lessons': '$lessons'})
+              : context.tr('cleanupOrphaned.nothingToClean')),
           duration: const Duration(seconds: 6),
         ),
       );
       ref.invalidate(booksForSubjectProvider);
+      ref.invalidate(chaptersProvider);
+      ref.invalidate(lessonsProvider);
+      ref.invalidate(lessonProvider);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطا در پاک‌سازی: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('cleanupOrphaned.cleanupErrorWithReason', {'error': '$e'}))));
     } finally {
       if (mounted) setState(() => _running = false);
     }
@@ -72,10 +77,10 @@ class _CleanupOrphanedButtonState extends ConsumerState<CleanupOrphanedButton> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('پاک‌سازی دروس یتیم (کتاب‌های قبلاً حذف‌شده)',
+                    Text(context.tr('cleanupOrphaned.buttonTitle'),
                         style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSecondaryContainer)),
                     Text(
-                      'کتابی را حذف کرده‌اید اما هنوز در بخش شاگردان دیده می‌شود؟ این دکمه را بزنید',
+                      context.tr('cleanupOrphaned.buttonSubtitle'),
                       style: TextStyle(fontSize: 12, color: scheme.onSecondaryContainer),
                     ),
                   ],

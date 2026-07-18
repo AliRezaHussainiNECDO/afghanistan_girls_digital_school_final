@@ -25,8 +25,8 @@ type Bindings = {
 const advisor = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function me(c: any): Promise<{ sub: string; role: string } | null> {
@@ -57,7 +57,7 @@ function toJson(r: any) {
 
 advisor.post('/advisor/messages', async (c) => {
   const u = await me(c);
-  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const body = await c.req.json<{
     role: 'student' | 'advisor';
     text: string;
@@ -66,7 +66,7 @@ advisor.post('/advisor/messages', async (c) => {
     studentName?: string;
   }>().catch(() => null);
   if (!body || !body.text || (body.role !== 'student' && body.role !== 'advisor')) {
-    return c.json(fail('BAD_REQUEST', 'داده نامعتبر', 'Bad request'), 400);
+    return c.json(fail('BAD_REQUEST', 'داده نامعتبر', 'Bad request', 'ناسمه معلومات', 'Données invalides'), 400);
   }
 
   let studentName = body.studentName ?? '';
@@ -85,7 +85,11 @@ advisor.post('/advisor/messages', async (c) => {
     .bind(id, u.sub, studentName, body.role, body.text, body.topic ?? 'عمومی', flagged ? 1 : 0)
     .run();
 
-  // پیام حساس → اعلان واقعی و فوری برای همهٔ مدیران.
+  // پیام حساس → اعلان واقعی و فوری برای همهٔ مدیران + ثبت در «صف بازبینی
+  // ایمنی» واقعی (رفع اشکال هماهنگی: قبلاً فقط یک اعلان یک‌باره ساخته
+  // می‌شد و هیچ ردی در safety_events — همان جدولی که صفحهٔ «صف ایمنی» مدیر
+  // از آن می‌خواند — نمی‌ماند؛ یعنی اگر مدیر اعلان را نادیده می‌گرفت یا
+  // می‌بست، هیچ‌جای دیگری برای پیگیری/بازبینی/ارجاعِ این گفتگو نبود).
   if (flagged) {
     const { results: admins } = await c.env.DB.prepare("SELECT id FROM users WHERE role = 'super_admin'").all<{
       id: string;
@@ -102,6 +106,41 @@ advisor.post('/advisor/messages', async (c) => {
         )
         .run();
     }
+
+    const student = await c.env.DB.prepare('SELECT current_grade FROM users WHERE id = ?')
+      .bind(u.sub)
+      .first<{ current_grade: number | null }>();
+
+    // متنی که واقعاً باید به مدیر نشان داده شود: اگر همین پیام از طرف
+    // شاگرد است، خودِ متن؛ اگر پاسخ آرام‌بخشِ مشاور است (حالت رایج —
+    // تشخیص نگرانی روی پیام شاگرد انجام می‌شود و همان پیام مشاور با
+    // flagged=true ثبت می‌شود)، آخرین پیام واقعی شاگرد را می‌خوانیم تا
+    // مدیر پاسخ درون‌ساختِ عمومی مشاور را به‌جای متن واقعی و حساسِ شاگرد
+    // نبیند.
+    let detailText = body.text;
+    if (body.role === 'advisor') {
+      const lastStudentMsg = await c.env.DB.prepare(
+        "SELECT text FROM advisor_messages WHERE student_id = ? AND role = 'student' ORDER BY created_at DESC LIMIT 1",
+      )
+        .bind(u.sub)
+        .first<{ text: string }>();
+      if (lastStudentMsg?.text) detailText = lastStudentMsg.text;
+    }
+
+    await c.env.DB.prepare(
+      `INSERT INTO safety_events (id, type, summary, high_priority, status, student_id, student_name, student_grade, source, detail, trigger_reason)
+         VALUES (?, 'aiEscalation', ?, 1, 'open', ?, ?, ?, 'مشاور هوشمند', ?, ?)`,
+    )
+      .bind(
+        `adv_${id}`,
+        'گفتگوی مشاور هوشمند نیاز به بررسی فوری دارد',
+        u.sub,
+        studentName || 'یک شاگرد',
+        student?.current_grade ? `صنف ${student.current_grade}` : '',
+        detailText,
+        `نشانهٔ نگرانی/آسیب در پیام (موضوع: ${body.topic ?? 'حساس'})`,
+      )
+      .run();
   }
 
   return c.json({ id, flagged });
@@ -109,7 +148,7 @@ advisor.post('/advisor/messages', async (c) => {
 
 advisor.get('/advisor/messages', async (c) => {
   const u = await me(c);
-  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM advisor_messages WHERE student_id = ? ORDER BY created_at ASC',
   )
@@ -121,7 +160,7 @@ advisor.get('/advisor/messages', async (c) => {
 // ─────────────────────────── مدیر ───────────────────────────
 
 advisor.get('/admin/advisor/threads', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(
     `SELECT student_id,
             MAX(student_name) AS student_name,
@@ -144,7 +183,7 @@ advisor.get('/admin/advisor/threads', async (c) => {
 });
 
 advisor.get('/admin/advisor/students/:studentId/messages', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM advisor_messages WHERE student_id = ? ORDER BY created_at ASC',
   )

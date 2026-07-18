@@ -4,9 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _localePrefsKey = 'preferred_language';
 
-/// مدیریت زبان فعال اپ — طبق فیلد `users.preferred_language`
-/// (ENUM('fa','ps','en') — بخش ۱۷.۱ سند). در فاز ۱ فقط محلی ذخیره می‌شود؛
-/// از فاز ۲ به بعد با پروفایل واقعی کاربر همگام خواهد شد.
+/// مدیریت زبان فعال اپ — چهار زبان پشتیبانی‌شده: fa (دری) | ps (پښتو) |
+/// en (English) | fr (Français). همیشه محلی (SharedPreferences) ذخیره
+/// می‌شود؛ صفحهٔ انتخاب زبان اولین‌بار (`LanguageSelectScreen`) و هر
+/// دکمهٔ تغییر زبان در برنامه (منوی کناری، پروفایل) از همین Provider واحد
+/// استفاده می‌کنند تا با یک انتخاب، *کل* برنامه بلافاصله زبان عوض کند.
 class LocaleNotifier extends StateNotifier<Locale> {
   LocaleNotifier() : super(const Locale('fa')) {
     _load();

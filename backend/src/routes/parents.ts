@@ -13,6 +13,7 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
@@ -22,8 +23,8 @@ type Bindings = {
 const parents = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
 async function auth(c: any): Promise<{ sub: string; role: string } | null> {
@@ -37,7 +38,7 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
 
 parents.post('/students/me/guardian-code', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   let code = '';
   for (let i = 0; i < 6; i++) code += Math.floor(Math.random() * 10).toString();
   const expiresAt = new Date(Date.now() + 72 * 3600 * 1000).toISOString();
@@ -52,7 +53,7 @@ parents.post('/students/me/guardian-code', async (c) => {
 
 parents.get('/students/me/guardian-code', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const row = await c.env.DB.prepare(
     "SELECT code, expires_at FROM guardian_codes WHERE student_user_id = ? AND expires_at > datetime('now')",
   )
@@ -65,11 +66,11 @@ parents.get('/students/me/guardian-code', async (c) => {
 
 parents.post('/parents/link-requests', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<{ code?: string }>().catch(() => null);
   const code = String(b?.code ?? '').trim();
   if (code.length !== 6) {
-    return c.json(fail('INVALID_CODE', 'کد دعوت باید ۶ رقم باشد', 'Code must be 6 digits'), 400);
+    return c.json(fail('INVALID_CODE', 'کد دعوت باید ۶ رقم باشد', 'Code must be 6 digits', 'د بلنې کوډ باید ۶ رقمونه وي', 'Le code d\'invitation doit comporter 6 chiffres'), 400);
   }
   const gc = await c.env.DB.prepare(
     "SELECT student_user_id FROM guardian_codes WHERE code = ? AND expires_at > datetime('now')",
@@ -77,7 +78,7 @@ parents.post('/parents/link-requests', async (c) => {
     .bind(code)
     .first<{ student_user_id: string }>();
   if (!gc) {
-    return c.json(fail('INVALID_CODE', 'کد دعوت نامعتبر یا منقضی است', 'Invalid or expired code'), 404);
+    return c.json(fail('INVALID_CODE', 'کد دعوت نامعتبر یا منقضی است', 'Invalid or expired code', 'د بلنې کوډ نامعتبر یا پای ته رسیدلی دی', 'Code d\'invitation invalide ou expiré'), 404);
   }
   const studentId = gc.student_user_id;
 
@@ -88,10 +89,10 @@ parents.post('/parents/link-requests', async (c) => {
     .bind(me.sub, studentId)
     .first<{ status: string }>();
   if (existing?.status === 'approved') {
-    return c.json(fail('ALREADY_LINKED', 'این فرزند قبلاً به شما لینک شده است', 'Already linked'), 409);
+    return c.json(fail('ALREADY_LINKED', 'این فرزند قبلاً به شما لینک شده است', 'Already linked', 'دا ماشوم دمخه له تاسو سره تړل شوی دی', 'Cet enfant est déjà lié à vous'), 409);
   }
   if (existing?.status === 'pending_student_approval') {
-    return c.json(fail('PENDING', 'درخواست قبلی هنوز در انتظار تأیید است', 'Request pending'), 409);
+    return c.json(fail('PENDING', 'درخواست قبلی هنوز در انتظار تأیید است', 'Request pending', 'پخوانۍ غوښتنه لاهم د تایید په تمه ده', 'La demande précédente est toujours en attente de validation'), 409);
   }
 
   // نام والد.
@@ -124,6 +125,17 @@ parents.post('/parents/link-requests', async (c) => {
   )
     .bind(uid(), studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`)
     .run();
+  // Auditability (بخش ۲۰.۳ — «تأیید/رد پیوند Parent-Student ثبت می‌شود»).
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: me.sub,
+      actorRole: 'parent',
+      actionType: 'parent_link_request',
+      targetTable: 'parent_student_links',
+      targetId: studentId,
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ success: true, studentName });
 });
 
@@ -131,7 +143,7 @@ parents.post('/parents/link-requests', async (c) => {
 
 parents.get('/students/me/parent-links', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const status = c.req.query('status');
   const clauses = ['student_user_id = ?'];
   const binds: any[] = [me.sub];
@@ -158,24 +170,36 @@ parents.get('/students/me/parent-links', async (c) => {
 
 parents.patch('/students/me/parent-links/:id', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<{ action?: string }>().catch(() => null);
   const action = b?.action;
   if (action !== 'approve' && action !== 'reject') {
-    return c.json(fail('BAD_REQUEST', 'اقدام نامعتبر', 'Invalid action'), 400);
+    return c.json(fail('BAD_REQUEST', 'اقدام نامعتبر', 'Invalid action', 'ناسمه کړنه', 'Action invalide'), 400);
   }
   const link = await c.env.DB.prepare(
     "SELECT id, parent_user_id FROM parent_student_links WHERE id = ? AND student_user_id = ? AND status='pending_student_approval'",
   )
     .bind(c.req.param('id'), me.sub)
     .first<{ id: string; parent_user_id: string }>();
-  if (!link) return c.json(fail('NOT_FOUND', 'درخواست یافت نشد', 'Request not found'), 404);
+  if (!link) return c.json(fail('NOT_FOUND', 'درخواست یافت نشد', 'Request not found', 'غوښتنه ونه موندل شوه', 'Demande introuvable'), 404);
   const next = action === 'approve' ? 'approved' : 'rejected';
   await c.env.DB.prepare(
     "UPDATE parent_student_links SET status=?, approved_at=datetime('now') WHERE id=?",
   )
     .bind(next, link.id)
     .run();
+  // Auditability (بخش ۲۰.۳): تصمیم دانش‌آموز روی پیوند والد.
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: me.sub,
+      actorRole: 'student',
+      actionType: 'parent_link_decision',
+      targetTable: 'parent_student_links',
+      targetId: link.id,
+      afterValue: { status: next, parentUserId: link.parent_user_id },
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ success: true, status: next });
 });
 
@@ -183,7 +207,7 @@ parents.patch('/students/me/parent-links/:id', async (c) => {
 
 parents.get('/parents/me/children', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     `SELECT l.student_user_id, u.first_name, u.last_name
      FROM parent_student_links l JOIN users u ON u.id = l.student_user_id
@@ -204,7 +228,7 @@ parents.get('/parents/me/children', async (c) => {
 // داشبورد خود شاگرد استفاده می‌کند، تا عدد اینجا دقیقاً با آنجا یکسان باشد.
 parents.get('/parents/me/children/:sid/summary', async (c) => {
   const me = await auth(c);
-  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const studentId = c.req.param('sid');
 
   const link = await c.env.DB.prepare(
@@ -212,7 +236,7 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
   )
     .bind(me.sub, studentId)
     .first();
-  if (!link) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Not linked'), 403);
+  if (!link) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Not linked', 'لاسرسی اجازه نه لري', 'Non lié'), 403);
 
   const student = await c.env.DB.prepare('SELECT first_name, last_name, current_grade FROM users WHERE id = ?')
     .bind(studentId)
@@ -305,3 +329,4 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
 });
 
 export default parents;
+// (audit wiring v1 — بخش ۲۰.۳)

@@ -13,10 +13,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/instructor/instructor_directory.dart';
 import '../../../../../core/instructor/instructor_invite_store.dart';
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/network/network_providers.dart';
 import '../../../../../shared_models/seminar.dart';
 import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../../../instructor/presentation/providers/instructor_providers.dart';
+import '../../../chat_monitoring/presentation/widgets/contact_thread_button.dart';
 import '../../../seminars/domain/usecases/admin_seminars_usecases.dart';
 import '../../../seminars/presentation/providers/admin_seminars_providers.dart';
 import '../widgets/common_widgets.dart';
@@ -35,13 +37,13 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
   static String _fmt(DateTime d) =>
       '${d.year}-${_two(d.month)}-${_two(d.day)} ${_two(d.hour)}:${_two(d.minute)}';
 
-  static (String, Color) _statusView(Seminar s) => switch (s.effectiveStatus) {
-        SeminarStatus.draft => ('پیش‌نویس', Colors.blueGrey),
-        SeminarStatus.published => ('منتشرشده', AppPalette.green),
-        SeminarStatus.registrationClosed => ('ثبت‌نام بسته', AppPalette.amber),
-        SeminarStatus.live => ('زنده', AppPalette.red),
-        SeminarStatus.ended => ('پایان‌یافته', Colors.grey),
-        SeminarStatus.archived => ('آرشیو', Colors.grey),
+  static (String, Color) _statusView(BuildContext context, Seminar s) => switch (s.effectiveStatus) {
+        SeminarStatus.draft => (context.tr('seminarAdmin.statusDraft'), Colors.blueGrey),
+        SeminarStatus.published => (context.tr('seminarAdmin.statusPublished'), AppPalette.green),
+        SeminarStatus.registrationClosed => (context.tr('seminarAdmin.statusRegistrationClosed'), AppPalette.amber),
+        SeminarStatus.live => (context.tr('seminarAdmin.statusLive'), AppPalette.red),
+        SeminarStatus.ended => (context.tr('seminarAdmin.statusEnded'), Colors.grey),
+        SeminarStatus.archived => (context.tr('seminarAdmin.statusArchived'), Colors.grey),
       };
 
   @override
@@ -72,7 +74,7 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                     const SizedBox(height: 12),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text('اتصال به سرور برقرار نشد: ${dir.lastError}',
+                      child: Text(context.tr('instructorList.connectionFailedWithReason', {'error': '${dir.lastError}'}),
                           textAlign: TextAlign.center),
                     ),
                     const SizedBox(height: 12),
@@ -80,7 +82,7 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                       onPressed: () =>
                           dir.loadFromBackend(ref.read(apiClientProvider)),
                       icon: const Icon(Icons.refresh),
-                      label: const Text('تلاش دوباره'),
+                      label: Text(context.tr('common.retry')),
                     ),
                   ]),
                 ),
@@ -91,8 +93,8 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
           final instructor =
               InstructorDirectory.instance.byId(widget.instructorId);
           if (instructor == null) {
-            return const Scaffold(
-                body: Center(child: Text('استاد یافت نشد')));
+            return Scaffold(
+                body: Center(child: Text(context.tr('instructorDetail.notFound'))));
           }
           // آمار فعالیت از همان منبع واحد حقیقت سمینارها — در حالت Backend
           // واقعی مستقیماً از سرور، تا «هر چه داشبورد استاد می‌بیند، مدیر
@@ -179,19 +181,19 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                   delegate: SliverChildListDelegate([
                     // ── معلومات حساب + کنترل مسدودسازی (کنترل کامل مدیر) ──
                     _Card(children: [
-                      _InfoRow(icon: Icons.mail_rounded, label: 'ایمیل', value: instructor.email),
+                      _InfoRow(icon: Icons.mail_rounded, label: context.tr('instructorDetail.emailLabel'), value: instructor.email),
                       if (instructor.phone.isNotEmpty)
-                        _InfoRow(icon: Icons.phone_rounded, label: 'تلفن', value: instructor.phone),
+                        _InfoRow(icon: Icons.phone_rounded, label: context.tr('instructorDetail.phoneLabel'), value: instructor.phone),
                       _InfoRow(
                           icon: Icons.calendar_month_rounded,
-                          label: 'تاریخ عضویت',
+                          label: context.tr('instructorDetail.joinedAtLabel'),
                           value: _fmt(instructor.joinedAt)),
                       if (instructor.bio.isNotEmpty)
-                        _InfoRow(icon: Icons.info_rounded, label: 'معرفی', value: instructor.bio),
+                        _InfoRow(icon: Icons.info_rounded, label: context.tr('instructorDetail.bioLabel'), value: instructor.bio),
                       if (usedCode != null)
                         _InfoRow(
                             icon: Icons.qr_code_rounded,
-                            label: 'کد دعوت مصرف‌شده',
+                            label: context.tr('instructorDetail.usedInviteCodeLabel'),
                             value:
                                 '${usedCode.code} (${usedCode.label})'),
                       const Divider(height: 20),
@@ -208,8 +210,8 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                         Expanded(
                           child: Text(
                             instructor.suspended
-                                ? 'حساب مسدود است — استاد نمی‌تواند وارد شود یا سمینار بسازد'
-                                : 'حساب فعال است',
+                                ? context.tr('instructorDetail.accountSuspendedNotice')
+                                : context.tr('instructorDetail.accountActiveNotice'),
                             style: const TextStyle(
                                 fontSize: 13, fontWeight: FontWeight.w600),
                           ),
@@ -224,15 +226,15 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                   content: Text(ok
-                                      ? (active ? 'حساب استاد فعال شد' : 'حساب استاد مسدود شد')
-                                      : 'خطا در ارتباط با سرور')));
+                                      ? (active ? context.tr('instructorDetail.accountActivatedSnack') : context.tr('instructorDetail.accountSuspendedSnack'))
+                                      : context.tr('instructorDetail.serverErrorSnack'))));
                             } else {
                               InstructorDirectory.instance
                                   .setSuspended(instructor.id, !active);
                               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                                   content: Text(active
-                                      ? 'حساب استاد فعال شد'
-                                      : 'حساب استاد مسدود شد')));
+                                      ? context.tr('instructorDetail.accountActivatedSnack')
+                                      : context.tr('instructorDetail.accountSuspendedSnack'))));
                             }
                           },
                         ),
@@ -240,29 +242,45 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                     ]),
                     const SizedBox(height: 12),
 
+                    // ── پیام‌های مدیریت — رفع اشکال هماهنگی: قبلاً هیچ راهی
+                    // برای استاد وجود نداشت که با مدیریت مکتب پیام‌رسانی
+                    // کند؛ حالا از همان زیرساخت واقعی گفتگوی «کاربر ↔
+                    // مدیریت» استفاده می‌شود، مستقیم از همین پروندهٔ استاد.
+                    _Card(children: [
+                      Row(children: [
+                        const Icon(Icons.support_agent_rounded, size: 18, color: AppPalette.greenDark),
+                        const SizedBox(width: 8),
+                        Text(context.tr('instructorDetail.adminMessagesTitle'),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      ]),
+                      const SizedBox(height: 10),
+                      ContactThreadButton(userId: instructor.id, userName: instructor.fullName),
+                    ]),
+                    const SizedBox(height: 12),
+
                     // ── آمار فعالیت (مطابق منطق داشبورد استاد) ──
                     Row(children: [
-                      _StatBox(value: '${seminars.length}', label: 'سمینار'),
+                      _StatBox(value: '${seminars.length}', label: context.tr('instructorDetail.seminarsStatLabel')),
                       const SizedBox(width: 8),
                       _StatBox(
                           value: '$liveCount',
-                          label: 'زنده',
+                          label: context.tr('instructorDetail.liveStatLabel'),
                           color: AppPalette.red),
                       const SizedBox(width: 8),
                       _StatBox(
                           value: '$upcoming',
-                          label: 'پیش رو',
+                          label: context.tr('instructorDetail.upcomingStatLabel'),
                           color: AppPalette.amber),
                       const SizedBox(width: 8),
                       _StatBox(
                           value: '$totalRegistrations',
-                          label: 'ثبت‌نام',
+                          label: context.tr('instructorDetail.registrationsStatLabel'),
                           color: AppPalette.greenDark),
                     ]),
                     const SizedBox(height: 16),
 
-                    const Text('فعالیت‌ها (سمینارهای این استاد)',
-                        style: TextStyle(
+                    Text(context.tr('instructorDetail.activitiesTitle'),
+                        style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 8),
                     if (seminarsAsync.isLoading && seminars.isEmpty)
@@ -271,10 +289,10 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                         child: Center(child: CircularProgressIndicator()),
                       )
                     else if (seminars.isEmpty)
-                      const _Card(children: [
+                      _Card(children: [
                         Padding(
-                          padding: EdgeInsets.all(8),
-                          child: Text('این استاد هنوز سمیناری نساخته است',
+                          padding: const EdgeInsets.all(8),
+                          child: Text(context.tr('instructorDetail.noSeminarsYet'),
                               textAlign: TextAlign.center),
                         ),
                       ])
@@ -282,7 +300,7 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                       for (final s in seminars) ...[
                         _SeminarAdminCard(
                           seminar: s,
-                          statusView: _statusView(s),
+                          statusView: _statusView(context, s),
                           formattedDate: _fmt(s.scheduledStart),
                           instructorId: instructor.id,
                         ),
@@ -344,7 +362,7 @@ class _SeminarAdminCard extends ConsumerWidget {
                       fontWeight: FontWeight.bold)),
             ),
             PopupMenuButton<String>(
-              tooltip: 'کنترل مدیر',
+              tooltip: context.tr('instructorDetail.adminControlTooltip'),
               onSelected: (action) async {
                 switch (action) {
                   case 'status':
@@ -353,14 +371,14 @@ class _SeminarAdminCard extends ConsumerWidget {
                     await _confirmDelete(context, ref);
                 }
               },
-              itemBuilder: (_) => const [
+              itemBuilder: (_) => [
                 PopupMenuItem(
                     value: 'status',
-                    child: Text('تغییر وضعیت سمینار')),
+                    child: Text(context.tr('instructorDetail.changeSeminarStatusMenuItem'))),
                 PopupMenuItem(
                     value: 'delete',
-                    child: Text('حذف سمینار',
-                        style: TextStyle(color: AppPalette.red))),
+                    child: Text(context.tr('instructorDetail.deleteSeminarMenuItem'),
+                        style: const TextStyle(color: AppPalette.red))),
               ],
             ),
           ]),
@@ -376,20 +394,21 @@ class _SeminarAdminCard extends ConsumerWidget {
             _Meta(icon: Icons.schedule_rounded, text: formattedDate),
             _Meta(
                 icon: Icons.timer_rounded,
-                text: '${seminar.durationMinutes} دقیقه'),
+                text: context.tr('instructorDetail.durationMinutesSuffix', {'minutes': '${seminar.durationMinutes}'})),
             _Meta(
               icon: Icons.group_rounded,
               text: seminar.capacity == null
-                  ? '${seminar.registeredCount} ثبت‌نام'
-                  : '${seminar.registeredCount}/${seminar.capacity} ثبت‌نام',
+                  ? context.tr('instructorDetail.registrationsCountSuffix', {'count': '${seminar.registeredCount}'})
+                  : context.tr('instructorDetail.registrationsWithCapacitySuffix',
+                      {'count': '${seminar.registeredCount}', 'capacity': '${seminar.capacity}'}),
             ),
             _Meta(
               icon: seminar.audience == SeminarAudience.parents
                   ? Icons.family_restroom_rounded
                   : Icons.school_rounded,
               text: seminar.audience == SeminarAudience.parents
-                  ? 'ویژهٔ والدین'
-                  : 'ویژهٔ شاگردان',
+                  ? context.tr('instructorDetail.forParentsLabel')
+                  : context.tr('instructorDetail.forStudentsLabel'),
             ),
           ]),
         ]),
@@ -405,16 +424,16 @@ class _SeminarAdminCard extends ConsumerWidget {
         textDirection: TextDirection.rtl,
         child: SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('تغییر وضعیت سمینار (State Machine بخش ۱۲.۲)',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(ctx.tr('instructorDetail.changeStatusSheetTitle'),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            for (final (st, label) in const [
-              (SeminarStatus.draft, 'پیش‌نویس'),
-              (SeminarStatus.published, 'منتشرشده (ثبت‌نام باز)'),
-              (SeminarStatus.registrationClosed, 'بستن ثبت‌نام'),
-              (SeminarStatus.live, 'شروع زنده'),
-              (SeminarStatus.ended, 'پایان جلسه'),
-              (SeminarStatus.archived, 'آرشیو'),
+            for (final (st, label) in [
+              (SeminarStatus.draft, ctx.tr('seminarAdmin.pickerDraft')),
+              (SeminarStatus.published, ctx.tr('seminarAdmin.pickerPublished')),
+              (SeminarStatus.registrationClosed, ctx.tr('seminarAdmin.pickerRegistrationClosed')),
+              (SeminarStatus.live, ctx.tr('seminarAdmin.pickerLive')),
+              (SeminarStatus.ended, ctx.tr('seminarAdmin.pickerEnded')),
+              (SeminarStatus.archived, ctx.tr('seminarAdmin.pickerArchived')),
             ])
               ListTile(
                 title: Text(label),
@@ -439,7 +458,7 @@ class _SeminarAdminCard extends ConsumerWidget {
       (_) {
         ref.invalidate(seminarsByInstructorProvider(instructorId));
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('وضعیت سمینار به‌روز شد')));
+            .showSnackBar(SnackBar(content: Text(context.tr('instructorDetail.statusUpdatedSnack'))));
       },
     );
   }
@@ -450,17 +469,17 @@ class _SeminarAdminCard extends ConsumerWidget {
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          title: const Text('حذف سمینار'),
+          title: Text(ctx.tr('instructorDetail.deleteSeminarTitle')),
           content: Text(
-              'سمینار «${seminar.title}» با ${seminar.registeredCount} ثبت‌نام حذف شود؟ این عمل قابل بازگشت نیست.'),
+              ctx.tr('instructorDetail.deleteSeminarConfirm', {'title': seminar.title, 'count': '${seminar.registeredCount}'})),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('انصراف')),
+                child: Text(ctx.tr('common.cancel'))),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppPalette.red),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('حذف'),
+              child: Text(ctx.tr('common.delete')),
             ),
           ],
         ),
@@ -475,7 +494,7 @@ class _SeminarAdminCard extends ConsumerWidget {
       (_) {
         ref.invalidate(seminarsByInstructorProvider(instructorId));
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('سمینار حذف شد')));
+            .showSnackBar(SnackBar(content: Text(context.tr('instructorDetail.seminarDeletedSnack'))));
       },
     );
   }

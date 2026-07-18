@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../../app/router/app_routes.dart';
@@ -62,18 +63,31 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
               child: const Icon(Icons.quiz_rounded, color: Colors.white, size: 22),
             ),
             const SizedBox(width: 10),
-            const Expanded(
-              child: Text('مدیریت امتحانات',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(context.tr('examAdmin.pageTitle'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 17)),
+                  // نکته برای هماهنگی: تمایز روشن با «بانک سؤالات تمرینی»ِ
+                  // بخش مدیریت محتوا — این‌جا فقط امتحان‌هایی مدیریت می‌شوند
+                  // که واقعاً دروازهٔ ارتقای صنف‌اند.
+                  Text(context.tr('examAdmin.pageSubtitle'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
+                ],
+              ),
             ),
           ],
         ),
         actions: [
           Builder(
             builder: (ctx) => IconButton(
-              tooltip: 'منو',
+              tooltip: context.tr('examAdmin.backTooltip'),
               icon: const Icon(Icons.menu_rounded, color: Colors.white),
               onPressed: () => Scaffold.of(ctx).openDrawer(),
             ),
@@ -85,10 +99,14 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showExamSheet(context, ExamFormSheet(initialGrade: _gradeFilter)),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('امتحان جدید'),
+        label: Text(context.tr('examAdmin.newExamButton')),
       ),
       body: Column(
         children: [
+          examsAsync.maybeWhen(
+            data: (exams) => _ExamsHeroStats(exams: exams),
+            orElse: () => const SizedBox.shrink(),
+          ),
           _GradeFilterBar(
             selected: _gradeFilter,
             onSelect: (g) => setState(() => _gradeFilter = g),
@@ -96,7 +114,7 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
           Expanded(
             child: examsAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(message: e.toString()),
+              error: (e, st) => ErrorView(error: e),
               data: (exams) {
                 final filtered =
                     _gradeFilter == null ? exams : exams.where((e) => e.gradeNumber == _gradeFilter).toList();
@@ -108,7 +126,7 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
                         Icon(Icons.assignment_outlined,
                             size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                         const SizedBox(height: 12),
-                        Text('امتحانی یافت نشد', style: TextStyle(color: scheme.onSurfaceVariant)),
+                        Text(context.tr('examAdmin.noExamsFound'), style: TextStyle(color: scheme.onSurfaceVariant)),
                       ],
                     ),
                   );
@@ -142,6 +160,86 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
   }
 }
 
+/// سربرگ گرادیانیِ آماری — به‌ویژه «پوششِ امتحان نهایی» را برجسته می‌کند،
+/// چون این دقیقاً همان چیزی است که ارتقای واقعیِ صنف به آن وابسته است: اگر
+/// برای یک صنف هیچ امتحان «نهایی» منتشرشده‌ای نباشد، هیچ شاگردی در آن صنف
+/// نمی‌تواند ارتقا یابد — این عدد به مدیر یک نمای کلی و فوری از سلامتِ کل
+/// سیستم ارتقا در تمام صنوف می‌دهد (نه فقط صنفِ فیلترشدهٔ فعلی).
+class _ExamsHeroStats extends StatelessWidget {
+  final List<AdminExamRow> exams;
+  const _ExamsHeroStats({required this.exams});
+
+  @override
+  Widget build(BuildContext context) {
+    final published = exams.where((e) => e.status == ExamAdminStatus.published).length;
+    final gradesWithFinal = kExamGrades
+        .where((g) => exams.any((e) =>
+            e.gradeNumber == g && e.type.name == 'finalExam' && e.status == ExamAdminStatus.published))
+        .length;
+    final fullCoverage = gradesWithFinal == kExamGrades.length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: AppColors.sunriseGradient,
+        borderRadius: BorderRadius.circular(AppRadii.xl),
+        boxShadow: AppShadows.warm,
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _stat(context.tr('examAdmin.totalExamsLabel'), '${exams.length}')),
+              _divider(),
+              Expanded(child: _stat(context.tr('cms.publishedLabel'), '$published')),
+              _divider(),
+              Expanded(child: _stat(context.tr('examAdmin.finalExamCoverageLabel'),
+                  context.tr('examAdmin.finalExamCoverageValue', {'covered': '$gradesWithFinal', 'total': '${kExamGrades.length}'}))),
+            ],
+          ),
+          if (!fullCoverage) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      context.tr('examAdmin.coverageWarning'),
+                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05);
+  }
+
+  Widget _stat(String label, String value) => Column(
+        children: [
+          Text(value,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 2),
+          Text(label,
+              style: const TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w500),
+              textAlign: TextAlign.center),
+        ],
+      );
+
+  Widget _divider() => Container(width: 1, height: 32, color: Colors.white.withValues(alpha: 0.35));
+}
+
 class _GradeFilterBar extends StatelessWidget {
   final int? selected;
   final ValueChanged<int?> onSelect;
@@ -158,7 +256,7 @@ class _GradeFilterBar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ChoiceChip(
-              label: const Text('همه'),
+              label: Text(context.tr('examAdmin.allChip')),
               selected: selected == null,
               onSelected: (_) => onSelect(null),
             ),
@@ -166,7 +264,7 @@ class _GradeFilterBar extends StatelessWidget {
           ...kExamGrades.map((g) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: ChoiceChip(
-                  label: Text('صنف $g'),
+                  label: Text(context.tr('bulkImport.gradeOption', {'grade': '$g'})),
                   selected: selected == g,
                   onSelected: (_) => onSelect(g),
                 ),
@@ -192,12 +290,12 @@ class _MissingFinalWarning extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
+          const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'برای صنف $grade هیچ امتحان «نهایی» منتشرشده‌ای وجود ندارد — شاگردان این صنف نمی‌توانند ارتقا یابند.',
-              style: TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600),
+              context.tr('examAdmin.missingFinalWarning', {'grade': '$grade'}),
+              style: const TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -244,7 +342,12 @@ class _ExamCard extends ConsumerWidget {
                         maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
                     Text(
-                      'صنف ${exam.gradeNumber} · ${exam.subjectNameFa} · ${examTypeLabel(context, exam.type)} · ${exam.questionCount} سؤال',
+                      context.tr('examAdmin.examSummaryLine', {
+                        'grade': context.tr('bulkImport.gradeOption', {'grade': '${exam.gradeNumber}'}),
+                        'subject': exam.subjectNameFa,
+                        'type': examTypeLabel(context, exam.type),
+                        'count': '${exam.questionCount}',
+                      }),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
@@ -260,7 +363,7 @@ class _ExamCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(AppRadii.pill),
                   border: Border.all(color: examStatusColor(exam.status).withValues(alpha: 0.4)),
                 ),
-                child: Text(examStatusLabel(exam.status),
+                child: Text(examStatusLabel(context, exam.status),
                     style: TextStyle(fontSize: 11, color: examStatusColor(exam.status), fontWeight: FontWeight.w700)),
               ),
               PopupMenuButton<String>(
@@ -286,14 +389,14 @@ class _ExamCard extends ConsumerWidget {
                     final ok = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text('حذف امتحان؟'),
-                        content: const Text('همهٔ سؤالات و تلاش‌های ثبت‌شدهٔ این امتحان هم حذف می‌شود.'),
+                        title: Text(ctx.tr('examAdmin.deleteExamTitle')),
+                        content: Text(ctx.tr('examAdmin.deleteExamConfirm')),
                         actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
                           FilledButton(
                             style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
                             onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('حذف'),
+                            child: Text(ctx.tr('common.delete')),
                           ),
                         ],
                       ),
@@ -305,14 +408,14 @@ class _ExamCard extends ConsumerWidget {
                   }
                 },
                 itemBuilder: (ctx) => [
-                  const PopupMenuItem(value: 'edit', child: Text('ویرایش')),
+                  PopupMenuItem(value: 'edit', child: Text(ctx.tr('examAdmin.editMenuItem'))),
                   if (exam.status != ExamAdminStatus.published)
-                    const PopupMenuItem(value: 'publish', child: Text('انتشار')),
+                    PopupMenuItem(value: 'publish', child: Text(ctx.tr('examAdmin.publishMenuItem'))),
                   if (exam.status != ExamAdminStatus.draft)
-                    const PopupMenuItem(value: 'draft', child: Text('انتقال به پیش‌نویس')),
+                    PopupMenuItem(value: 'draft', child: Text(ctx.tr('examAdmin.moveToDraftMenuItem'))),
                   if (exam.status != ExamAdminStatus.closed)
-                    const PopupMenuItem(value: 'close', child: Text('بستن')),
-                  const PopupMenuItem(value: 'delete', child: Text('حذف')),
+                    PopupMenuItem(value: 'close', child: Text(ctx.tr('examAdmin.closeMenuItem'))),
+                  PopupMenuItem(value: 'delete', child: Text(ctx.tr('common.delete'))),
                 ],
               ),
             ],

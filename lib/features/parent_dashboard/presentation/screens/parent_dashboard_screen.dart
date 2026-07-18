@@ -42,8 +42,7 @@ Future<bool> submitGuardianInviteCode(
       // خود شاگرد آن را در پروفایلش تأیید کند.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(
-                'درخواست پیوند با «$childName» ثبت شد؛ پس از تأیید فرزندتان در اپ خودش، به فهرست فرزندان اضافه می‌شود')),
+            content: Text(context.tr('parent.linkRequestSubmitted', {'name': childName}))),
       );
       // GuardianLinkStore خودش notifyListeners می‌کند؛ لیست فرزندان و
       // نمرات خودکار بازسازی می‌شوند.
@@ -71,7 +70,7 @@ Future<void> showAddChildDialog(BuildContext context, WidgetRef ref) async {
             decoration: InputDecoration(
               labelText: dialogContext.tr('parent.inviteCodeHint'),
               prefixIcon: const Icon(Icons.qr_code_rounded),
-              helperText: 'کد ۶ رقمی که فرزندتان از بخش پروفایل خود ساخته است',
+              helperText: dialogContext.tr('parent.inviteCodeHelperShort'),
               helperMaxLines: 2,
             ),
           ),
@@ -126,7 +125,7 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   Widget _buildBody(AsyncValue<List<LinkedChild>> childrenAsync) {
     return childrenAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (children) {
           // درخواست‌های در انتظار تأیید فرزند (اصلاح ۲.۴ — بخش ۱۳ب.۲):
           // watch روی Store باعث بازسازی خودکار پس از تأیید/رد شاگرد می‌شود.
@@ -242,9 +241,9 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                                 color: Colors.white, size: 22),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text('گواهی‌نامه‌های فرزندم',
-                                style: TextStyle(
+                          Expanded(
+                            child: Text(context.tr('parent.myChildCertificates'),
+                                style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 13.5)),
                           ),
@@ -293,7 +292,7 @@ class _PendingLinksBanner extends StatelessWidget {
             child: Text(
               '${context.tr('parent.pendingApproval')}: '
               '${pending.map((l) => '«${l.studentName}»').join('، ')} — '
-              'فرزندتان باید درخواست را از بخش پروفایل خود تأیید کند.',
+              '${context.tr('parent.pendingApprovalSuffix')}',
               style: TextStyle(fontSize: 12.5, color: scheme.onSurface, fontWeight: FontWeight.w600),
             ),
           ),
@@ -362,7 +361,7 @@ class _AwaitingLinkViewState extends ConsumerState<_AwaitingLinkView> {
                       decoration: InputDecoration(
                         labelText: context.tr('parent.inviteCodeHint'),
                         prefixIcon: const Icon(Icons.qr_code_rounded),
-                        helperText: 'فرزند شما این کد ۶ رقمی را از «پروفایل ← ساخت کد دعوت برای والدین» می‌سازد',
+                        helperText: context.tr('parent.inviteCodeHelperLong'),
                         helperMaxLines: 2,
                       ),
                     ),
@@ -408,7 +407,7 @@ class _ChildSummaryView extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     return summaryAsync.when(
       loading: () => const LoadingView(),
-      error: (e, st) => ErrorView(message: e.toString()),
+      error: (e, st) => ErrorView(error: e),
       data: (s) => ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -486,7 +485,7 @@ class _ChildSummaryView extends ConsumerWidget {
           const SizedBox(height: 16),
           _SectionLabel(text: context.tr('parent.achievements')),
           if (s.achievements.isEmpty)
-            _EmptyHint(text: 'هنوز دستاوردی ثبت نشده است — با اولین امتحان، اولین نشان ظاهر می‌شود')
+            _EmptyHint(text: context.tr('parent.noAchievementsYet'))
           else
             Wrap(
               spacing: 8,
@@ -502,7 +501,7 @@ class _ChildSummaryView extends ConsumerWidget {
           const SizedBox(height: 16),
           _SectionLabel(text: context.tr('parent.certificates')),
           if (s.certificates.isEmpty)
-            _EmptyHint(text: 'گواهی‌نامه پس از ختم موفقانهٔ صنف توسط مدیریت صادر می‌شود')
+            _EmptyHint(text: context.tr('parent.noCertificatesYetHint'))
           else
             ...s.certificates.map((c) => ListTile(
                   dense: true,

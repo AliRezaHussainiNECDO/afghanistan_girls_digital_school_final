@@ -28,6 +28,14 @@ class AcademyStore {
   }
 
   /// بارگذاری داده از سرور به کش محلی. یک‌بار کافی است؛ `force` برای تازه‌سازی.
+  ///
+  /// **اصلاح:** قبلاً هر خطای شبکه/سرور کاملاً فرونشانده می‌شد و کاربر همیشه
+  /// دادهٔ نمونهٔ محلیِ ثابت (کتاب‌های آزمایشی) را می‌دید — بدون هیچ نشانه‌ای
+  /// که این دادهٔ واقعی نیست. اکنون فقط اگر پیش‌تر **هرگز** با موفقیت از
+  /// سرور خوانده نشده، خطا بالا پرتاب می‌شود تا صفحه پیام خطا/تلاش دوباره
+  /// نشان دهد (طبق الگوی `ErrorView` موجود در بقیهٔ اپ). اگر قبلاً یک‌بار
+  /// موفق شده و این فقط یک تازه‌سازیِ بعدی است، یک وقفهٔ کوتاه شبکه دادهٔ
+  /// خوبِ قبلی را پاک نمی‌کند (خطا فرونشانده می‌شود).
   Future<void> hydrate({bool force = false}) async {
     final r = _remote;
     if (r == null || (_hydrated && !force)) return;
@@ -46,7 +54,7 @@ class AcademyStore {
         ..addAll(subs);
       _hydrated = true;
     } catch (_) {
-      // خطای شبکه: دادهٔ نمونهٔ محلی حفظ می‌شود تا UI خالی نماند.
+      if (!_hydrated) rethrow;
     }
   }
 
@@ -124,8 +132,15 @@ class AcademyStore {
     ),
   ];
 
-  List<LibraryBook> getBooks({bool publishedOnly = false, String query = ''}) {
+  /// [gradeIds] رفع اشکال: قبلاً کتابخانهٔ شاگرد هیچ فیلتر صنفی نداشت — یک
+  /// شاگرد صنف هفتم عیناً کتاب‌های صنف دوازدهم را هم می‌دید. اکنون اگر
+  /// فهرست صنوف داده شود، فقط کتاب‌های «عمومی» (gradeId=0) + همان صنف(ها)
+  /// نمایش داده می‌شوند. اگر null/خالی باشد (مثلاً نمای مدیر)، فیلتر نمی‌شود.
+  List<LibraryBook> getBooks({bool publishedOnly = false, String query = '', List<int>? gradeIds}) {
     var list = _books.where((b) => !publishedOnly || b.status == PublishStatus.published);
+    if (gradeIds != null && gradeIds.isNotEmpty) {
+      list = list.where((b) => b.gradeId == 0 || gradeIds.contains(b.gradeId));
+    }
     if (query.trim().isNotEmpty) {
       final q = query.trim();
       list = list.where((b) =>
@@ -150,6 +165,7 @@ class AcademyStore {
         language: stamped.language,
         pdfFileName: stamped.pdfFileName,
         pdfPath: stamped.pdfPath,
+        pdfKey: stamped.pdfKey,
         fileSizeMb: stamped.fileSizeMb,
         pageCount: stamped.pageCount,
         coverIndex: stamped.coverIndex,
@@ -167,6 +183,23 @@ class AcademyStore {
     return stamped;
   }
 
+  /// مثل [saveBook] (کش محلی را فوراً به‌روز می‌کند)، اما علاوه بر آن تا
+  /// پایان واقعیِ نوشتن روی سرور هم صبر می‌کند. لازم است وقتی بلافاصله پس
+  /// از ذخیره باید عملیات دیگری انجام شود که به وجود واقعیِ ردیف روی سرور
+  /// نیاز دارد (مثلاً آپلود فایل پی‌دی‌افِ همان کتاب — در غیر این صورت،
+  /// چون [saveBook] نوشتن سرور را «آتش‌وفراموش» انجام می‌دهد، ممکن است
+  /// آپلود زودتر از تکمیل ساخت ردیف برسد و با خطای «کتاب یافت نشد» مواجه
+  /// شود). خطای شبکه اینجا برخلاف [saveBook] بالا پرتاب می‌شود تا UI واقعاً
+  /// بداند ذخیره ناموفق بوده.
+  Future<LibraryBook> saveBookAwaitingServer(LibraryBook row) async {
+    final saved = saveBook(row);
+    final r = _remote;
+    if (r != null) {
+      await r.upsertBook(saved);
+    }
+    return saved;
+  }
+
   void deleteBook(String id) {
     _books.removeWhere((b) => b.id == id);
     _push((r) => r.deleteBook(id));
@@ -180,6 +213,33 @@ class AcademyStore {
     }
   }
 
+  /// آپلود واقعیِ فایل پی‌دی‌اف یک کتاب (منتظر پاسخ سرور می‌ماند — برخلاف
+  /// بقیهٔ نوشتن‌های این کلاس که «آتش‌وفراموش»‌اند — چون UI باید تا پایان
+  /// واقعیِ آپلود صبر کند و پیشرفت/خطا را نشان دهد).
+  Future<LibraryBook?> uploadBookPdf(String bookId, List<int> bytes, String fileName) async {
+    final r = _remote;
+    if (r == null) return null;
+    final result = await r.uploadBookPdf(bookId, bytes, fileName);
+    final idx = _books.indexWhere((b) => b.id == bookId);
+    if (idx == -1) return null;
+    final sizeMb = double.parse((bytes.length / (1024 * 1024)).toStringAsFixed(1));
+    final updated = _books[idx].copyWith(
+      pdfFileName: fileName,
+      pdfKey: (result['pdfKey'] ?? '').toString(),
+      fileSizeMb: sizeMb,
+      updatedAt: DateTime.now(),
+    );
+    _books[idx] = updated;
+    return updated;
+  }
+
+  /// دانلود واقعیِ بایت‌های فایل یک کتاب (برای شاگرد).
+  Future<List<int>?> downloadBookPdf(String pdfKey) async {
+    final r = _remote;
+    if (r == null || pdfKey.isEmpty) return null;
+    return r.downloadBookPdf(pdfKey);
+  }
+
   // ───────────────────────── بانک سؤالات ─────────────────────────
   final List<BankQuestion> _questions = [
     BankQuestion(
@@ -189,7 +249,7 @@ class AcademyStore {
       chapter: 'فصل ۳ — معادلات',
       kind: QuestionKind.mcq,
       text: 'مجموع زوایای داخلی یک مثلث چند درجه است؟',
-      options: ['۹۰', '۱۸۰', '۲۷۰', '۳۶۰'],
+      options: const ['۹۰', '۱۸۰', '۲۷۰', '۳۶۰'],
       correctIndex: 1,
       points: 1,
       status: PublishStatus.published,
@@ -227,7 +287,7 @@ class AcademyStore {
       chapter: 'فصل ۱ — اعداد',
       kind: QuestionKind.mcq,
       text: 'حاصل ۷ × ۸ چند است؟',
-      options: ['۴۹', '۵۶', '۶۳', '۶۴'],
+      options: const ['۴۹', '۵۶', '۶۳', '۶۴'],
       correctIndex: 1,
       points: 1,
       status: PublishStatus.published,
@@ -252,7 +312,7 @@ class AcademyStore {
       chapter: 'فصل ۲ — کسرها',
       kind: QuestionKind.mcq,
       text: 'حاصل ۱/۲ + ۱/۴ چند است؟',
-      options: ['۱/۶', '۲/۶', '۳/۴', '۱/۸'],
+      options: const ['۱/۶', '۲/۶', '۳/۴', '۱/۸'],
       correctIndex: 2,
       points: 1,
       status: PublishStatus.published,

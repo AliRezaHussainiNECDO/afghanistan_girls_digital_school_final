@@ -5,6 +5,7 @@ import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
+import '../../../../core/student/selected_grade_provider.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/grade_map_providers.dart';
@@ -19,7 +20,11 @@ class GradeMapScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authSessionProvider);
     final studentId = user?.id ?? 'unknown';
-    final gradeMapAsync = ref.watch(gradeMapProvider(studentId));
+    // همان صنفِ انتخاب‌شده از نوار انتخاب صنف — تا این صفحه هم با بقیهٔ
+    // خانهٔ شاگرد هماهنگ باشد و صنوف قبلیِ مرورشده را درست نشان دهد.
+    final grade = ref.watch(selectedGradeProvider);
+    final key = (studentId: studentId, grade: grade);
+    final gradeMapAsync = ref.watch(gradeMapProvider(key));
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
@@ -29,10 +34,10 @@ class GradeMapScreen extends ConsumerWidget {
         loading: () => const LoadingView(),
         error: (err, st) => ErrorView(
           message: err.toString(),
-          onRetry: () => ref.invalidate(gradeMapProvider(studentId)),
+          onRetry: () => ref.invalidate(gradeMapProvider(key)),
         ),
         data: (gradeMap) => RefreshIndicator(
-          onRefresh: () async => ref.invalidate(gradeMapProvider(studentId)),
+          onRefresh: () async => ref.invalidate(gradeMapProvider(key)),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
             children: [

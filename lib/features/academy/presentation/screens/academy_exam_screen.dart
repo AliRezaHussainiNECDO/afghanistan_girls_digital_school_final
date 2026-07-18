@@ -2,28 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
-import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/celebration_overlay.dart';
-import '../../../progression/data/progression_store.dart';
 import '../../../../shared_models/app_notification.dart';
-import '../../../../shared_models/subject.dart';
 import '../../data/academy_store.dart';
 import '../../domain/academy_entities.dart';
 import '../academy_providers.dart';
 import '../widgets/academy_shared.dart';
 
-/// نگاشت نام فارسی مضمون به شناسهٔ مضمون (برای به‌روزرسانی «انبار ارتقا»).
-String _subjectIdFor(String subjectNameFa) {
-  for (final s in mockSubjects) {
-    if (s.nameFa == subjectNameFa) return s.id;
-  }
-  return '';
-}
-
-/// صفحهٔ گرفتن امتحان یک مضمون (مضمون+صنف) — پشتیبانی از سه نوع سؤال،
+/// صفحهٔ گرفتن «تمرین» یک مضمون (مضمون+صنف) — پشتیبانی از سه نوع سؤال،
 /// ارسال، نمره‌دهی خودکار (سؤالات بسته) و نمره‌دهی تشریحی با هوش مصنوعی،
 /// و نمایش پویا و مدرن نتیجه.
+///
+/// **نکتهٔ مهم دربارهٔ ارتقا:** این یک امتحان تمرینیِ مضمون است، نه امتحان
+/// نهاییِ صنف. قبلاً اینجا با `ProgressionStore` (یک انبار محلیِ گوشی که
+/// اصلاً به سرور وصل نبود و حتی با شناسه‌های شاگرد نمونهٔ ثابت Seed می‌شد)
+/// یک «ارتقای» جعلی شبیه‌سازی می‌شد — یعنی به شاگرد گفته می‌شد ارتقا یافته
+/// در حالی که `current_grade` واقعی روی سرور هرگز تغییر نمی‌کرد و با ورود
+/// بعدی یا در هر صفحهٔ دیگر (نصاب/داشبورد/نقشهٔ صنف که همه از سرور می‌خوانند)
+/// اثری از آن دیده نمی‌شد. ارتقای واقعی اکنون فقط از مسیر «امتحان نهایی
+/// صنف» (صفحهٔ `ExamsScreen` → `ExamTakingScreen` → `POST /exams/:id/submit`
+/// → `promoteIfEligible` روی سرور) اتفاق می‌افتد.
 class AcademyExamScreen extends ConsumerStatefulWidget {
   final String subject;
   final int gradeId;
@@ -138,33 +138,18 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
       ref.invalidate(mySubmissionsProvider);
       ref.invalidate(allSubmissionsProvider);
       NotificationCenter.instance.push(
-        title: submission.passed ? 'نمرهٔ امتحان ثبت شد 🎉' : 'نمرهٔ امتحان ثبت شد',
-        body:
-            '${submission.subject} · ${submission.gradeLabel}: ${submission.scorePercent.toStringAsFixed(0)}٪ — در داشبورد والدین هم دیده می‌شود.',
+        title: submission.passed
+            ? context.tr('academy.practiceScoreNotifTitlePassed')
+            : context.tr('academy.practiceScoreNotifTitle'),
+        body: context.tr('academy.practiceScoreNotifBody', {
+          'subject': submission.subject,
+          'grade': gradeLabel(context, submission.gradeId),
+          'percent': submission.scorePercent.toStringAsFixed(0),
+        }),
         kind: NotificationKind.grade,
         priority: submission.passed ? NotificationPriority.medium : NotificationPriority.high,
       );
 
-      // ── ثبت در «انبار ارتقا» و ارتقای خودکار در صورت واجد شرایط بودن ──
-      final subjectId = _subjectIdFor(widget.subject);
-      final promoted = ProgressionStore.instance.recordExam(
-        studentId: submission.studentId,
-        subjectId: subjectId,
-        scorePercent: submission.scorePercent,
-        fallbackGrade: widget.gradeId,
-      );
-      if (promoted) {
-        final newGrade = ProgressionStore.instance.progressFor(submission.studentId).currentGrade;
-        ref.read(selectedGradeProvider.notifier).select(newGrade);
-        ref.invalidate(currentStudentProvider);
-        ref.invalidate(studentExamsProvider);
-        NotificationCenter.instance.push(
-          title: 'ارتقا به صنف بعدی 🎓',
-          body: 'تبریک! تمام مضامین را کامل کردی و امتحان را کامیاب شدی — به صنف $newGrade ارتقا یافتی.',
-          kind: NotificationKind.grade,
-          priority: NotificationPriority.high,
-        );
-      }
       if (mounted) {
         setState(() => _result = submission);
         if (submission.passed) {
@@ -176,7 +161,7 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ارسال ناموفق بود'), behavior: SnackBarBehavior.floating),
+          SnackBar(content: Text(context.tr('academy.submitFailed')), behavior: SnackBarBehavior.floating),
         );
       }
     } finally {
@@ -191,7 +176,9 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
-        title: Text('${widget.subject} · ${gradeLabel(widget.gradeId)}',
+        title: Text(
+            context.tr('academy.practiceTitle',
+                {'subject': widget.subject, 'grade': gradeLabel(context, widget.gradeId)}),
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
         iconTheme: const IconThemeData(color: Colors.white),
         flexibleSpace: const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.heroGradient)),
@@ -204,7 +191,7 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
         data: (questions) {
           if (_result != null) return _ResultView(result: _result!);
           if (questions.isEmpty) {
-            return const Center(child: Text('برای این امتحان هنوز سؤالی منتشر نشده است'));
+            return Center(child: Text(context.tr('academy.noQuestionsYetForPractice')));
           }
           return _buildTaking(context, questions);
         },
@@ -244,7 +231,9 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
                 icon: _submitting
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.send_rounded),
-                label: Text(_submitting ? 'در حال نمره‌دهی…' : 'ارسال و دیدن نمره'),
+                label: Text(_submitting
+                    ? context.tr('academy.scoringInProgress')
+                    : context.tr('academy.submitAndSeeScore')),
               ),
             ),
           ),
@@ -292,7 +281,8 @@ class _QuestionInput extends StatelessWidget {
               const SizedBox(width: 10),
               KindChip(kind: q.kind),
               const Spacer(),
-              Text('${q.points} امتیاز', style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+              Text(context.tr('academy.pointsLabel', {'points': '${q.points}'}),
+                  style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
             ],
           ),
           const SizedBox(height: 10),
@@ -320,9 +310,11 @@ class _QuestionInput extends StatelessWidget {
       case QuestionKind.trueFalse:
         return [
           SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: true, label: Text('صحیح'), icon: Icon(Icons.check_rounded)),
-              ButtonSegment(value: false, label: Text('غلط'), icon: Icon(Icons.close_rounded)),
+            segments: [
+              ButtonSegment(
+                  value: true, label: Text(context.tr('academy.correctLabel')), icon: const Icon(Icons.check_rounded)),
+              ButtonSegment(
+                  value: false, label: Text(context.tr('academy.incorrectLabel')), icon: const Icon(Icons.close_rounded)),
             ],
             selected: tfValue == null ? <bool>{} : {tfValue!},
             emptySelectionAllowed: true,
@@ -336,9 +328,9 @@ class _QuestionInput extends StatelessWidget {
           TextField(
             controller: essayController,
             maxLines: 4,
-            decoration: const InputDecoration(
-              hintText: 'پاسخ خود را اینجا بنویس…',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              hintText: context.tr('academy.essayAnswerHint'),
+              border: const OutlineInputBorder(),
             ),
           ),
         ];
@@ -354,7 +346,6 @@ class _ResultView extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final passed = result.passed;
-    final color = passed ? AppColors.green600 : AppColors.orange600;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -376,27 +367,35 @@ class _ResultView extends StatelessWidget {
               const SizedBox(height: 8),
               Text('${result.scorePercent.toStringAsFixed(0)}٪',
                   style: const TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w900)),
-              Text('${result.earnedPoints.toStringAsFixed(1)} از ${result.totalPoints.toStringAsFixed(0)} امتیاز',
+              Text(
+                  context.tr('academy.pointsEarnedOfTotal', {
+                    'earned': result.earnedPoints.toStringAsFixed(1),
+                    'total': result.totalPoints.toStringAsFixed(0),
+                  }),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.9))),
               const SizedBox(height: 6),
-              Text(passed ? 'آفرین! قبول شدی 🌟' : 'نزدیک بودی — با کمی تلاش بیشتر موفق می‌شوی 💪',
+              Text(
+                  passed
+                      ? context.tr('academy.practicePassedCongrats')
+                      : context.tr('academy.practiceFailedEncourage'),
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
             ],
           ),
         ).animate().fadeIn(duration: 300.ms).scale(begin: const Offset(0.95, 0.95)),
         const SizedBox(height: 16),
-        Text('بازبینی پاسخ‌ها', style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface)),
+        Text(context.tr('academy.reviewAnswers'),
+            style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface)),
         const SizedBox(height: 10),
         ...result.answers.map((a) => _answerCard(context, a)),
         const SizedBox(height: 8),
         FilledButton.tonalIcon(
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.check_rounded),
-          label: const Text('پایان'),
+          label: Text(context.tr('academy.finishButton')),
         ),
         const SizedBox(height: 4),
         Center(
-          child: Text('نمرهٔ این امتحان در داشبورد والدین هم دیده می‌شود.',
+          child: Text(context.tr('academy.scoreVisibleToParentNotice'),
               style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
         ),
       ],
@@ -431,15 +430,26 @@ class _ResultView extends StatelessWidget {
           ),
           if (a.kind == QuestionKind.mcq && a.correctIndex != null && a.options.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('پاسخ درست: ${a.options[a.correctIndex!.clamp(0, a.options.length - 1).toInt()]}',
+            Text(
+                context.tr('academy.correctAnswerPrefix', {
+                  'answer': a.options[a.correctIndex!.clamp(0, a.options.length - 1).toInt()]
+                }),
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
             if (a.chosenIndex != null && a.chosenIndex != a.correctIndex)
-              Text('پاسخ تو: ${a.options[a.chosenIndex!.clamp(0, a.options.length - 1).toInt()]}',
+              Text(
+                  context.tr('academy.yourAnswerPrefix', {
+                    'answer': a.options[a.chosenIndex!.clamp(0, a.options.length - 1).toInt()]
+                  }),
                   style: const TextStyle(fontSize: 12, color: AppColors.danger)),
           ],
           if (a.kind == QuestionKind.trueFalse && a.correctBool != null) ...[
             const SizedBox(height: 8),
-            Text('پاسخ درست: ${a.correctBool! ? 'صحیح' : 'غلط'}',
+            Text(
+                context.tr('academy.correctAnswerPrefix', {
+                  'answer': a.correctBool!
+                      ? context.tr('academy.correctLabel')
+                      : context.tr('academy.incorrectLabel')
+                }),
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           ],
           if (a.kind == QuestionKind.essay && a.aiFeedback.isNotEmpty) ...[

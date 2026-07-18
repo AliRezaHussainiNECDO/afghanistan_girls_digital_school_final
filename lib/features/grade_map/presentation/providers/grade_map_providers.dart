@@ -25,16 +25,23 @@ final gradeMapRepositoryProvider = Provider<GradeMapRepository>(
 final getGradeMapUseCaseProvider =
     Provider((ref) => GetGradeMapUseCase(ref.watch(gradeMapRepositoryProvider)));
 
+/// کلید این Provider — شناسهٔ شاگرد + **کدام صنف** (رفع اشکال: قبلاً فقط
+/// `studentId` کلید بود، پس همیشه یک نتیجهٔ کش‌شدهٔ واحد برای همهٔ صنوف
+/// وجود داشت و «وضعیت ارتقا»/«نقشهٔ صنف» برای هر صنفِ مرورشده‌ای عیناً همان
+/// وضعیت صنف فعال را نشان می‌داد).
+typedef GradeMapKey = ({String studentId, int grade});
+
 /// طبق مثال دقیق بخش ۲۴.۵ سند.
 ///
 /// **اصلاح:** با watch کردن «انبار ارتقا»، نقشهٔ صنوف پس از هر ارتقا/تغییر
-/// پیشرفت خودکار تازه می‌شود و همیشه صنف فعال واقعی شاگرد را نشان می‌دهد.
-final gradeMapProvider = FutureProvider.family<GradeMap, String>((ref, studentId) async {
+/// پیشرفت خودکار تازه می‌شود. همچنین اکنون به‌ازای هر صنفِ درخواست‌شده
+/// (نه فقط صنف فعال) به‌طور جداگانه کش/واکشی می‌شود.
+final gradeMapProvider = FutureProvider.autoDispose.family<GradeMap, GradeMapKey>((ref, key) async {
   ref.watch(progressionStoreProvider); // بازخوانی خودکار پس از ارتقا
   // اطمینان از اینکه رکورد پیشرفت با صنفِ درست (صنف راجستر کاربر) ساخته شود.
   final fallback = ref.watch(authSessionProvider)?.currentGrade ?? 7;
-  ProgressionStore.instance.progressFor(studentId, fallbackGrade: fallback);
-  final useCase = ref.read(getGradeMapUseCaseProvider);
-  final result = await useCase(studentId);
+  ProgressionStore.instance.progressFor(key.studentId, fallbackGrade: fallback);
+  final useCase = ref.watch(getGradeMapUseCaseProvider);
+  final result = await useCase(GetGradeMapParams(studentId: key.studentId, grade: key.grade));
   return result.fold((failure) => throw failure, (gradeMap) => gradeMap);
 });

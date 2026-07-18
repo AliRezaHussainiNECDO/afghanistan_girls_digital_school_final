@@ -72,7 +72,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     if (!mounted) return;
     if (!hasPermission) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('برای پیام صوتی، دسترسی میکروفون لازم است.')),
+        SnackBar(content: Text(context.tr('chat.micPermissionRequired'))),
       );
       return;
     }
@@ -124,11 +124,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   /// گزارش تخلف — طبق بند ۳ قوانین و شرایط استفاده. با نگه‌داشتن انگشت روی
   /// پیامِ طرف مقابل باز می‌شود.
   Future<void> _showReportSheet(PeerMessage message) async {
-    const reasons = [
-      'محتوای نامناسب یا توهین‌آمیز',
-      'مزاحمت یا آزار',
-      'تبلیغات یا اسپم',
-      'سایر موارد',
+    final reasons = [
+      context.tr('chat.reportReason1'),
+      context.tr('chat.reportReason2'),
+      context.tr('chat.reportReason3'),
+      context.tr('chat.reportReason4'),
     ];
     final selected = await showModalBottomSheet<String>(
       context: context,
@@ -137,10 +137,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('گزارش تخلف — دلیل را انتخاب کنید',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(context.tr('chat.reportReasonPrompt'),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
             ),
             for (final reason in reasons)
               ListTile(
@@ -158,7 +158,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
         .call(ReportMessageParams(messageId: message.id, reason: selected));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('گزارش شما ثبت شد؛ تیم مدیریت بررسی می‌کند. 🌸')),
+      SnackBar(content: Text(context.tr('chat.reportSubmitted'))),
     );
   }
 
@@ -231,7 +231,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(message: e.toString()),
+              error: (e, st) => ErrorView(error: e),
               data: (messages) {
                 _scrollToBottom();
                 return ListView.builder(
@@ -241,7 +241,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                   itemBuilder: (context, i) {
                     final m = messages[i];
                     final showDate = i == 0 ||
-                        dateLabelFa(messages[i - 1].timestamp) != dateLabelFa(m.timestamp);
+                        dateLabelFa(context, messages[i - 1].timestamp) != dateLabelFa(context, m.timestamp);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -305,7 +305,7 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                         IconButton(
                           icon: Icon(Icons.mic_rounded, color: scheme.primary),
                           onPressed: _startRecording,
-                          tooltip: 'پیام صوتی',
+                          tooltip: context.tr('chat.voiceMessageTooltip'),
                         ),
                         Container(
                           decoration:
@@ -378,14 +378,14 @@ class _MessageBubble extends StatelessWidget {
                   const SizedBox(width: 6),
                   const Icon(Icons.hourglass_top_rounded, size: 11, color: AppColors.gold600),
                   const SizedBox(width: 2),
-                  const Text('در انتظار بازبینی مدیر',
-                      style: TextStyle(fontSize: 10, color: AppColors.gold600)),
+                  Text(context.tr('chat.pendingReview'),
+                      style: const TextStyle(fontSize: 10, color: AppColors.gold600)),
                 ] else if (m.fromMe && m.isRejected) ...[
                   const SizedBox(width: 6),
                   const Icon(Icons.block_rounded, size: 11, color: AppColors.danger),
                   const SizedBox(width: 2),
-                  const Text('توسط مدیر تأیید نشد',
-                      style: TextStyle(fontSize: 10, color: AppColors.danger)),
+                  Text(context.tr('chat.rejectedByAdmin'),
+                      style: const TextStyle(fontSize: 10, color: AppColors.danger)),
                 ],
               ],
             ),
@@ -442,7 +442,7 @@ class _VoiceBubbleState extends State<VoiceBubble> {
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('پخش پیام صوتی ناموفق بود.')));
+            .showSnackBar(SnackBar(content: Text(context.tr('chat.voicePlaybackFailed'))));
       }
     }
   }

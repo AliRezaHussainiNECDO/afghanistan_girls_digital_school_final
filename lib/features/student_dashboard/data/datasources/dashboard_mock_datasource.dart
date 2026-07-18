@@ -33,6 +33,9 @@ class DashboardMockDataSource implements DashboardDataSource {
       pointsTotal: 240,
       pointsLevel: 3,
       pointsLevelTitleFa: 'کوشا',
+      pointsNextLevelAt: 300,
+      pointsNextLevelTitleFa: 'ستاره',
+      pointsProgressToNextPercent: 60,
       certificatesCount: 1,
     );
   }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/presentation/providers/auth_providers.dart';
+import '../../../core/localization/locale_provider.dart';
 import '../../../core/network/network_providers.dart';
 import '../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
 import '../data/advisor_service.dart';
@@ -27,6 +28,10 @@ final advisorStudentHydrationProvider = FutureProvider<bool>((ref) async {
   return true;
 });
 
-/// سرویس مشاور — از موتور فعال هوش مصنوعی استفاده می‌کند.
-final advisorServiceProvider =
-    Provider<AdvisorService>((ref) => AdvisorService(ref.watch(activeAiEngineProvider)));
+/// سرویس مشاور — از موتور فعال هوش مصنوعی استفاده می‌کند. زبان فعال اپ هم
+/// پاس داده می‌شود تا پاسخ‌های درون‌ساخت و دستورالعمل زبان به موتور هوش
+/// مصنوعی با زبان انتخابی شاگرد هماهنگ باشد.
+final advisorServiceProvider = Provider<AdvisorService>((ref) => AdvisorService(
+      ref.watch(activeAiEngineProvider),
+      localeCode: ref.watch(localeProvider).languageCode,
+    ));

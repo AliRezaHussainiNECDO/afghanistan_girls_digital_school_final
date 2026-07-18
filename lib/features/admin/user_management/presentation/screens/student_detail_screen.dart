@@ -5,10 +5,15 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../../core/localization/app_localizations.dart';
 import '../../../../advisor/data/advisor_store.dart';
 import '../../../../advisor/domain/advisor_entities.dart';
 import '../../../../advisor/presentation/advisor_providers.dart';
 import '../../../../certificates/presentation/widgets/admin_certificates_section.dart';
+import '../../../../chat/domain/entities/chat_entities.dart';
+import '../../../../chat/domain/usecases/chat_usecases.dart';
+import '../../../../chat/presentation/providers/chat_providers.dart';
+import '../../../chat_monitoring/presentation/screens/admin_chat_thread_screen.dart' show AdminMessageCard;
 import '../../domain/entities/student_entities.dart';
 import '../providers/student_management_providers.dart';
 import '../widgets/admin_actions_sheet.dart';
@@ -25,7 +30,7 @@ class StudentDetailScreen extends ConsumerWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: DefaultTabController(
-        length: 5,
+        length: 6,
         child: Scaffold(
           backgroundColor: AppPalette.surface,
           body: detail.when(
@@ -42,7 +47,7 @@ class StudentDetailScreen extends ConsumerWidget {
                 FilledButton.icon(
                   onPressed: () => ref.invalidate(studentDetailProvider(studentId)),
                   icon: const Icon(Icons.refresh),
-                  label: const Text('تلاش دوباره'),
+                  label: Text(context.tr('common.retry')),
                 ),
               ]),
             ),
@@ -56,6 +61,7 @@ class StudentDetailScreen extends ConsumerWidget {
                 _AttendanceTab(detail: d),
                 _AiReportTab(studentId: studentId),
                 _AdvisorTab(studentId: studentId),
+                _AdminChatTab(userId: studentId, userName: d.summary.fullName),
               ]),
             ),
           ),
@@ -82,22 +88,23 @@ class _Header extends ConsumerWidget {
       actions: [
         IconButton(
           icon: const Icon(Icons.more_vert),
-          tooltip: 'اکشن‌های مدیریتی',
+          tooltip: context.tr('studentDetail.adminActionsTooltip'),
           onPressed: () => showAdminActionsSheet(context, ref, detail),
         ),
       ],
-      bottom: const TabBar(
+      bottom: TabBar(
         isScrollable: true,
         tabAlignment: TabAlignment.start,
         indicatorColor: Colors.white,
         labelColor: Colors.white,
         unselectedLabelColor: Colors.white70,
         tabs: [
-          Tab(text: 'نمای کلی'),
-          Tab(text: 'پیشرفت درسی'),
-          Tab(text: 'حاضری'),
-          Tab(text: 'گزارش استاد AI'),
-          Tab(text: 'مشاور هوشمند'),
+          Tab(text: context.tr('studentDetail.tabOverview')),
+          Tab(text: context.tr('studentDetail.tabProgress')),
+          Tab(text: context.tr('studentDetail.tabAttendance')),
+          Tab(text: context.tr('studentDetail.tabAiReport')),
+          Tab(text: context.tr('studentDetail.tabAdvisor')),
+          Tab(text: context.tr('studentDetail.tabAdminChat')),
         ],
       ),
       flexibleSpace: FlexibleSpaceBar(
@@ -138,7 +145,12 @@ class _Header extends ConsumerWidget {
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(
-                            'صنف ${s.grade} • ${s.province} • رتبه ${detail.classRank} از ${detail.classSize}',
+                            context.tr('studentDetail.headerSubtitle', {
+                              'grade': '${s.grade}',
+                              'province': s.province,
+                              'rank': '${detail.classRank}',
+                              'size': '${detail.classSize}',
+                            }),
                             style: TextStyle(
                                 color: Colors.white.withValues(alpha: .85),
                                 fontSize: 12)),
@@ -181,21 +193,21 @@ class _OverviewTab extends StatelessWidget {
           StatTile(
               icon: Icons.school,
               value: '٪${s.gradeAverage.toStringAsFixed(0)}',
-              label: 'میانگین نمرات'),
+              label: context.tr('studentList.gradeAverageLabel')),
           StatTile(
               icon: Icons.event_available,
               value: '٪${s.attendanceRate.toStringAsFixed(0)}',
-              label: 'نرخ حاضری',
+              label: context.tr('studentDetail.attendanceRateLabel'),
               color: s.attendanceRate >= 75 ? AppPalette.green : AppPalette.red),
           StatTile(
               icon: Icons.quiz,
               value: '${detail.examsTaken}',
-              label: 'امتحانات سپری‌شده',
+              label: context.tr('studentDetail.examsTakenLabel'),
               color: Colors.indigo),
           StatTile(
               icon: Icons.workspace_premium,
               value: '${detail.certificatesCount}',
-              label: 'گواهی‌نامه‌ها',
+              label: context.tr('studentDetail.certificatesLabel'),
               color: AppPalette.amber),
         ],
       ),
@@ -203,42 +215,42 @@ class _OverviewTab extends StatelessWidget {
       _PromotionSection(studentId: s.id, detail: detail),
       const SizedBox(height: 14),
       SectionCard(
-        title: 'معلومات شخصی',
+        title: context.tr('studentDetail.personalInfoTitle'),
         icon: Icons.badge_outlined,
         child: Column(children: [
-          _InfoRow(label: 'ایمیل', value: detail.email),
-          _InfoRow(label: 'شماره تلفن', value: detail.phone),
-          _InfoRow(label: 'تاریخ تولد', value: _fmt(detail.birthDate)),
-          _InfoRow(label: 'تاریخ ثبت‌نام', value: _fmt(detail.registeredAt)),
+          _InfoRow(label: context.tr('instructorDetail.emailLabel'), value: detail.email),
+          _InfoRow(label: context.tr('studentDetail.phoneNumberLabel'), value: detail.phone),
+          _InfoRow(label: context.tr('studentDetail.birthDateLabel'), value: _fmt(detail.birthDate)),
+          _InfoRow(label: context.tr('studentDetail.registeredAtLabel'), value: _fmt(detail.registeredAt)),
           _InfoRow(
-              label: 'آخرین فعالیت',
+              label: context.tr('studentDetail.lastActiveLabel'),
               value: s.lastActiveAt != null
                   ? _fmt(s.lastActiveAt!)
-                  : 'نامشخص'),
+                  : context.tr('studentDetail.unknownValue')),
           _InfoRow(
-              label: 'گفتگو با استاد AI',
-              value: '${detail.aiConversationsCount} پیام'),
+              label: context.tr('studentDetail.aiTeacherChatLabel'),
+              value: context.tr('studentDetail.messagesCountSuffix', {'count': '${detail.aiConversationsCount}'})),
           _InfoRow(
-              label: 'گفتگو با مشاور هوشمند',
-              value: '${AdvisorStore.instance.messagesFor(s.id).length} پیام'),
+              label: context.tr('studentDetail.advisorChatLabel'),
+              value: context.tr('studentDetail.messagesCountSuffix', {'count': '${AdvisorStore.instance.messagesFor(s.id).length}'})),
         ]),
       ),
       // ── گواهی‌نامه‌ها: ارسال پس از ختم هر صنف + لیست ارسال‌شده‌ها ──
       AdminCertificatesSection(detail: detail),
       SectionCard(
-        title: 'والدین / سرپرست',
+        title: context.tr('studentDetail.parentsGuardianTitle'),
         icon: Icons.family_restroom,
         child: detail.parentLinks.isEmpty
-            ? Text('هیچ والدی لینک نشده است',
+            ? Text(context.tr('studentDetail.noParentsLinked'),
                 style: TextStyle(color: Colors.grey.shade600))
             : Column(
                 children: detail.parentLinks
                     .map((p) => _InfoRow(
                         label: p.parentName,
                         value: switch (p.linkStatus) {
-                          'approved' => 'تأییدشده',
-                          'pending_student_approval' => 'در انتظار تأیید شاگرد',
-                          _ => 'ردشده',
+                          'approved' => context.tr('studentDetail.linkApproved'),
+                          'pending_student_approval' => context.tr('studentDetail.linkPendingApproval'),
+                          _ => context.tr('studentDetail.linkRejected'),
                         }))
                     .toList(),
               ),
@@ -285,10 +297,10 @@ class _ProgressTab extends StatelessWidget {
           },
           trailing: Text(
             switch (sub.status) {
-              SubjectStatus.completed => 'تکمیل‌شده',
-              SubjectStatus.inProgress => 'در جریان',
-              SubjectStatus.failed => 'ناکام',
-              SubjectStatus.locked => 'قفل',
+              SubjectStatus.completed => context.tr('studentDetail.subjectCompleted'),
+              SubjectStatus.inProgress => context.tr('studentDetail.subjectInProgress'),
+              SubjectStatus.failed => context.tr('studentDetail.subjectFailed'),
+              SubjectStatus.locked => context.tr('studentDetail.subjectLocked'),
             },
             style: TextStyle(
                 fontSize: 12,
@@ -301,31 +313,31 @@ class _ProgressTab extends StatelessWidget {
                 }),
           ),
           child: Column(children: [
-            ScoreBar(value: sub.progressPercent, label: 'پیشرفت دروس'),
+            ScoreBar(value: sub.progressPercent, label: context.tr('studentDetail.lessonsProgressLabel')),
             const SizedBox(height: 10),
             Row(children: [
               Expanded(
                 child: _MiniStat(
-                    label: 'دروس',
+                    label: context.tr('studentDetail.lessonsLabel'),
                     value: '${sub.completedLessons}/${sub.totalLessons}'),
               ),
               Expanded(
                 child: _MiniStat(
-                    label: 'میانگین کوییز',
+                    label: context.tr('studentDetail.quizAverageLabel'),
                     value: sub.quizAverage != null
                         ? '٪${sub.quizAverage!.toStringAsFixed(0)}'
                         : '—'),
               ),
               Expanded(
                 child: _MiniStat(
-                    label: 'میانگین امتحان',
+                    label: context.tr('studentDetail.examAverageLabel'),
                     value: sub.examAverage != null
                         ? '٪${sub.examAverage!.toStringAsFixed(0)}'
                         : '—'),
               ),
               Expanded(
                 child: _MiniStat(
-                    label: 'نمره نهایی',
+                    label: context.tr('studentDetail.finalScoreLabel'),
                     value: sub.finalScore != null
                         ? '٪${sub.finalScore!.toStringAsFixed(0)}'
                         : '—'),
@@ -364,20 +376,20 @@ class _AttendanceTab extends StatelessWidget {
       Row(children: [
         Expanded(
             child: StatTile(
-                icon: Icons.check, value: '${a.presentDays}', label: 'روز حاضر')),
+                icon: Icons.check, value: '${a.presentDays}', label: context.tr('studentDetail.presentDaysLabel'))),
         const SizedBox(width: 10),
         Expanded(
             child: StatTile(
                 icon: Icons.close,
                 value: '${a.absentDays}',
-                label: 'روز غایب',
+                label: context.tr('studentDetail.absentDaysLabel'),
                 color: AppPalette.red)),
         const SizedBox(width: 10),
         Expanded(
             child: StatTile(
                 icon: Icons.percent,
                 value: '٪${a.rate.toStringAsFixed(0)}',
-                label: 'نرخ حاضری',
+                label: context.tr('studentDetail.attendanceRateLabel'),
                 color: a.belowThreshold ? AppPalette.red : AppPalette.green)),
       ]),
       const SizedBox(height: 14),
@@ -390,19 +402,19 @@ class _AttendanceTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppPalette.red.withValues(alpha: .3)),
           ),
-          child: const Row(children: [
-            Icon(Icons.warning_amber_rounded, color: AppPalette.red),
-            SizedBox(width: 10),
+          child: Row(children: [
+            const Icon(Icons.warning_amber_rounded, color: AppPalette.red),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'نرخ حاضری زیر آستانهٔ ۷۵٪ است — طبق تشخیص سیستم، در معرض محرومیت از امتحان نهایی قرار دارد.',
-                style: TextStyle(fontSize: 13),
+                context.tr('studentDetail.attendanceBelowThresholdWarning'),
+                style: const TextStyle(fontSize: 13),
               ),
             ),
           ]),
         ),
       SectionCard(
-        title: 'حاضری ۳۰ روز اخیر',
+        title: context.tr('studentDetail.last30DaysAttendanceTitle'),
         icon: Icons.calendar_month,
         child: AttendanceHeatmap(days: a.last30Days),
       ),
@@ -419,26 +431,30 @@ class _AiReportTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final report = ref.watch(aiReportProvider(studentId));
     return report.when(
-      loading: () => const Center(
+      loading: () => Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 12),
-          Text('در حال دریافت گزارش استاد هوش مصنوعی…'),
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
+          Text(context.tr('studentDetail.loadingAiReport')),
         ]),
       ),
       error: (e, _) => Center(child: Text(e.toString())),
       data: (r) => ListView(padding: const EdgeInsets.all(16), children: [
         SectionCard(
-          title: 'خلاصهٔ وضعیت',
+          title: context.tr('studentDetail.statusSummaryTitle'),
           icon: Icons.psychology,
           trailing: Text(
-            'به‌روزرسانی: ${r.generatedAt.year}/${r.generatedAt.month}/${r.generatedAt.day}',
+            context.tr('studentDetail.updatedAtLabel', {
+              'y': '${r.generatedAt.year}',
+              'm': '${r.generatedAt.month}',
+              'd': '${r.generatedAt.day}',
+            }),
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
           ),
           child: Column(children: [
-            ScoreBar(value: r.overallProgress, label: 'سطح پیشرفت کلی'),
+            ScoreBar(value: r.overallProgress, label: context.tr('studentDetail.overallProgressLabel')),
             const SizedBox(height: 12),
-            ScoreBar(value: r.engagementScore, label: 'میزان تعامل با استاد AI'),
+            ScoreBar(value: r.engagementScore, label: context.tr('studentDetail.engagementLabel')),
             const SizedBox(height: 12),
             StressGauge(level: r.stressLevel),
             const SizedBox(height: 12),
@@ -458,9 +474,9 @@ class _AiReportTab extends ConsumerWidget {
               const SizedBox(width: 8),
               Text(
                 switch (r.trend) {
-                  Trend.improving => 'روند کلی: در حال بهبود',
-                  Trend.stable => 'روند کلی: ثابت',
-                  Trend.declining => 'روند کلی: در حال افت',
+                  Trend.improving => context.tr('studentDetail.trendImproving'),
+                  Trend.stable => context.tr('studentDetail.trendStable'),
+                  Trend.declining => context.tr('studentDetail.trendDeclining'),
                 },
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
@@ -469,26 +485,26 @@ class _AiReportTab extends ConsumerWidget {
         ),
         if (r.strengths.isNotEmpty)
           SectionCard(
-            title: 'نقاط قوت',
+            title: context.tr('studentDetail.strengthsTitle'),
             icon: Icons.star,
             child: _BulletList(items: r.strengths, color: AppPalette.green),
           ),
         if (r.concerns.isNotEmpty)
           SectionCard(
-            title: 'مشکلات و نگرانی‌ها',
+            title: context.tr('studentDetail.concernsTitle'),
             icon: Icons.report_problem_outlined,
             child: _BulletList(items: r.concerns, color: AppPalette.red),
           ),
         if (r.recommendations.isNotEmpty)
           SectionCard(
-            title: 'پیشنهادهای استاد AI به مدیر',
+            title: context.tr('studentDetail.recommendationsTitle'),
             icon: Icons.lightbulb_outline,
             child:
                 _BulletList(items: r.recommendations, color: AppPalette.amber),
           ),
         if (r.subjectNotes.isNotEmpty)
           SectionCard(
-            title: 'یادداشت به تفکیک مضمون',
+            title: context.tr('studentDetail.subjectNotesTitle'),
             icon: Icons.menu_book,
             child: Column(
               children: r.subjectNotes
@@ -598,7 +614,7 @@ class _AdvisorTabState extends ConsumerState<_AdvisorTab> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.forum_outlined, size: 54, color: Colors.grey.shade400),
               const SizedBox(height: 12),
-              Text('این شاگرد هنوز با مشاور هوشمند گفتگو نکرده است',
+              Text(context.tr('studentDetail.noAdvisorChatYet'),
                   style: TextStyle(color: Colors.grey.shade600)),
             ]),
           );
@@ -621,8 +637,8 @@ class _AdvisorTabState extends ConsumerState<_AdvisorTab> {
                 Expanded(
                   child: Text(
                     hasFlag
-                        ? 'در این گفتگو نشانهٔ نگرانی وجود دارد — لطفاً با دقت و حمایت بازبینی شود.'
-                        : 'تاریخچهٔ گفتگوی شاگرد با مشاور هوشمند (${msgs.length} پیام).',
+                        ? context.tr('studentDetail.advisorFlagWarning')
+                        : context.tr('studentDetail.advisorHistorySummary', {'count': '${msgs.length}'}),
                     style: const TextStyle(fontSize: 12.5, height: 1.5),
                   ),
                 ),
@@ -635,6 +651,19 @@ class _AdvisorTabState extends ConsumerState<_AdvisorTab> {
     );
   }
 }
+
+/// نگاشت کلید موضوع پایدار (`AdvisorMessage.topic`) به برچسب نمایشی — طبق
+/// زبان فعال اپ ترجمه می‌شود (همان کلیدهای `advisor.topic*` که در سرویس
+/// مشاور هوشمند هم استفاده می‌شوند).
+String _advisorTopicLabel(BuildContext context, String topic) => switch (topic) {
+      'psychological' => context.tr('advisor.topicPsychological'),
+      'family' => context.tr('advisor.topicFamily'),
+      'social' => context.tr('advisor.topicSocial'),
+      'academic' => context.tr('advisor.topicAcademic'),
+      'daily' => context.tr('advisor.topicDaily'),
+      'sensitive' => context.tr('advisor.topicSensitive'),
+      _ => topic,
+    };
 
 class _AdvisorBubble extends StatelessWidget {
   final AdvisorMessage msg;
@@ -665,24 +694,24 @@ class _AdvisorBubble extends StatelessWidget {
             Icon(isStudent ? Icons.person_rounded : Icons.volunteer_activism_rounded,
                 size: 16, color: isStudent ? AppPalette.greenDark : AppPalette.amber),
             const SizedBox(width: 6),
-            Text(isStudent ? 'شاگرد' : 'مشاور',
+            Text(isStudent ? context.tr('studentDetail.studentBadge') : context.tr('studentDetail.advisorBadge'),
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
             const Spacer(),
-            if (msg.topic.isNotEmpty && msg.topic != 'عمومی')
+            if (msg.topic.isNotEmpty && msg.topic != 'general')
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(msg.topic, style: const TextStyle(fontSize: 10)),
+                child: Text(_advisorTopicLabel(context, msg.topic), style: const TextStyle(fontSize: 10)),
               ),
             if (msg.flagged) ...[
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(color: AppPalette.red, borderRadius: BorderRadius.circular(8)),
-                child: const Text('نیازمند توجه', style: TextStyle(fontSize: 10, color: Colors.white)),
+                child: Text(context.tr('studentDetail.needsAttentionBadge'), style: const TextStyle(fontSize: 10, color: Colors.white)),
               ),
             ],
           ]),
@@ -692,6 +721,135 @@ class _AdvisorBubble extends StatelessWidget {
           Text(time, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
         ],
       ),
+    );
+  }
+}
+
+// ── Tab 6: پیام‌های مدیریت ────────────────────────────────────────────────
+// گفتگوی مستقیم «شاگرد ↔ مدیریت» — دقیقاً همان زیرساخت واقعیِ بخش «چت»
+// (نه یک انبار جدا)، این‌بار مستقیم داخل پروندهٔ خودِ شاگرد تا مدیر بدون
+// رفتن به صندوق ورودی چت هم ببیند و هم پاسخ بدهد (رفع درخواستِ هماهنگی:
+// «پیام هر کاربر در جای خودش سیستم شود»). شناسهٔ گفتگو با همان قرارداد
+// یکتای سرور (`admin_<userId>`) محاسبه می‌شود.
+class _AdminChatTab extends ConsumerStatefulWidget {
+  final String userId;
+  final String userName;
+  const _AdminChatTab({required this.userId, required this.userName});
+
+  @override
+  ConsumerState<_AdminChatTab> createState() => _AdminChatTabState();
+}
+
+class _AdminChatTabState extends ConsumerState<_AdminChatTab> {
+  final _controller = TextEditingController();
+  final _scrollController = ScrollController();
+  String get _conversationId => 'admin_${widget.userId}';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _review(PeerMessage message, bool approve) async {
+    await ref.read(reviewMessageUseCaseProvider).call(
+        ReviewMessageParams(conversationId: _conversationId, messageId: message.id, approve: approve));
+    if (!mounted) return;
+    ref.invalidate(adminMessagesProvider(_conversationId));
+  }
+
+  Future<void> _sendReply() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    _controller.clear();
+    await ref
+        .read(sendAdminReplyUseCaseProvider)
+        .call(SendAdminReplyParams(conversationId: _conversationId, text: text));
+    if (!mounted) return;
+    ref.invalidate(adminMessagesProvider(_conversationId));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final messagesAsync = ref.watch(adminMessagesProvider(_conversationId));
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: AppPalette.green.withValues(alpha: .08),
+          child: Row(children: [
+            const Icon(Icons.support_agent_rounded, size: 16, color: AppPalette.greenDark),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(context.tr('studentDetail.adminChatHeaderWithName', {'name': widget.userName}),
+                  style: const TextStyle(fontSize: 11.5)),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: messagesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, st) => Center(child: Text('$e')),
+            data: (messages) {
+              if (messages.isEmpty) {
+                return Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.forum_outlined, size: 54, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text(context.tr('studentDetail.noAdminChatYet'),
+                        style: TextStyle(color: Colors.grey.shade600)),
+                    const SizedBox(height: 4),
+                    Text(context.tr('studentDetail.sendFirstMessageHint'),
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                  ]),
+                );
+              }
+              return ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                itemCount: messages.length,
+                itemBuilder: (context, i) => AdminMessageCard(
+                  message: messages[i],
+                  onReview: messages[i].isPendingReview ? (approve) => _review(messages[i], approve) : null,
+                ),
+              );
+            },
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    textInputAction: TextInputAction.send,
+                    decoration: InputDecoration(hintText: context.tr('studentDetail.adminReplyHint')),
+                    onSubmitted: (_) => _sendReply(),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  decoration: const BoxDecoration(color: AppPalette.greenDark, shape: BoxShape.circle),
+                  child: IconButton(
+                    icon: const Icon(Icons.send_rounded, color: Colors.white),
+                    onPressed: _sendReply,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -719,7 +877,7 @@ class _PromotionSection extends ConsumerWidget {
     final busy = ref.watch(studentActionsProvider).isLoading;
 
     return SectionCard(
-      title: 'ارتقا / کاهش صنف',
+      title: context.tr('studentDetail.promotionSectionTitle'),
       icon: Icons.trending_up,
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -727,11 +885,11 @@ class _PromotionSection extends ConsumerWidget {
           color: AppPalette.green.withValues(alpha: .12),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Text('صنف فعلی: $grade',
+        child: Text(context.tr('studentDetail.currentGradeLabel', {'grade': '$grade'}),
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppPalette.greenDark)),
       ),
       child: Column(children: [
-        ScoreBar(value: detail.summary.gradeAverage, label: 'تکمیل مضامین صنف $grade'),
+        ScoreBar(value: detail.summary.gradeAverage, label: context.tr('studentDetail.subjectsCompletionLabel', {'grade': '$grade'})),
         const SizedBox(height: 12),
         Row(children: [
           Icon(detail.examPassed ? Icons.check_circle : Icons.pending_rounded,
@@ -740,8 +898,13 @@ class _PromotionSection extends ConsumerWidget {
           Expanded(
             child: Text(
               detail.examBestScore != null
-                  ? 'امتحان: ٪${detail.examBestScore!.toStringAsFixed(0)} ${detail.examPassed ? '(کامیاب)' : '(ناکام)'}'
-                  : 'امتحان: هنوز داده نشده',
+                  ? context.tr('studentDetail.examScoreWithStatus', {
+                      'score': detail.examBestScore!.toStringAsFixed(0),
+                      'status': detail.examPassed
+                          ? context.tr('studentDetail.examPassedParen')
+                          : context.tr('studentDetail.examFailedParen'),
+                    })
+                  : context.tr('studentDetail.examNotTakenYet'),
               style: const TextStyle(fontSize: 13),
             ),
           ),
@@ -755,12 +918,14 @@ class _PromotionSection extends ConsumerWidget {
                   ? () async {
                       final newGrade = await ref.read(studentActionsProvider.notifier).promote(studentId);
                       if (context.mounted) {
-                        _snack(context, newGrade != null ? 'به صنف $newGrade ارتقا یافت' : 'ارتقا ناکام شد');
+                        _snack(context, newGrade != null
+                            ? context.tr('studentDetail.promotedToGrade', {'grade': '$newGrade'})
+                            : context.tr('studentDetail.promoteFailed'));
                       }
                     }
                   : null,
               icon: const Icon(Icons.arrow_upward_rounded, size: 18),
-              label: Text(canPromote ? 'ارتقا به صنف ${grade + 1}' : 'بالاترین صنف'),
+              label: Text(canPromote ? context.tr('studentDetail.promoteToGrade', {'grade': '${grade + 1}'}) : context.tr('studentDetail.highestGrade')),
             ),
           ),
           const SizedBox(width: 10),
@@ -774,17 +939,19 @@ class _PromotionSection extends ConsumerWidget {
                   ? () async {
                       final newGrade = await ref.read(studentActionsProvider.notifier).demote(studentId);
                       if (context.mounted) {
-                        _snack(context, newGrade != null ? 'به صنف $newGrade کاهش یافت' : 'کاهش ناکام شد');
+                        _snack(context, newGrade != null
+                            ? context.tr('studentDetail.demotedToGrade', {'grade': '$newGrade'})
+                            : context.tr('studentDetail.demoteFailed'));
                       }
                     }
                   : null,
               icon: const Icon(Icons.arrow_downward_rounded, size: 18),
-              label: const Text('کاهش صنف'),
+              label: Text(context.tr('studentDetail.demoteButton')),
             ),
           ),
         ]),
         const SizedBox(height: 8),
-        Text('ارتقای دستی یک تصمیم مدیریتی است و مستقل از تکمیل خودکار انجام می‌شود.',
+        Text(context.tr('studentDetail.manualPromotionNote'),
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
       ]),
     );

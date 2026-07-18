@@ -88,16 +88,16 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
       if (!mounted) return;
       setState(() => _transcribing = false);
       if (text == null || text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('صدا تشخیص داده نشد؛ لطفاً دوباره تلاش کنید یا تایپ کنید.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(context.tr('aiTeacher.voiceNotRecognized'))));
         return;
       }
       await _sendText(text);
     } else {
       if (!await _recorder.hasPermission()) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('برای صحبت با معلم، دسترسی میکروفون لازم است.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(context.tr('aiTeacher.micPermissionRequired'))));
         return;
       }
       final dir = await getTemporaryDirectory();
@@ -123,7 +123,7 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
     if (path == null) {
       setState(() => _speakingId = null);
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('پخش صوتی در حال حاضر در دسترس نیست.')));
+          SnackBar(content: Text(context.tr('curriculum.audioUnavailable'))));
       return;
     }
     await _player.play(DeviceFileSource(path));
@@ -133,7 +133,7 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
   /// وضعیت «در حال شنیدن» کاملاً واضح باشد.
   Widget _buildMicButton() {
     final button = IconButton(
-      tooltip: _isRecording ? 'توقف و ارسال' : 'صحبت با معلم',
+      tooltip: _isRecording ? context.tr('aiTeacher.stopAndSend') : context.tr('aiTeacher.talkToTeacher'),
       icon: Icon(
         _isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
         color: _isRecording ? Colors.red : null,
@@ -299,7 +299,9 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
-                                        _speakingId == msg.id ? 'توقف' : 'شنیدن',
+                                        _speakingId == msg.id
+                                            ? context.tr('curriculum.stopListening')
+                                            : context.tr('aiTeacher.listen'),
                                         style: TextStyle(fontSize: 11, color: scheme.primary),
                                       ),
                                     ],
@@ -359,7 +361,7 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
                       controller: _controller,
                       decoration: InputDecoration(
                         hintText: _isRecording
-                            ? 'در حال ضبط صدا... برای ارسال، دوباره میکروفون را بزنید'
+                            ? context.tr('aiTeacher.recordingHint')
                             : context.tr('aiTeacher.askQuestion'),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

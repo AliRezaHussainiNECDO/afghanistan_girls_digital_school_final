@@ -31,8 +31,8 @@ import {
 type Bindings = { DB: D1Database; JWT_SECRET: string; };
 const c11m = new Hono<{ Bindings: Bindings }>();
 
-function fail(code: string, fa: string, en: string) {
-  return { success: false, error: { code, message_fa: fa, message_en: en } };
+function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
+  return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 async function userId(c: any): Promise<string | null> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
@@ -122,7 +122,7 @@ c11m.get('/lessons/:lessonId', async (c) => {
   )
     .bind(uid ?? '', lessonId)
     .first();
-  if (!row) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+  if (!row) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
   return c.json({ lesson: row });
 });
 
@@ -130,10 +130,10 @@ c11m.get('/lessons/:lessonId', async (c) => {
 // + بررسی خودکار تکمیل فصل (پایهٔ قفل‌گشایی فصل بعدی). فقط دانش‌آموز واردشده.
 c11m.post('/lessons/:lessonId/view', async (c) => {
   const uid = await userId(c);
-  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const lessonId = c.req.param('lessonId');
   const result = await recordLessonView(c.env.DB, uid, lessonId);
-  if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found'), 404);
+  if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
   return c.json({
     success: true,
     pointsAwarded: result.firstView ? 10 : 0,
@@ -148,13 +148,23 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
 
 c11m.get('/students/:studentId/grade-map', async (c) => {
   const uid = await userId(c);
-  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
 
   // صنف فعلی از جدول users (پیش‌فرض ۷).
   const student = await c.env.DB.prepare('SELECT current_grade FROM users WHERE id = ?')
     .bind(uid)
     .first<{ current_grade: number | null }>();
-  const grade = student?.current_grade ?? 7;
+  const activeGrade = student?.current_grade ?? 7;
+
+  // رفع اشکال: قبلاً این Endpoint همیشه فقط «صنف فعال» را برمی‌گرداند —
+  // حتی وقتی شاگرد از نوار انتخاب صنف یکی از صنوف پایین‌ترِ تکمیل‌شده‌اش را
+  // برای مرور باز می‌کرد. یعنی «وضعیت ارتقا» و «درصد هر مضمون» در تمام
+  // صنف‌های مرورشده عیناً یک چیز (وضعیت صنف فعال) را نشان می‌دادند. اکنون
+  // کوئری اختیاری `?grade=` هر صنفِ مجاز (۷ الی صنف فعال) را می‌پذیرد؛
+  // درخواست صنف قفل‌شده (بالاتر از صنف فعال) نادیده گرفته و به صنف فعال
+  // برمی‌گردد.
+  const requestedGrade = Number(c.req.query('grade') ?? '0');
+  const grade = requestedGrade >= 7 && requestedGrade <= activeGrade ? requestedGrade : activeGrade;
 
   const subjectsProgress = await getSubjectProgressList(c.env.DB, uid, grade);
   const subjects = subjectsProgress.map((r) => ({
@@ -166,11 +176,14 @@ c11m.get('/students/:studentId/grade-map', async (c) => {
   }));
 
   // وضعیت واقعی ارتقا (رفع اشکال: قبلاً این عدد فقط محلی/ساختگی بود —
-  // بخش lib/progress.ts::getPromotionStatus).
+  // بخش lib/progress.ts::getPromotionStatus). برای صنف‌های پایین‌تر از صنف
+  // فعال، این عملاً کارنامهٔ تاریخیِ همان صنف را نشان می‌دهد (چون شاگرد از
+  // آن صنف واقعاً ارتقا گرفته، این مقادیر تکمیل‌شده خواهند بود).
   const promotion = await getPromotionStatus(c.env.DB, uid, grade);
 
   return c.json({
     gradeNumber: grade,
+    activeGradeNumber: activeGrade,
     gradeLocked: false,
     gradeAveragePercent: averagePercent(subjectsProgress),
     attendanceRatePercent: 0, // در ماژول ۳ (حاضری) پر می‌شود
@@ -248,7 +261,7 @@ async function buildContinueLearning(
 
 c11m.get('/students/me/dashboard-summary', async (c) => {
   const uid = await userId(c);
-  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const u = await c.env.DB.prepare('SELECT first_name, current_grade FROM users WHERE id = ?')
     .bind(uid)
     .first<{ first_name: string; current_grade: number | null }>();
@@ -305,6 +318,13 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     pointsTotal: points.totalPoints,
     pointsLevel: points.level,
     pointsLevelTitleFa: points.levelTitleFa,
+    // رفع اشکال: `getPointsSummary` این سه فیلد را از قبل محاسبه می‌کرد
+    // (پیشرفت تا سطح بعدی) ولی اینجا هرگز به کلاینت فرستاده نمی‌شدند — یعنی
+    // خانهٔ شاگرد امکان نمایش «چند امتیاز تا سطح بعدی» را نداشت، هرچند
+    // دادهٔ آن روی سرور آماده بود.
+    pointsNextLevelAt: points.nextLevelAt,
+    pointsNextLevelTitleFa: points.nextLevelTitleFa,
+    pointsProgressToNextPercent: points.progressToNextPercent,
     certificatesCount: certCount?.n ?? 0,
   });
 });
@@ -328,7 +348,7 @@ async function canViewStudentPoints(c: any, uid: string, role: string, studentId
 
 c11m.get('/students/me/points', async (c) => {
   const uid = await userId(c);
-  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const points = await getPointsSummary(c.env.DB, uid);
   return c.json({ points });
 });
@@ -336,11 +356,11 @@ c11m.get('/students/me/points', async (c) => {
 c11m.get('/students/:studentId/points', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const uid = (payload?.['sub'] as string | undefined) ?? null;
-  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const role = (payload?.['role'] as string | undefined) ?? 'student';
   const studentId = c.req.param('studentId');
   if (!(await canViewStudentPoints(c, uid, role, studentId))) {
-    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const points = await getPointsSummary(c.env.DB, studentId);
   return c.json({ points });
@@ -373,7 +393,7 @@ const LIBRARY_BOOK_SELECT = `
   FROM curriculum_library_books b`;
 
 c11m.get('/curriculum-library/books', async (c) => {
-  if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     `${LIBRARY_BOOK_SELECT} ORDER BY b.uploaded_at DESC`,
   ).all<any>();
@@ -381,7 +401,7 @@ c11m.get('/curriculum-library/books', async (c) => {
 });
 
 c11m.get('/curriculum-library/subjects/:subjectId/books', async (c) => {
-  if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!(await userId(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const { results } = await c.env.DB.prepare(
     `${LIBRARY_BOOK_SELECT} WHERE b.subject_id = ? ORDER BY b.uploaded_at DESC`,
   )
@@ -391,14 +411,14 @@ c11m.get('/curriculum-library/subjects/:subjectId/books', async (c) => {
 });
 
 c11m.post('/curriculum-library/books', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req
     .json<{ subjectId?: string; title?: string; pageCount?: number; gradeId?: number; extractedText?: string }>()
     .catch(() => null);
   const subjectId = String(b?.subjectId ?? '').trim();
   const title = String(b?.title ?? '').trim();
   if (!subjectId || !title) {
-    return c.json(fail('BAD_REQUEST', 'مضمون و عنوان لازم است', 'Missing fields'), 400);
+    return c.json(fail('BAD_REQUEST', 'مضمون و عنوان لازم است', 'Missing fields', 'مضمون او سرلیک اړین دي', 'La matière et le titre sont requis'), 400);
   }
   const gradeId = Number(b?.gradeId ?? 0);
   // حداکثر ۴۰۰ هزار نویسه (هماهنگ با محدودیت کلاینت).
@@ -428,7 +448,7 @@ c11m.post('/curriculum-library/books', async (c) => {
 // `applyChapterPublish` (backend/src/routes/admin.ts) هنگام جایگزینی
 // انجام می‌شود، پاک می‌کند.
 c11m.delete('/curriculum-library/books/:id', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const bookId = c.req.param('id');
 
   const { results: chapters } = await c.env.DB.prepare('SELECT id FROM chapters WHERE source_book_id = ?')
@@ -487,13 +507,13 @@ const ADMIN_LESSON_SELECT = `SELECT l.id, l.title_fa, l.estimated_minutes, l.con
   FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id`;
 
 c11m.get('/admin/curriculum/lessons', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(`${ADMIN_LESSON_SELECT} ORDER BY l.updated_at DESC`).all<any>();
   return c.json({ lessons: results.map(lessonAdminJson) });
 });
 
 c11m.post('/admin/curriculum/lessons', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req
     .json<{
       id?: string;
@@ -511,7 +531,7 @@ c11m.post('/admin/curriculum/lessons', async (c) => {
   const chapterTitle = String(b?.chapterTitle ?? '').trim();
   const title = String(b?.title ?? '').trim();
   if (!gradeNumber || !subjectId || !chapterTitle || !title) {
-    return c.json(fail('BAD_REQUEST', 'صنف، مضمون، عنوان فصل و عنوان درس لازم است', 'Missing fields'), 400);
+    return c.json(fail('BAD_REQUEST', 'صنف، مضمون، عنوان فصل و عنوان درس لازم است', 'Missing fields', 'ټولګی، مضمون، د فصل سرلیک او د درس سرلیک اړین دي', 'La classe, la matière, le titre du chapitre et le titre de la leçon sont requis'), 400);
   }
   const status = b?.status === 'published' ? 'published' : 'draft';
   const durationMinutes = Number(b?.durationMinutes ?? 15);
@@ -566,7 +586,7 @@ c11m.post('/admin/curriculum/lessons', async (c) => {
 });
 
 c11m.patch('/admin/curriculum/lessons/:id/status', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = b?.status === 'published' ? 'published' : 'draft';
   await c.env.DB.prepare("UPDATE lessons SET status = ?, updated_at = datetime('now') WHERE id = ?")
@@ -576,7 +596,7 @@ c11m.patch('/admin/curriculum/lessons/:id/status', async (c) => {
 });
 
 c11m.delete('/admin/curriculum/lessons/:id', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM student_lesson_views WHERE lesson_id = ?').bind(id).run();
   try {

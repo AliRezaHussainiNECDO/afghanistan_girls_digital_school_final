@@ -2,31 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../shared_models/subject.dart';
+import '../../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../../domain/entities/cms_entities.dart';
 import '../providers/cms_providers.dart';
 
 /// ۶ صنفِ ثابت مکتب — هماهنگ با جدول واقعی `grades` سرور (۷ تا ۱۲).
 const List<int> _kGrades = [7, 8, 9, 10, 11, 12];
 
-Widget _gradeDropdown(int value, ValueChanged<int> onChanged) {
+Widget _gradeDropdown(BuildContext context, int value, ValueChanged<int> onChanged) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<int>(
       initialValue: _kGrades.contains(value) ? value : _kGrades.first,
-      decoration: const InputDecoration(labelText: 'صنف', border: OutlineInputBorder(), isDense: true),
-      items: _kGrades.map((g) => DropdownMenuItem(value: g, child: Text('صنف $g'))).toList(),
+      decoration: InputDecoration(labelText: context.tr('cms.gradeFieldLabel'), border: const OutlineInputBorder(), isDense: true),
+      items: _kGrades.map((g) => DropdownMenuItem(value: g, child: Text(context.tr('bulkImport.gradeOption', {'grade': '$g'})))).toList(),
       onChanged: (v) => onChanged(v ?? _kGrades.first),
     ),
   );
 }
 
-Widget _subjectDropdown(String value, ValueChanged<String> onChanged) {
+Widget _subjectDropdown(BuildContext context, String value, ValueChanged<String> onChanged) {
   final valid = mockSubjects.any((s) => s.id == value) ? value : mockSubjects.first.id;
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<String>(
       initialValue: valid,
-      decoration: const InputDecoration(labelText: 'مضمون', border: OutlineInputBorder(), isDense: true),
+      decoration: InputDecoration(labelText: context.tr('cms.subjectFieldLabel'), border: const OutlineInputBorder(), isDense: true),
       items: mockSubjects.map((s) => DropdownMenuItem(value: s.id, child: Text(s.nameFa))).toList(),
       onChanged: (v) => onChanged(v ?? mockSubjects.first.id),
     ),
@@ -249,6 +250,11 @@ class _LessonFormSheetState extends ConsumerState<LessonFormSheet> {
     );
     await ref.read(saveLessonUseCaseProvider).call(row);
     ref.invalidate(cmsLessonsProvider);
+    // نصاب شاگردان (فصل‌ها/درس‌ها) هم باید فوراً درسِ تازه/ویرایش‌شده را
+    // منعکس کند — نه فقط لیست داخلی CMS مدیر.
+    ref.invalidate(chaptersProvider);
+    ref.invalidate(lessonsProvider);
+    ref.invalidate(lessonProvider);
     if (mounted) {
       Navigator.pop(context);
       _saved(context);
@@ -262,8 +268,8 @@ class _LessonFormSheetState extends ConsumerState<LessonFormSheet> {
       onSave: _save,
       children: [
         _field(_title, context.tr('admin.fTitle')),
-        _gradeDropdown(_grade, (v) => setState(() => _grade = v)),
-        _subjectDropdown(_subjectId, (v) => setState(() => _subjectId = v)),
+        _gradeDropdown(context, _grade, (v) => setState(() => _grade = v)),
+        _subjectDropdown(context, _subjectId, (v) => setState(() => _subjectId = v)),
         _field(_chapter, context.tr('admin.fChapter')),
         _field(_duration, context.tr('admin.fDuration'), keyboard: TextInputType.number),
         _field(_content, context.tr('admin.fContent'), maxLines: 4),

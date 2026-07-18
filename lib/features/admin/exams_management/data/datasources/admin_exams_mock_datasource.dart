@@ -21,11 +21,11 @@ class AdminExamsMockDataSource implements AdminExamsDataSource {
   ];
   final Map<String, List<AdminQuestionRow>> _questions = {
     'ex-g7-math-q1': [
-      AdminQuestionRow(
+      const AdminQuestionRow(
         id: 'q-m1',
         examId: 'ex-g7-math-q1',
         text: 'حاصل ۳ + (−۵) چند است؟',
-        options: const ['۲', '−۲', '۸', '−۸'],
+        options: ['۲', '−۲', '۸', '−۸'],
         correctIndex: 1,
         orderIndex: 1,
       ),

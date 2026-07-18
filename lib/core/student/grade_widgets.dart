@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../app/router/app_routes.dart';
 import '../../app/theme/design_tokens.dart';
+import '../localization/app_localizations.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
+import '../../features/grade_map/domain/entities/grade_map.dart';
 import '../../features/grade_map/presentation/providers/grade_map_providers.dart';
 import '../../features/progression/data/progression_store.dart' show kPromoteExamMark;
 import '../../shared_models/subject.dart';
@@ -78,7 +80,7 @@ class GradeSelector extends ConsumerWidget {
               if (locked) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('صنف $g قفل است — ابتدا صنف فعلی را کامل کن و امتحان بده.'),
+                    content: Text(context.tr('grade.lockedSnackbar', {'grade': '$g'})),
                     behavior: SnackBarBehavior.floating,
                   ),
                 );
@@ -109,7 +111,7 @@ class GradeSelector extends ConsumerWidget {
                     Icon(Icons.check_circle_rounded, size: 14, color: isSel ? Colors.white : AppColors.green600),
                   if (locked || g < current) const SizedBox(width: 5),
                   Text(
-                    'صنف $g',
+                    context.tr('grade.label', {'grade': '$g'}),
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       color: isSel && !locked
@@ -125,7 +127,7 @@ class GradeSelector extends ConsumerWidget {
                         color: (isSel ? Colors.white : AppColors.green600).withValues(alpha: 0.22),
                         borderRadius: BorderRadius.circular(AppRadii.pill),
                       ),
-                      child: Text('فعال',
+                      child: Text(context.tr('grade.active'),
                           style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w700,
@@ -156,18 +158,20 @@ class GradeSubjectsGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final grade = ref.watch(selectedGradeProvider);
-    final activeGrade = ref.watch(activeGradeProvider);
     final studentId = _studentId(ref);
-    final gradeMapAsync = ref.watch(gradeMapProvider(studentId));
+    // رفع اشکال: قبلاً `gradeMapProvider` فقط با `studentId` کلید می‌شد، پس
+    // همیشه وضعیت «صنف فعال» برمی‌گشت و درصدها برای صنوف مرورشدهٔ دیگر
+    // عمداً پنهان می‌شدند (چون داده‌اش اصلاً برای آن صنف نبود). اکنون که
+    // Provider به‌ازای صنف هم کلید می‌شود، درصد واقعی همان صنفِ انتخاب‌شده
+    // همیشه نمایش داده می‌شود — حتی برای صنوف قبلیِ تکمیل‌شده.
+    final gradeMapAsync = ref.watch(gradeMapProvider((studentId: studentId, grade: grade)));
 
     return gradeMapAsync.when(
       loading: () => const _GridPlaceholder(),
       error: (e, st) => _GridErrorCard(
-        onRetry: () => ref.invalidate(gradeMapProvider(studentId)),
+        onRetry: () => ref.invalidate(gradeMapProvider((studentId: studentId, grade: grade))),
       ),
       data: (map) {
-        // درصدها فقط برای صنف فعال معتبرند — صنوف قبلی/مرورشده فقط نمایشی‌اند.
-        final showCompletion = grade == activeGrade;
         final bySubject = {for (final s in map.subjects) s.subjectId: s};
         return GridView.count(
           shrinkWrap: shrinkWrap,
@@ -182,7 +186,7 @@ class GradeSubjectsGrid extends ConsumerWidget {
               _SubjectCard(
                 subject: mockSubjects[i],
                 grade: grade,
-                completion: showCompletion ? bySubject[mockSubjects[i].id]?.completionPercent : null,
+                completion: bySubject[mockSubjects[i].id]?.completionPercent,
               ).animate().fadeIn(delay: (25 * i).ms, duration: 220.ms).slideY(begin: 0.08),
           ],
         );
@@ -224,8 +228,8 @@ class _GridErrorCard extends StatelessWidget {
         children: [
           Icon(Icons.error_outline_rounded, color: scheme.error),
           const SizedBox(width: 10),
-          const Expanded(child: Text('بارگذاری مضامین ناکام شد', style: TextStyle(fontSize: 13))),
-          TextButton(onPressed: onRetry, child: const Text('تلاش دوباره')),
+          Expanded(child: Text(context.tr('grade.subjectsLoadFailed'), style: const TextStyle(fontSize: 13))),
+          TextButton(onPressed: onRetry, child: Text(context.tr('common.retry'))),
         ],
       ),
     );
@@ -286,7 +290,7 @@ class _SubjectCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
               Text(
-                completion == null ? 'صنف $grade' : '${completion!.toStringAsFixed(0)}٪',
+                completion == null ? context.tr('grade.label', {'grade': '$grade'}) : '${completion!.toStringAsFixed(0)}٪',
                 style: TextStyle(fontSize: 10.5, color: done ? AppColors.green600 : color, fontWeight: FontWeight.w700),
               ),
             ],
@@ -299,10 +303,17 @@ class _SubjectCard extends StatelessWidget {
 
 /// کارت «وضعیت ارتقا» — درصد تکمیل، وضعیت امتحان و شرایط باز شدن صنف بعدی.
 ///
-/// رفع اشکال هماهنگی: همهٔ این اعداد اکنون از همان پاسخ سرور
-/// (`gradeMapProvider`) می‌آیند که «نقشهٔ صنف» و نصاب درسی هم از آن
-/// استفاده می‌کنند — نه از یک شبیه‌سازی محلی که هرگز روی دیتابیس واقعی
-/// اثر نمی‌گذاشت.
+/// رفع اشکال هماهنگی: همهٔ این اعداد از همان پاسخ سرور (`gradeMapProvider`)
+/// می‌آیند که «نقشهٔ صنف» و نصاب درسی هم از آن استفاده می‌کنند.
+///
+/// **رفع اشکال دوم (مهم):** قبلاً این کارت فقط با `studentId` از سرور
+/// می‌خواند — یعنی صرف‌نظر از این‌که شاگرد از «نوار انتخاب صنف» کدام صنف را
+/// باز کرده، همیشه فقط وضعیتِ صنفِ فعال نمایش داده می‌شد (در تمام صنف‌ها
+/// یک وضعیت ثابت). اکنون Provider به‌ازای صنفِ انتخاب‌شده هم کلید می‌شود،
+/// و کارت دو حالت واقعاً متفاوت دارد:
+///   • صنف فعال → کارت زندهٔ «در حال ارتقا» (همین طراحی قبلی، پویاتر شده).
+///   • صنفِ پایین‌ترِ تکمیل‌شده (فقط مرور) → کارت «دستاورد تکمیل‌شده»،
+///     چون آن صنف دیگر در حال «ارتقا» نیست — قبلاً تمام شده.
 class PromotionStatusCard extends ConsumerWidget {
   const PromotionStatusCard({super.key});
 
@@ -310,7 +321,9 @@ class PromotionStatusCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final studentId = _studentId(ref);
-    final gradeMapAsync = ref.watch(gradeMapProvider(studentId));
+    final grade = ref.watch(selectedGradeProvider);
+    final key = (studentId: studentId, grade: grade);
+    final gradeMapAsync = ref.watch(gradeMapProvider(key));
 
     return gradeMapAsync.when(
       loading: () => Container(
@@ -323,92 +336,130 @@ class PromotionStatusCard extends ConsumerWidget {
         ),
         child: CircularProgressIndicator(strokeWidth: 2.4, color: scheme.primary),
       ),
-      error: (e, st) => _GridErrorCard(onRetry: () => ref.invalidate(gradeMapProvider(studentId))),
+      error: (e, st) => _GridErrorCard(onRetry: () => ref.invalidate(gradeMapProvider(key))),
       data: (map) {
-        final overall = map.gradeAveragePercent;
-        final completedCount = map.subjects.where((s) => s.completionPercent >= 100).length;
-        final totalCount = map.subjects.isEmpty ? mockSubjects.length : map.subjects.length;
-        final atTop = map.gradeNumber >= 12;
-        final canPromote = map.canPromote;
-
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerLowest,
-            borderRadius: BorderRadius.circular(AppRadii.lg),
-            border: Border.all(color: scheme.outlineVariant),
-            boxShadow: AppShadows.soft,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
-                  child: const Icon(Icons.trending_up_rounded, color: Colors.white),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('وضعیت ارتقا — صنف ${map.gradeNumber}',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    Text('$completedCount از $totalCount مضمون تکمیل شده',
-                        style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
-                  ]),
-                ),
-                Text('${overall.toStringAsFixed(0)}٪',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.orange600)),
-              ]),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadii.pill),
-                child: LinearProgressIndicator(
-                  value: (overall / 100).clamp(0, 1),
-                  minHeight: 9,
-                  backgroundColor: scheme.surfaceContainerHigh,
-                  valueColor: const AlwaysStoppedAnimation(AppColors.orange600),
-                ),
-              ),
-              const SizedBox(height: 14),
-              _req(context, 'تکمیل تمام مضامین (۱۰۰٪)', map.allSubjectsComplete),
-              const SizedBox(height: 8),
-              _req(
-                  context,
-                  'کامیابی در امتحان (${map.examBestScore != null ? '${map.examBestScore!.toStringAsFixed(0)}٪' : 'نداده'} از ${kPromoteExamMark.toStringAsFixed(0)}٪)',
-                  map.examPassed),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: (atTop ? AppColors.green600 : (canPromote ? AppColors.green600 : AppColors.gold600))
-                      .withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(AppRadii.md),
-                ),
-                child: Row(children: [
-                  Icon(atTop ? Icons.emoji_events_rounded : (canPromote ? Icons.celebration_rounded : Icons.info_outline_rounded),
-                      size: 18,
-                      color: atTop ? AppColors.green600 : (canPromote ? AppColors.green600 : AppColors.gold600)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      atTop
-                          ? 'تبریک! تو در بالاترین صنف (۱۲) هستی. 🎓'
-                          : (canPromote
-                              ? 'آفرین! آمادهٔ ارتقا به صنف ${map.gradeNumber + 1} هستی.'
-                              : 'برای باز شدن صنف ${map.gradeNumber + 1}، مضامین را کامل کن و امتحان بده.'),
-                      style: const TextStyle(fontSize: 12, height: 1.5, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ]),
-              ),
-            ],
-          ),
-        );
+        if (!map.isActiveGrade) return _CompletedGradeCard(map: map);
+        return _ActivePromotionCard(map: map);
       },
     );
+  }
+}
+
+/// حالت «در حال ارتقا» — همان صنفِ فعال شاگرد. طبق درخواست کاربر پویاتر و
+/// زیباتر شده: عدد پیشرفت با انیمیشن شمارشی بالا می‌رود، نوار پیشرفت با
+/// انیمیشن پر می‌شود، و کل کارت با محو/سرخوردن ملایم وارد صفحه می‌شود.
+class _ActivePromotionCard extends StatelessWidget {
+  final GradeMap map;
+  const _ActivePromotionCard({required this.map});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final overall = map.gradeAveragePercent.clamp(0, 100).toDouble();
+    final completedCount = map.subjects.where((s) => s.completionPercent >= 100).length;
+    final totalCount = map.subjects.isEmpty ? mockSubjects.length : map.subjects.length;
+    final atTop = map.gradeNumber >= 12;
+    final canPromote = map.canPromote;
+    final accent = atTop || canPromote ? AppColors.green600 : AppColors.orange600;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(gradient: AppColors.sunriseGradient, shape: BoxShape.circle),
+              child: Icon(canPromote ? Icons.celebration_rounded : Icons.trending_up_rounded, color: Colors.white),
+            )
+                .animate(target: canPromote ? 1 : 0)
+                .scaleXY(end: 1.12, duration: 700.ms, curve: Curves.easeOut)
+                .then()
+                .scaleXY(end: 1 / 1.12, duration: 700.ms, curve: Curves.easeIn),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(context.tr('grade.promotionStatus', {'grade': '${map.gradeNumber}'}),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                Text(
+                    context.tr('grade.subjectsCompletedCount',
+                        {'completed': '$completedCount', 'total': '$totalCount'}),
+                    style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+              ]),
+            ),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: overall),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => Text('${value.toStringAsFixed(0)}٪',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: accent)),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: (overall / 100).clamp(0, 1)),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => LinearProgressIndicator(
+                value: value,
+                minHeight: 9,
+                backgroundColor: scheme.surfaceContainerHigh,
+                valueColor: AlwaysStoppedAnimation(accent),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          _req(context, context.tr('grade.completeAllSubjects'), map.allSubjectsComplete),
+          const SizedBox(height: 8),
+          _req(
+              context,
+              context.tr('grade.examRequirement', {
+                'score': map.examBestScore != null
+                    ? '${map.examBestScore!.toStringAsFixed(0)}٪'
+                    : context.tr('grade.examNotTaken'),
+                'passMark': kPromoteExamMark.toStringAsFixed(0),
+              }),
+              map.examPassed),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
+            child: Row(children: [
+              Icon(atTop ? Icons.emoji_events_rounded : (canPromote ? Icons.celebration_rounded : Icons.info_outline_rounded),
+                  size: 18, color: accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  atTop
+                      ? context.tr('grade.topGradeCongrats')
+                      : (canPromote
+                          ? context.tr('grade.readyToPromote', {'grade': '${map.gradeNumber + 1}'})
+                          : context.tr('grade.promotionRequirement', {'grade': '${map.gradeNumber + 1}'})),
+                  style: const TextStyle(fontSize: 12, height: 1.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ]),
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 380.ms)
+        .slideY(begin: 0.1, end: 0, duration: 380.ms, curve: Curves.easeOutCubic);
   }
 
   Widget _req(BuildContext context, String label, bool done) {
@@ -419,5 +470,57 @@ class PromotionStatusCard extends ConsumerWidget {
       const SizedBox(width: 8),
       Expanded(child: Text(label, style: const TextStyle(fontSize: 12.5))),
     ]);
+  }
+}
+
+/// حالت «صنفِ پایین‌تر، فقط مرور» — این صنف دیگر «در حال ارتقا» نیست، قبلاً
+/// با موفقیت تمام شده. طبق درخواست کاربر: این بخش نباید عیناً کارت صنف
+/// فعال را نشان بدهد؛ یک کارتِ «دستاورد» جداگانه با گرادیان طلایی (همان
+/// زبان بصریِ نشان‌های امتیاز) — تا هم منطقاً درست باشد هم زیبا/متفاوت.
+class _CompletedGradeCard extends StatelessWidget {
+  final GradeMap map;
+  const _CompletedGradeCard({required this.map});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: AppColors.goldCelebrationGradient,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        boxShadow: AppShadows.warm,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle),
+            child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 24),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(end: 1.1, duration: 1200.ms, curve: Curves.easeInOut),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(context.tr('grade.completedTitle', {'grade': '${map.gradeNumber}'}),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 3),
+                Text(
+                  map.examBestScore != null
+                      ? context.tr('grade.completedWithScore',
+                          {'score': map.examBestScore!.toStringAsFixed(0)})
+                      : context.tr('grade.completedNoScore'),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 11.5, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 380.ms)
+        .slideY(begin: 0.1, end: 0, duration: 380.ms, curve: Curves.easeOutCubic);
   }
 }

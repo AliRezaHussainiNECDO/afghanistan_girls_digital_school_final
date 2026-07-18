@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 
 /// یک درس در نمای ویرایشگر — نسخهٔ سبک، فقط فیلدهای لازم برای این صفحه.
 class _EditableLesson {
@@ -110,13 +112,23 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// این صفحه مستقیماً فصل/درس‌های واقعی روی سرور را ویرایش می‌کند — دقیقاً
+  /// همان جدول‌هایی که نصاب شاگردان از آن‌ها می‌خواند. هر عملیات موفق اینجا
+  /// باید کش نصاب شاگردان را هم باطل کند، وگرنه شاگردی که همان لحظه (یا در
+  /// همان نشست برنامه) آن مضمون را باز داشته، ویرایش را نمی‌بیند.
+  void _invalidateStudentCurriculumCaches() {
+    ref.invalidate(chaptersProvider);
+    ref.invalidate(lessonsProvider);
+    ref.invalidate(lessonProvider);
+  }
+
   Future<void> _editLesson(_EditableLesson lesson) async {
     final titleController = TextEditingController(text: lesson.titleFa);
     final contentController = TextEditingController(text: lesson.contentBody);
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('ویرایش درس'),
+        title: Text(ctx.tr('lessonEditor.editLessonDialogTitle')),
         content: SizedBox(
           width: 480,
           child: Column(
@@ -124,7 +136,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
             children: [
               TextField(
                 controller: titleController,
-                decoration: const InputDecoration(labelText: 'عنوان درس', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: ctx.tr('lessonEditor.lessonTitleLabel'), border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -132,14 +144,14 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                 maxLines: 12,
                 minLines: 6,
                 textDirection: TextDirection.rtl,
-                decoration: const InputDecoration(labelText: 'محتوای درس', border: OutlineInputBorder(), alignLabelWithHint: true),
+                decoration: InputDecoration(labelText: ctx.tr('lessonEditor.lessonContentLabel'), border: const OutlineInputBorder(), alignLabelWithHint: true),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ذخیره')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('common.save'))),
         ],
       ),
     );
@@ -152,10 +164,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       });
       lesson.titleFa = titleController.text.trim();
       lesson.contentBody = contentController.text;
-      _snack('درس ذخیره شد ✓');
+      _snack(context.tr('lessonEditor.lessonSaved'));
+      _invalidateStudentCurriculumCaches();
       if (mounted) setState(() {});
     } catch (e) {
-      _snack('خطا در ذخیره: $e');
+      _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -171,10 +184,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
         lesson.titleFa = map['titleFa'] as String? ?? lesson.titleFa;
         lesson.contentBody = map['contentBody'] as String? ?? lesson.contentBody;
       }
-      _snack(changed ? 'متن این درس اصلاح شد ✓' : 'این درس مشکل متنی نداشت.');
+      _snack(changed ? context.tr('lessonEditor.lessonFixedNotice') : context.tr('lessonEditor.lessonNoTextIssue'));
+      if (changed) _invalidateStudentCurriculumCaches();
       if (mounted) setState(() {});
     } catch (e) {
-      _snack('خطا در بازسازی: $e');
+      _snack(context.tr('lessonEditor.rebuildErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -184,11 +198,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف درس'),
-        content: Text('«${lesson.titleFa}» برای همیشه حذف شود؟'),
+        title: Text(ctx.tr('lessonEditor.deleteLessonTitle')),
+        content: Text(ctx.tr('lessonEditor.deleteLessonConfirm', {'title': lesson.titleFa})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('common.delete'))),
         ],
       ),
     );
@@ -197,10 +211,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     try {
       await ref.read(apiClientProvider).delete('/admin/curriculum-library/lessons/${lesson.id}');
       chapter.lessons.removeWhere((l) => l.id == lesson.id);
-      _snack('درس حذف شد.');
+      _snack(context.tr('lessonEditor.lessonDeleted'));
+      _invalidateStudentCurriculumCaches();
       if (mounted) setState(() {});
     } catch (e) {
-      _snack('خطا در حذف: $e');
+      _snack(context.tr('lessonEditor.deleteErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -210,7 +225,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final target = await showDialog<_EditableChapter>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('جابجایی درس به فصل...'),
+        title: Text(ctx.tr('lessonEditor.moveLessonTitle')),
         children: _chapters
             .where((c) => c.id != fromChapter.id)
             .map((c) => SimpleDialogOption(
@@ -228,10 +243,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       });
       fromChapter.lessons.removeWhere((l) => l.id == lesson.id);
       target.lessons.add(lesson);
-      _snack('درس به «${target.titleFa}» منتقل شد.');
+      _snack(context.tr('lessonEditor.lessonMovedTo', {'title': target.titleFa}));
+      _invalidateStudentCurriculumCaches();
       if (mounted) setState(() {});
     } catch (e) {
-      _snack('خطا در جابجایی: $e');
+      _snack(context.tr('lessonEditor.moveErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -245,16 +261,16 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تقسیم درس به دو درس'),
+        title: Text(ctx.tr('lessonEditor.splitLessonTitle')),
         content: SizedBox(
           width: 520,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Align(
+              Align(
                 alignment: Alignment.centerRight,
-                child: Text('بخش‌بندی اولیه خودکار است — می‌توانید متن هر بخش را ویرایش کنید.',
-                    style: TextStyle(fontSize: 11)),
+                child: Text(ctx.tr('lessonEditor.splitAutoHint'),
+                    style: const TextStyle(fontSize: 11)),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -262,12 +278,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                 maxLines: 6,
                 minLines: 4,
                 textDirection: TextDirection.rtl,
-                decoration: const InputDecoration(labelText: 'بخش اول (همین درس)', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: ctx.tr('lessonEditor.firstPartLabel'), border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: secondTitleController,
-                decoration: const InputDecoration(labelText: 'عنوان درس دوم', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: ctx.tr('lessonEditor.secondLessonTitleLabel'), border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -275,14 +291,14 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                 maxLines: 6,
                 minLines: 4,
                 textDirection: TextDirection.rtl,
-                decoration: const InputDecoration(labelText: 'بخش دوم (درس تازه)', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: ctx.tr('lessonEditor.secondPartLabel'), border: const OutlineInputBorder()),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تقسیم کن')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('lessonEditor.splitButton'))),
         ],
       ),
     );
@@ -294,11 +310,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
         'secondContent': secondController.text,
         'secondTitleFa': secondTitleController.text.trim(),
       });
-      _snack('درس تقسیم شد ✓');
+      _snack(context.tr('lessonEditor.lessonSplit'));
       _busyLessonIds.remove(lesson.id);
+      _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack('خطا در تقسیم: $e');
+      _snack(context.tr('lessonEditor.splitErrorWithReason', {'error': '$e'}));
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
   }
@@ -307,7 +324,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final target = await showDialog<_EditableChapter>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('ادغام «${source.titleFa}» در...'),
+        title: Text(ctx.tr('lessonEditor.mergeChapterTitle', {'title': source.titleFa})),
         children: _chapters
             .where((c) => c.id != source.id)
             .map((c) => SimpleDialogOption(onPressed: () => Navigator.pop(ctx, c), child: Text(c.titleFa)))
@@ -318,21 +335,22 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأیید ادغام'),
-        content: Text('همهٔ درس‌های «${source.titleFa}» به «${target.titleFa}» منتقل و فصل «${source.titleFa}» حذف می‌شود.'),
+        title: Text(ctx.tr('lessonEditor.confirmMergeTitle')),
+        content: Text(ctx.tr('lessonEditor.confirmMergeBody', {'source': source.titleFa, 'target': target.titleFa})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ادغام کن')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('lessonEditor.mergeButton'))),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).post('/admin/curriculum-library/chapters/${source.id}/merge-into/${target.id}');
-      _snack('فصل «${source.titleFa}» در «${target.titleFa}» ادغام شد.');
+      _snack(context.tr('lessonEditor.chapterMerged', {'source': source.titleFa, 'target': target.titleFa}));
+      _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack('خطا در ادغام: $e');
+      _snack(context.tr('lessonEditor.mergeErrorWithReason', {'error': '$e'}));
     }
   }
 
@@ -341,11 +359,11 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('ویرایش عنوان فصل'),
+        title: Text(ctx.tr('lessonEditor.editChapterTitleDialog')),
         content: TextField(controller: controller, decoration: const InputDecoration(border: OutlineInputBorder())),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('ذخیره')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('common.save'))),
         ],
       ),
     );
@@ -357,9 +375,10 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
         'titleFa': newTitle,
       });
       setState(() => chapter.titleFa = newTitle);
-      _snack('عنوان فصل ذخیره شد ✓');
+      _snack(context.tr('lessonEditor.chapterTitleSaved'));
+      _invalidateStudentCurriculumCaches();
     } catch (e) {
-      _snack('خطا در ذخیره: $e');
+      _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
     }
   }
 
@@ -367,21 +386,22 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('حذف فصل'),
-        content: Text('فصل «${chapter.titleFa}» و همهٔ ${chapter.lessons.length} درسِ آن برای همیشه حذف شود؟'),
+        title: Text(ctx.tr('lessonEditor.deleteChapterTitle')),
+        content: Text(ctx.tr('lessonEditor.deleteChapterConfirm', {'title': chapter.titleFa, 'count': '${chapter.lessons.length}'})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف کامل')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(ctx.tr('common.cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(ctx.tr('lessonEditor.deleteFullButton'))),
         ],
       ),
     );
     if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).delete('/admin/curriculum-library/chapters/${chapter.id}');
-      _snack('فصل «${chapter.titleFa}» حذف شد.');
+      _snack(context.tr('lessonEditor.chapterDeleted', {'title': chapter.titleFa}));
+      _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack('خطا در حذف فصل: $e');
+      _snack(context.tr('lessonEditor.deleteChapterErrorWithReason', {'error': '$e'}));
     }
   }
 
@@ -389,14 +409,14 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return AppScaffold(
-      title: 'ویرایش دروس — ${widget.subjectNameFa} (صنف ${widget.grade})',
+      title: context.tr('lessonEditor.title', {'subject': widget.subjectNameFa, 'grade': '${widget.grade}'}),
       role: AppUserRole.superAdmin,
       body: _loading
           ? const LoadingView()
           : _error != null
               ? ErrorView(message: _error!)
               : _chapters.isEmpty
-                  ? const Center(child: Text('هنوز فصل/درسی برای این کتاب ساخته نشده.'))
+                  ? Center(child: Text(context.tr('lessonEditor.noChaptersYet')))
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: _chapters.length,
@@ -406,23 +426,23 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                           margin: const EdgeInsets.only(bottom: 10),
                           child: ExpansionTile(
                             title: Text(chapter.titleFa, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text('${chapter.lessons.length} درس'),
+                            subtitle: Text(context.tr('lessonEditor.lessonsCountSuffix', {'count': '${chapter.lessons.length}'})),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.edit_rounded),
-                                  tooltip: 'ویرایش عنوان فصل',
+                                  tooltip: context.tr('lessonEditor.editChapterTitleDialog'),
                                   onPressed: () => _editChapterTitle(chapter),
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.merge_type_rounded, color: scheme.secondary),
-                                  tooltip: 'ادغام این فصل در فصل دیگر',
+                                  tooltip: context.tr('lessonEditor.mergeChapterTooltip'),
                                   onPressed: _chapters.length < 2 ? null : () => _mergeChapter(chapter),
                                 ),
                                 IconButton(
                                   icon: Icon(Icons.delete_forever_rounded, color: scheme.error),
-                                  tooltip: 'حذف کامل این فصل',
+                                  tooltip: context.tr('lessonEditor.deleteChapterTooltip'),
                                   onPressed: () => _deleteChapter(chapter),
                                 ),
                               ],
@@ -446,35 +466,35 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
                                             icon: const Icon(Icons.edit_rounded),
-                                            tooltip: 'ویرایش',
+                                            tooltip: context.tr('common.edit'),
                                             onPressed: () => _editLesson(lesson),
                                           ),
                                           IconButton(
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
                                             icon: const Icon(Icons.auto_fix_high_rounded),
-                                            tooltip: 'بازسازی/رفع متن این درس',
+                                            tooltip: context.tr('lessonEditor.rebuildTooltip'),
                                             onPressed: () => _rebuildLesson(lesson),
                                           ),
                                           IconButton(
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
                                             icon: const Icon(Icons.call_split_rounded),
-                                            tooltip: 'تقسیم به دو درس',
+                                            tooltip: context.tr('lessonEditor.splitTooltip'),
                                             onPressed: () => _splitLesson(chapter, lesson),
                                           ),
                                           IconButton(
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
                                             icon: const Icon(Icons.swap_horiz_rounded),
-                                            tooltip: 'جابجایی به فصل دیگر',
+                                            tooltip: context.tr('lessonEditor.moveTooltip'),
                                             onPressed: _chapters.length < 2 ? null : () => _moveLesson(chapter, lesson),
                                           ),
                                           IconButton(
                                             iconSize: 18,
                                             visualDensity: VisualDensity.compact,
                                             icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
-                                            tooltip: 'حذف',
+                                            tooltip: context.tr('common.delete'),
                                             onPressed: () => _deleteLesson(chapter, lesson),
                                           ),
                                         ],

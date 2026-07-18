@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../app/theme/design_tokens.dart';
+import '../localization/app_localizations.dart';
 
 /// مدیریت‌کنندهٔ مرکزی خطا.
 ///
@@ -52,13 +53,34 @@ class AppErrorEntry {
 
 /// جایگزین صفحهٔ خطای پیش‌فرض Flutter. به‌جای Crash یا صفحهٔ قرمز، یک کارت
 /// آرام و قابل‌فهم نشان می‌دهد. کاملاً خوداتکاست (Directionality/Material
-/// داخلی دارد) چون ممکن است در هر نقطه‌ای از درخت ویجت ساخته شود.
+/// داخلی دارد) چون ممکن است در هر نقطه‌ای از درخت ویجت ساخته شود — حتی
+/// دقیقاً جایی که خودِ درخت ویجت (و شاید حتی Localizations بالادستی) خراب
+/// است. به همین دلیل هر دو متن اینجا با `_safeTr` خوانده می‌شوند: تلاش برای
+/// `context.tr()` و در صورت هر نوع خطا (مثلاً نبود Localizations در
+/// بالادست)، بازگشت بی‌صدا به همان متن ثابت فارسی قبلی — تا این صفحهٔ نجات
+/// خودش هرگز باعث یک خطای تازه نشود.
 class FriendlyErrorWidget extends StatelessWidget {
   final FlutterErrorDetails details;
   const FriendlyErrorWidget({super.key, required this.details});
 
+  /// `context.tr(key)` را امتحان می‌کند؛ اگر به هر دلیلی (مثلاً نبود
+  /// Localizations در درخت خراب) خطا بدهد، به [fallback] برمی‌گردد.
+  static String _safeTr(BuildContext context, String key, String fallback) {
+    try {
+      return context.tr(key);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final title = _safeTr(
+        context, 'errors.friendlyTitle', 'مشکلی در نمایش این بخش پیش آمد');
+    final subtitle = _safeTr(
+        context,
+        'errors.friendlySubtitle',
+        'نگران نباشید — برنامه بسته نشده است. می‌توانید به صفحهٔ قبل برگردید و دوباره تلاش کنید.');
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Material(
@@ -72,7 +94,7 @@ class FriendlyErrorWidget extends StatelessWidget {
                 Container(
                   width: 64,
                   height: 64,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     color: AppColors.orange100,
                     shape: BoxShape.circle,
                   ),
@@ -80,16 +102,16 @@ class FriendlyErrorWidget extends StatelessWidget {
                       size: 34, color: AppColors.orange600),
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'مشکلی در نمایش این بخش پیش آمد',
+                Text(
+                  title,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.ink900),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.ink900),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'نگران نباشید — برنامه بسته نشده است. می‌توانید به صفحهٔ قبل برگردید و دوباره تلاش کنید.',
+                Text(
+                  subtitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: AppColors.ink700, height: 1.6),
+                  style: const TextStyle(fontSize: 13, color: AppColors.ink700, height: 1.6),
                 ),
                 if (kDebugMode) ...[
                   const SizedBox(height: 16),

@@ -11,6 +11,15 @@ abstract class Failure extends Equatable {
 
   @override
   List<Object?> get props => [message];
+
+  // Equatable's default toString() prints `ClassName(message)` — that
+  // class-name prefix would leak into the UI wherever code does
+  // `e.toString()` on a caught Failure (a very common pattern in this app's
+  // AsyncValue.error handlers). Overriding it here keeps `toString()` equal
+  // to the plain message for every Failure subtype, independent of the
+  // localizeError() mapping in `core/widgets/error_view.dart`.
+  @override
+  String toString() => message;
 }
 
 /// خطای شبکه (در فاز ۱ عملاً رخ نمی‌دهد چون DataSource ها Mock هستند،

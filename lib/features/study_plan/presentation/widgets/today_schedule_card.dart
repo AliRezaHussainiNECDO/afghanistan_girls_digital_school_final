@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
 import '../../domain/entities/study_plan.dart';
@@ -49,8 +50,8 @@ class TodayScheduleCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('برنامهٔ درسی امروز من',
-                        style: TextStyle(
+                    Text(context.tr('studyPlan.todayTitle'),
+                        style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 15)),
                     Text(
                       PlanDay.namesFa[DateTime.now().weekday] ?? '',
@@ -62,7 +63,7 @@ class TodayScheduleCard extends ConsumerWidget {
               ),
               TextButton(
                 onPressed: () => context.push(AppRoutes.studyPlan),
-                child: const Text('برنامهٔ هفته'),
+                child: Text(context.tr('studyPlan.weekPlanButton')),
               ),
             ],
           ),
@@ -72,7 +73,7 @@ class TodayScheduleCard extends ConsumerWidget {
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(child: CircularProgressIndicator()),
             ),
-            error: (e, _) => Text('خطا در بارگذاری برنامه: $e',
+            error: (e, _) => Text(context.tr('studyPlan.loadError', {'error': '$e'}),
                 style: TextStyle(color: scheme.error, fontSize: 12)),
             data: (day) {
               if (day == null || day.isRestDay) {
@@ -126,8 +127,8 @@ class _RestDayBanner extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             isFriday
-                ? 'امروز جمعه است — روز استراحت! 🌸 اگر دوست داشتی می‌توانی درس‌های هفته را مرور کنی.'
-                : 'هنوز کتابی وارد نشده تا برنامهٔ درسی ساخته شود. از مدیر بخواه کتاب‌های نصاب را وارد کند.',
+                ? context.tr('studyPlan.fridayRest')
+                : context.tr('studyPlan.noBooksYet'),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 13),
           ),
@@ -203,7 +204,7 @@ class _SlotTile extends ConsumerWidget {
                             color: color.withValues(alpha: .12),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text('${slot.minutes} دقیقه',
+                          child: Text(context.tr('curriculum.estimatedMinutes', {'minutes': '${slot.minutes}'}),
                               style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,

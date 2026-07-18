@@ -34,7 +34,7 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
         },
         child: summariesAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(message: e.toString()),
+          error: (e, st) => ErrorView(error: e),
           data: (summaries) {
             final totalFlagged =
                 summaries.fold<int>(0, (a, s) => a + s.flaggedPendingCount);
@@ -64,8 +64,8 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
                       Expanded(
                         child: Text(
                           totalFlagged > 0
-                              ? '$totalFlagged پیام در انتظار بازبینی شماست'
-                              : 'همهٔ پیام‌ها بررسی شده‌اند — وضعیت سالم ✨',
+                              ? context.tr('chatMonitoring.pendingReviewBanner', {'count': '$totalFlagged'})
+                              : context.tr('chatMonitoring.allReviewedBanner'),
                           style: const TextStyle(
                               color: Colors.white, fontWeight: FontWeight.w700),
                         ),
@@ -121,19 +121,19 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
                                     children: [
                                       _MiniStat(
                                           icon: Icons.groups_rounded,
-                                          label: '${s.studentCount} شاگرد'),
+                                          label: context.tr('chatMonitoring.studentCountLabel', {'count': '${s.studentCount}'})),
                                       _MiniStat(
                                           icon: Icons.forum_rounded,
-                                          label: '${s.conversationCount} گفتگو'),
+                                          label: context.tr('chatMonitoring.conversationCountLabel', {'count': '${s.conversationCount}'})),
                                       _MiniStat(
                                           icon: Icons.chat_bubble_rounded,
-                                          label: '${s.messageCount} پیام'),
+                                          label: context.tr('classChats.messageCountLabel', {'count': '${s.messageCount}'})),
                                     ],
                                   ),
                                   if (s.lastActivityAt != null) ...[
                                     const SizedBox(height: 4),
                                     Text(
-                                        'آخرین فعالیت: ${relativeTimeFa(s.lastActivityAt!)}',
+                                        context.tr('chatMonitoring.lastActivityLabel', {'time': relativeTimeFa(context, s.lastActivityAt!)}),
                                         style: TextStyle(
                                             fontSize: 10.5,
                                             color: scheme.onSurfaceVariant)),
@@ -149,7 +149,7 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
                                   color: AppColors.danger,
                                   borderRadius: BorderRadius.circular(AppRadii.pill),
                                 ),
-                                child: Text('${s.flaggedPendingCount} ⚑',
+                                child: Text(context.tr('chatMonitoring.flaggedBadge', {'count': '${s.flaggedPendingCount}'}),
                                     style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 11,
@@ -187,7 +187,7 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
                             border: Border.all(color: scheme.outlineVariant),
                           ),
                           child: Center(
-                              child: Text('هنوز پیامی از شاگردان نرسیده است.',
+                              child: Text(context.tr('chatMonitoring.noStudentMessages'),
                                   style:
                                       TextStyle(color: scheme.onSurfaceVariant))),
                         )
@@ -229,7 +229,7 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
                                                   ),
                                                   Text(
                                                       relativeTimeFa(
-                                                          conv.lastMessageAt),
+                                                          context, conv.lastMessageAt),
                                                       style: TextStyle(
                                                           fontSize: 10.5,
                                                           color: scheme

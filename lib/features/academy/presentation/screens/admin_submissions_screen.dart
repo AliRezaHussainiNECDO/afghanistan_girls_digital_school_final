@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
@@ -27,11 +28,11 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
     final async = ref.watch(allSubmissionsProvider);
     final scheme = Theme.of(context).colorScheme;
     return AppScaffold(
-      title: 'پاسخ‌های امتحانات',
+      title: context.tr('academy.submissionsListTitle'),
       role: AppUserRole.superAdmin,
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (all) {
           if (all.isEmpty) {
             return Center(
@@ -40,7 +41,7 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.fact_check_outlined, size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
-                  Text('هنوز هیچ پاسخی از شاگردان ثبت نشده است',
+                  Text(context.tr('academy.noSubmissionsYet'),
                       textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
                 ]),
               ),
@@ -58,7 +59,7 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
               _filters(context, grades, subjects),
               Expanded(
                 child: filtered.isEmpty
-                    ? Center(child: Text('موردی با این فیلتر نیست', style: TextStyle(color: scheme.onSurfaceVariant)))
+                    ? Center(child: Text(context.tr('academy.noResultsForFilter'), style: TextStyle(color: scheme.onSurfaceVariant)))
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                         itemCount: filtered.length,
@@ -85,11 +86,11 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
       child: Row(children: [
-        Expanded(child: _stat('کل پاسخ‌ها', '${all.length}', AppColors.orange600)),
+        Expanded(child: _stat(context.tr('academy.totalSubmissions'), '${all.length}', AppColors.orange600)),
         const SizedBox(width: 10),
-        Expanded(child: _stat('میانگین', '${avg.toStringAsFixed(0)}٪', AppColors.info)),
+        Expanded(child: _stat(context.tr('academy.averageLabel'), '${avg.toStringAsFixed(0)}٪', AppColors.info)),
         const SizedBox(width: 10),
-        Expanded(child: _stat('قبول‌شده', '$passed', AppColors.green600)),
+        Expanded(child: _stat(context.tr('academy.passedCountLabel'), '$passed', AppColors.green600)),
       ]),
     );
   }
@@ -119,12 +120,12 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         children: [
-          _chip('همه صنوف', _grade == null, () => setState(() => _grade = null)),
-          ...grades.map((g) => _chip(gradeLabel(g), _grade == g, () => setState(() => _grade = g))),
+          _chip(context.tr('academy.allGradesFilter'), _grade == null, () => setState(() => _grade = null)),
+          ...grades.map((g) => _chip(gradeLabel(context, g), _grade == g, () => setState(() => _grade = g))),
           const SizedBox(width: 8),
           Container(width: 1, color: Theme.of(context).colorScheme.outlineVariant),
           const SizedBox(width: 8),
-          _chip('همه مضامین', _subject == null, () => setState(() => _subject = null)),
+          _chip(context.tr('academy.allSubjectsFilter'), _subject == null, () => setState(() => _subject = null)),
           ...subjects.map((s) => _chip(s, _subject == s, () => setState(() => _subject = s))),
         ],
       ),
@@ -165,7 +166,7 @@ class _SubmissionCard extends StatelessWidget {
               CircleAvatar(
                 radius: 22,
                 backgroundColor: color.withValues(alpha: 0.14),
-                child: Text('${s.scorePercent.toStringAsFixed(0)}',
+                child: Text(s.scorePercent.toStringAsFixed(0),
                     style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13)),
               ),
               const SizedBox(width: 12),
@@ -175,7 +176,9 @@ class _SubmissionCard extends StatelessWidget {
                   children: [
                     Text(s.studentName, style: const TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 2),
-                    Text('${s.subject} · ${s.gradeLabel} · ${s.answers.length} سؤال',
+                    Text(
+                        '${s.subject} · ${gradeLabel(context, s.gradeId)} · '
+                        '${context.tr('academy.questionsCountSuffix', {'count': '${s.answers.length}'})}',
                         style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                   ],
                 ),
@@ -220,7 +223,7 @@ class SubmissionDetailSheet extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(s.studentName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                      Text('${s.subject} · ${s.gradeLabel}',
+                      Text('${s.subject} · ${gradeLabel(context, s.gradeId)}',
                           style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
                     ],
                   ),
@@ -251,7 +254,9 @@ class SubmissionDetailSheet extends StatelessWidget {
             : '—';
         break;
       case QuestionKind.trueFalse:
-        studentAns = a.chosenBool == null ? '—' : (a.chosenBool! ? 'صحیح' : 'غلط');
+        studentAns = a.chosenBool == null
+            ? '—'
+            : (a.chosenBool! ? context.tr('academy.correctLabel') : context.tr('academy.incorrectLabel'));
         break;
       case QuestionKind.essay:
         studentAns = (a.essayText ?? '').isEmpty ? '—' : a.essayText!;
@@ -278,12 +283,15 @@ class SubmissionDetailSheet extends StatelessWidget {
           const SizedBox(height: 8),
           Text('$n. ${a.questionText}', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5)),
           const SizedBox(height: 6),
-          InfoRow('پاسخ شاگرد', studentAns),
+          InfoRow(context.tr('academy.studentAnswerLabel'), studentAns),
           if (a.kind == QuestionKind.mcq && a.correctIndex != null && a.options.isNotEmpty)
-            InfoRow('پاسخ درست', a.options[a.correctIndex!.clamp(0, a.options.length - 1).toInt()]),
+            InfoRow(context.tr('academy.correctAnswerLabel'),
+                a.options[a.correctIndex!.clamp(0, a.options.length - 1).toInt()]),
           if (a.kind == QuestionKind.trueFalse && a.correctBool != null)
-            InfoRow('پاسخ درست', a.correctBool! ? 'صحیح' : 'غلط'),
-          if (a.kind == QuestionKind.essay && a.modelAnswer.isNotEmpty) InfoRow('پاسخ نمونه', a.modelAnswer),
+            InfoRow(context.tr('academy.correctAnswerLabel'),
+                a.correctBool! ? context.tr('academy.correctLabel') : context.tr('academy.incorrectLabel')),
+          if (a.kind == QuestionKind.essay && a.modelAnswer.isNotEmpty)
+            InfoRow(context.tr('academy.modelAnswerLabel'), a.modelAnswer),
           if (a.aiFeedback.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(10),

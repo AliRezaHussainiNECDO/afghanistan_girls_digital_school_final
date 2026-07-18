@@ -30,6 +30,88 @@ class StudentManagementMockDataSource
     implements StudentManagementRemoteDataSource {
   static const int _lessonsPerSubject = 24;
 
+  final String localeCode;
+  StudentManagementMockDataSource({this.localeCode = 'fa'});
+
+  static const Map<String, Map<String, String>> _i18n = {
+    'fa': {
+      'studentNotFound': 'شاگرد یافت نشد',
+      'unknownProvince': 'نامشخص',
+      'unknownParent': 'والد/سرپرست',
+      'attendanceBelowThreshold': 'نرخ حاضری {rate}٪ — زیر آستانهٔ ۷۵٪ (بخش ۶.۲ سند)',
+      'lowSubjectScore': 'نمرهٔ {subject} پایین است ({score}٪) — نیاز به تمرین بیشتر',
+      'noExamsYet': 'هنوز هیچ امتحان/کوییزی ثبت نشده است',
+      'decliningTrend': 'روند نمرات در امتحان‌های اخیر نزولی است',
+      'strongPerformance': 'عملکرد قوی در {subject} (نمرهٔ {score}٪)',
+      'regularAttendance': 'حاضری منظم ({rate}٪)',
+      'activeParticipation': '{count} ارزیابی تکمیل‌شده — مشارکت فعال',
+      'practiceRecommended': 'جلسات تمرینی {subject} با استاد هوش مصنوعی توصیه می‌شود',
+      'notifyParentsAttendance': 'اطلاع‌رسانی به والدین دربارهٔ حاضری (بخش ۱۳ب.۴ سند)',
+      'continueCurrentPath': 'ادامهٔ مسیر فعلی؛ محتوای تکمیلی قابل فعال‌سازی است',
+      'bestSubjectNote': 'آخرین نمره {score}٪ — آمادهٔ محتوای سطح بالاتر.',
+      'weakSubjectNote': 'آخرین نمره {score}٪ — تکرار و تمرین بیشتر لازم است.',
+    },
+    'en': {
+      'studentNotFound': 'Student not found',
+      'unknownProvince': 'Unknown',
+      'unknownParent': 'Parent/guardian',
+      'attendanceBelowThreshold': 'Attendance rate {rate}% — below the 75% threshold (doc section 6.2)',
+      'lowSubjectScore': '{subject} score is low ({score}%) — needs more practice',
+      'noExamsYet': 'No exams/quizzes recorded yet',
+      'decliningTrend': 'Scores have been declining in recent exams',
+      'strongPerformance': 'Strong performance in {subject} (score {score}%)',
+      'regularAttendance': 'Regular attendance ({rate}%)',
+      'activeParticipation': '{count} assessments completed — active participation',
+      'practiceRecommended': 'Practice sessions in {subject} with the AI Teacher are recommended',
+      'notifyParentsAttendance': 'Notify parents about attendance (doc section 13b.4)',
+      'continueCurrentPath': 'Continue the current path; supplementary content can be enabled',
+      'bestSubjectNote': 'Latest score {score}% — ready for higher-level content.',
+      'weakSubjectNote': 'Latest score {score}% — needs review and more practice.',
+    },
+    'ps': {
+      'studentNotFound': 'زده کوونکی ونه موندل شو',
+      'unknownProvince': 'ناڅرګند',
+      'unknownParent': 'مور/پلار یا کفیل',
+      'attendanceBelowThreshold': 'د حاضرۍ کچه {rate}٪ — د ۷۵٪ حد نه ښکته (د سند ۶.۲ برخه)',
+      'lowSubjectScore': 'د {subject} نمره ټیټه ده ({score}٪) — ډیر تمرین ته اړتیا لري',
+      'noExamsYet': 'تر اوسه هیڅ ازموینه/کوییز نه دی ثبت شوی',
+      'decliningTrend': 'په وروستیو ازموینو کې د نمرو رجحان ښکته روان دی',
+      'strongPerformance': 'په {subject} کې پیاوړی فعالیت (نمره {score}٪)',
+      'regularAttendance': 'منظمه حاضري ({rate}٪)',
+      'activeParticipation': '{count} بشپړ شوي ارزونې — فعاله ګډون',
+      'practiceRecommended': 'د {subject} د تمرین ناستې د AI ښوونکي سره وړاندیز کیږي',
+      'notifyParentsAttendance': 'مور/پلار ته د حاضرۍ په اړه خبرتیا (د سند ۱۳ب.۴ برخه)',
+      'continueCurrentPath': 'اوسنی لار دوام ورکړئ؛ بشپړوونکې منځپانګه فعالولی شئ',
+      'bestSubjectNote': 'وروستۍ نمره {score}٪ — د لوړې کچې منځپانګې لپاره چمتو ده.',
+      'weakSubjectNote': 'وروستۍ نمره {score}٪ — بیاکتنه او ډیر تمرین ته اړتیا لري.',
+    },
+    'fr': {
+      'studentNotFound': 'Élève introuvable',
+      'unknownProvince': 'Inconnue',
+      'unknownParent': 'Parent/tuteur',
+      'attendanceBelowThreshold': 'Taux de présence {rate} % — sous le seuil de 75 % (doc, section 6.2)',
+      'lowSubjectScore': 'Note en {subject} faible ({score} %) — besoin de plus de pratique',
+      'noExamsYet': 'Aucun examen/quiz enregistré pour l’instant',
+      'decliningTrend': 'Les notes sont en baisse lors des derniers examens',
+      'strongPerformance': 'Bonne performance en {subject} (note {score} %)',
+      'regularAttendance': 'Présence régulière ({rate} %)',
+      'activeParticipation': '{count} évaluations complétées — participation active',
+      'practiceRecommended': 'Des séances de pratique en {subject} avec le professeur IA sont recommandées',
+      'notifyParentsAttendance': 'Informer les parents de la présence (doc, section 13b.4)',
+      'continueCurrentPath': 'Poursuivre le parcours actuel ; du contenu complémentaire peut être activé',
+      'bestSubjectNote': 'Dernière note {score} % — prêt pour un contenu de niveau supérieur.',
+      'weakSubjectNote': 'Dernière note {score} % — révision et pratique supplémentaire nécessaires.',
+    },
+  };
+
+  String _t(String key, [Map<String, String>? params]) {
+    var s = _i18n[localeCode]?[key] ?? _i18n['fa']![key]!;
+    params?.forEach((k, v) {
+      s = s.replaceAll('{$k}', v);
+    });
+    return s;
+  }
+
   AccountStatus _accountStatus(StudentAccountStatus s) => switch (s) {
         StudentAccountStatus.active => AccountStatus.active,
         StudentAccountStatus.suspended => AccountStatus.suspended,
@@ -77,7 +159,7 @@ class StudentManagementMockDataSource
       id: r.id,
       fullName: r.fullName,
       grade: progress.currentGrade,
-      province: r.province.isEmpty ? 'نامشخص' : r.province,
+      province: r.province.isEmpty ? _t('unknownProvince') : r.province,
       status: _accountStatus(r.status),
       riskLevel: _risk(attendance.ratePercent, avg, hasScores),
       gradeAverage: avg,
@@ -116,7 +198,7 @@ class StudentManagementMockDataSource
   Future<StudentDetailModel> fetchStudentDetail(String studentId) async {
     final r = StudentDirectory.instance.byId(studentId);
     if (r == null) {
-      throw StateError('شاگرد یافت نشد');
+      throw StateError(_t('studentNotFound'));
     }
     final summary = await _summaryFor(r);
     final progress = ProgressionStore.instance.progressFor(r.id);
@@ -170,7 +252,7 @@ class StudentManagementMockDataSource
         .map((l) => ParentLink(
               linkId: '${l.parentId}:${l.studentId}',
               parentName:
-                  l.parentName.isEmpty ? 'والد/سرپرست' : l.parentName,
+                  l.parentName.isEmpty ? _t('unknownParent') : l.parentName,
               linkStatus: switch (l.status) {
                 GuardianLinkStatus.approved => 'approved',
                 GuardianLinkStatus.pendingStudentApproval =>
@@ -226,7 +308,7 @@ class StudentManagementMockDataSource
   @override
   Future<AiTeacherReportModel> fetchAiReport(String studentId) async {
     final r = StudentDirectory.instance.byId(studentId);
-    if (r == null) throw StateError('شاگرد یافت نشد');
+    if (r == null) throw StateError(_t('studentNotFound'));
     final summary = await _summaryFor(r);
     final subs = AcademyStore().getSubmissions(studentId: r.id);
     final latest = _latestBySubject(subs);
@@ -263,11 +345,11 @@ class StudentManagementMockDataSource
 
     final concerns = <String>[
       if (summary.attendanceRate < 75)
-        'نرخ حاضری ${summary.attendanceRate.toStringAsFixed(0)}٪ — زیر آستانهٔ ۷۵٪ (بخش ۶.۲ سند)',
+        _t('attendanceBelowThreshold', {'rate': summary.attendanceRate.toStringAsFixed(0)}),
       if (weakSubject != null && weak < 55)
-        'نمرهٔ $weakSubject پایین است (${weak.toStringAsFixed(0)}٪) — نیاز به تمرین بیشتر',
-      if (subs.isEmpty) 'هنوز هیچ امتحان/کوییزی ثبت نشده است',
-      if (trend == Trend.declining) 'روند نمرات در امتحان‌های اخیر نزولی است',
+        _t('lowSubjectScore', {'subject': weakSubject!, 'score': weak.toStringAsFixed(0)}),
+      if (subs.isEmpty) _t('noExamsYet'),
+      if (trend == Trend.declining) _t('decliningTrend'),
     ];
 
     return AiTeacherReportModel(
@@ -284,30 +366,28 @@ class StudentManagementMockDataSource
           .toDouble(),
       strengths: [
         if (bestSubject != null && best >= 70)
-          'عملکرد قوی در $bestSubject (نمرهٔ ${best.toStringAsFixed(0)}٪)',
+          _t('strongPerformance', {'subject': bestSubject!, 'score': best.toStringAsFixed(0)}),
         if (summary.attendanceRate >= 75)
-          'حاضری منظم (${summary.attendanceRate.toStringAsFixed(0)}٪)',
-        if (subs.length >= 3) '${subs.length} ارزیابی تکمیل‌شده — مشارکت فعال',
+          _t('regularAttendance', {'rate': summary.attendanceRate.toStringAsFixed(0)}),
+        if (subs.length >= 3) _t('activeParticipation', {'count': '${subs.length}'}),
       ],
       concerns: concerns,
       recommendations: [
         if (weakSubject != null && weak < 55)
-          'جلسات تمرینی $weakSubject با استاد هوش مصنوعی توصیه می‌شود',
+          _t('practiceRecommended', {'subject': weakSubject!}),
         if (summary.attendanceRate < 75)
-          'اطلاع‌رسانی به والدین دربارهٔ حاضری (بخش ۱۳ب.۴ سند)',
-        if (concerns.isEmpty) 'ادامهٔ مسیر فعلی؛ محتوای تکمیلی قابل فعال‌سازی است',
+          _t('notifyParentsAttendance'),
+        if (concerns.isEmpty) _t('continueCurrentPath'),
       ],
       subjectNotes: [
         if (bestSubject != null)
           SubjectNote(
               subjectName: bestSubject!,
-              note:
-                  'آخرین نمره ${best.toStringAsFixed(0)}٪ — آمادهٔ محتوای سطح بالاتر.'),
+              note: _t('bestSubjectNote', {'score': best.toStringAsFixed(0)})),
         if (weakSubject != null && weakSubject != bestSubject)
           SubjectNote(
               subjectName: weakSubject!,
-              note:
-                  'آخرین نمره ${weak.toStringAsFixed(0)}٪ — تکرار و تمرین بیشتر لازم است.'),
+              note: _t('weakSubjectNote', {'score': weak.toStringAsFixed(0)})),
       ],
     );
   }

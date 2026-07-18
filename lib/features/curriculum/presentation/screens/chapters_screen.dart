@@ -29,14 +29,14 @@ class ChaptersScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.tr('curriculum.chapters'))),
       body: chaptersAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (chapters) {
           if (chapters.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'هنوز فصلی برای این مضمون منتشر نشده است.',
+                  context.tr('curriculum.noChaptersYet'),
                   textAlign: TextAlign.center,
                   style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
@@ -70,13 +70,14 @@ class ChaptersScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SubjectProgressBar(
-                      label: 'پیشرفت کلی این مضمون',
+                      label: context.tr('curriculum.overallSubjectProgress'),
                       percent: overall,
                       light: true,
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '$completedCount از ${chapters.length} فصل تکمیل شده',
+                      context.tr('curriculum.chaptersCompletedCount',
+                          {'completed': '$completedCount', 'total': '${chapters.length}'}),
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
                     ),
                   ],
@@ -131,8 +132,8 @@ class _ChapterCard extends StatelessWidget {
         onTap: () {
           if (locked) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('برای باز شدن این فصل، ابتدا فصل قبلی را تکمیل کنید.'),
+              SnackBar(
+                content: Text(context.tr('curriculum.chapterLockedSnackbar')),
               ),
             );
             return;
@@ -171,10 +172,12 @@ class _ChapterCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       locked
-                          ? 'قفل — با تکمیل فصل قبلی باز می‌شود'
+                          ? context.tr('curriculum.chapterLockedHint')
                           : (completed
-                              ? 'تکمیل شد ✓ (${chapter.lessonCount} درس)'
-                              : '${chapter.viewedCount}/${chapter.lessonCount} درس دیده‌شده'),
+                              ? context.tr('curriculum.chapterCompletedLessons',
+                                  {'count': '${chapter.lessonCount}'})
+                              : context.tr('curriculum.lessonsViewedCount',
+                                  {'viewed': '${chapter.viewedCount}', 'total': '${chapter.lessonCount}'})),
                       style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
                     ),
                     if (!locked && !completed) ...[

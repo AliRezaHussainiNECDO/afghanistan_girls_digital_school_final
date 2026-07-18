@@ -24,29 +24,29 @@ IconData _typeIcon(SafetyItemType t) {
   }
 }
 
-String _typeLabel(SafetyItemType t) {
+String _typeLabel(BuildContext context, SafetyItemType t) {
   switch (t) {
     case SafetyItemType.chatFlag:
-      return 'پرچم چت';
+      return context.tr('safetyQueue.typeChatFlag');
     case SafetyItemType.aiEscalation:
-      return 'ارجاع هوش مصنوعی';
+      return context.tr('safetyQueue.typeAiEscalation');
     case SafetyItemType.chatReport:
-      return 'گزارش چت';
+      return context.tr('safetyQueue.typeChatReport');
     case SafetyItemType.atRisk:
-      return 'در معرض خطر';
+      return context.tr('safetyQueue.typeAtRisk');
   }
 }
 
-String _statusLabel(SafetyItemStatus s) {
+String _statusLabel(BuildContext context, SafetyItemStatus s) {
   switch (s) {
     case SafetyItemStatus.open:
-      return 'در انتظار بررسی';
+      return context.tr('safetyQueue.statusOpen');
     case SafetyItemStatus.reviewed:
-      return 'بررسی شد';
+      return context.tr('safetyQueue.statusReviewed');
     case SafetyItemStatus.dismissed:
-      return 'رد شد';
+      return context.tr('safetyQueue.statusDismissed');
     case SafetyItemStatus.escalated:
-      return 'ارجاع شد';
+      return context.tr('safetyQueue.statusEscalated');
   }
 }
 
@@ -80,7 +80,7 @@ class SafetyQueueScreen extends ConsumerWidget {
       role: AppUserRole.superAdmin,
       body: queueAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (items) {
           final open = items.where((i) => i.status == SafetyItemStatus.open).length;
           return Column(
@@ -98,11 +98,13 @@ class SafetyQueueScreen extends ConsumerWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.shield_moon_rounded, color: AppColors.gold600),
+                    const Icon(Icons.shield_moon_rounded, color: AppColors.gold600),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        open > 0 ? '$open مورد در انتظار بازبینی شما' : 'همهٔ موارد بررسی شده‌اند',
+                        open > 0
+                            ? context.tr('safetyQueue.pendingBanner', {'count': '$open'})
+                            : context.tr('safetyQueue.allReviewedBanner'),
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -194,10 +196,10 @@ class _QueueCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _Pill(label: _statusLabel(item.status), color: _statusColor(item.status)),
+                        _Pill(label: _statusLabel(context, item.status), color: _statusColor(item.status)),
                         if (item.highPriority) ...[
                           const SizedBox(width: 6),
-                          _Pill(label: 'اولویت بالا', color: scheme.error),
+                          _Pill(label: context.tr('safetyQueue.highPriorityPill'), color: scheme.error),
                         ],
                       ],
                     ),
@@ -281,25 +283,25 @@ class _SafetyDetailSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_typeLabel(item.type),
+                        Text(_typeLabel(context, item.type),
                             style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                         Text(item.summary, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _Pill(label: _statusLabel(item.status), color: _statusColor(item.status)),
+                  _Pill(label: _statusLabel(context, item.status), color: _statusColor(item.status)),
                 ],
               ),
               const SizedBox(height: 16),
-              _detailRow(context, 'دانش‌آموز', '${item.studentName} · ${item.studentGrade}'),
-              _detailRow(context, 'منبع', item.source),
-              _detailRow(context, 'زمان ثبت', _fmt(item.detectedAt)),
-              _detailRow(context, 'دلیل ثبت در صف', item.triggerReason),
+              _detailRow(context, context.tr('safetyQueue.studentLabel'), '${item.studentName} · ${item.studentGrade}'),
+              _detailRow(context, context.tr('safetyQueue.sourceLabel'), item.source),
+              _detailRow(context, context.tr('safetyQueue.detectedAtLabel'), _fmt(item.detectedAt)),
+              _detailRow(context, context.tr('safetyQueue.triggerReasonLabel'), item.triggerReason),
               const SizedBox(height: 4),
               // متن کامل محتوای پرچم‌خورده
               if (item.detail.isNotEmpty) ...[
-                Text('محتوای کامل',
+                Text(context.tr('safetyQueue.fullContentLabel'),
                     style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Container(
@@ -321,26 +323,26 @@ class _SafetyDetailSheet extends StatelessWidget {
                     Expanded(
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: AppColors.green600),
-                        onPressed: () => _resolve(context, SafetyItemStatus.reviewed, 'مورد بررسی شد'),
+                        onPressed: () => _resolve(context, SafetyItemStatus.reviewed, context.tr('safetyQueue.reviewedToast')),
                         icon: const Icon(Icons.check_rounded, size: 18),
-                        label: const Text('بررسی شد'),
+                        label: Text(context.tr('safetyQueue.reviewedButton')),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton.icon(
                         style: FilledButton.styleFrom(backgroundColor: scheme.error),
-                        onPressed: () => _resolve(context, SafetyItemStatus.escalated, 'مورد ارجاع شد'),
+                        onPressed: () => _resolve(context, SafetyItemStatus.escalated, context.tr('safetyQueue.escalatedToast')),
                         icon: const Icon(Icons.priority_high_rounded, size: 18),
-                        label: const Text('ارجاع'),
+                        label: Text(context.tr('safetyQueue.escalateButton')),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => _resolve(context, SafetyItemStatus.dismissed, 'مورد رد شد'),
+                        onPressed: () => _resolve(context, SafetyItemStatus.dismissed, context.tr('safetyQueue.dismissedToast')),
                         icon: const Icon(Icons.close_rounded, size: 18),
-                        label: const Text('رد کردن'),
+                        label: Text(context.tr('safetyQueue.dismissButton')),
                       ),
                     ),
                   ],
@@ -353,7 +355,7 @@ class _SafetyDetailSheet extends StatelessWidget {
                     color: _statusColor(item.status).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(AppRadii.md),
                   ),
-                  child: Text('این مورد قبلاً «${_statusLabel(item.status)}» شده است.',
+                  child: Text(context.tr('safetyQueue.alreadyResolvedMessage', {'status': _statusLabel(context, item.status)}),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: _statusColor(item.status), fontWeight: FontWeight.w700)),
                 ),

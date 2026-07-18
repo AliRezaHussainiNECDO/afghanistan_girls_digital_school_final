@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'translations/en.dart';
 import 'translations/fa.dart';
+import 'translations/fr.dart';
 import 'translations/ps.dart';
 
-/// سیستم سبک بومی‌سازی (بدون نیاز به build_runner/gen-l10n) — سه زبان
-/// فارسی(دری)/پشتو/انگلیسی طبق اصل «دوزبانگی کامل» بخش ۱.۲ سند
-/// (اینجا سه‌زبانه، چون preferred_language سه مقدار دارد: fa/ps/en).
+/// سیستم سبک بومی‌سازی (بدون نیاز به build_runner/gen-l10n) — چهار زبان
+/// فارسی(دری)/پشتو/انگلیسی/فرانسوی، طبق درخواست کاربر: برنامه باید در هر
+/// چهار زبان کامل باشد و انتخاب زبان اولین‌بار پس از نصب از کاربر پرسیده
+/// شود (`features/language_select`).
 class AppLocalizations {
   final Locale locale;
 
@@ -15,6 +17,7 @@ class AppLocalizations {
     Locale('fa'),
     Locale('ps'),
     Locale('en'),
+    Locale('fr'),
   ];
 
   static AppLocalizations of(BuildContext context) {
@@ -33,6 +36,8 @@ class AppLocalizations {
         return psStrings;
       case 'en':
         return enStrings;
+      case 'fr':
+        return frStrings;
       case 'fa':
       default:
         return faStrings;
@@ -60,7 +65,7 @@ class _AppLocalizationsDelegate
   const _AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) => ['fa', 'ps', 'en'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => ['fa', 'ps', 'en', 'fr'].contains(locale.languageCode);
 
   @override
   Future<AppLocalizations> load(Locale locale) async {

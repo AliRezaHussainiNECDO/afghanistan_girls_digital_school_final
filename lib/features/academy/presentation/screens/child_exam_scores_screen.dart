@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
@@ -32,11 +33,11 @@ class ChildExamScoresScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
-      title: 'نمرات $displayName',
+      title: context.tr('academy.scoresForName', {'name': displayName}),
       role: AppUserRole.parent,
       body: subsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(message: e.toString()),
+        error: (e, st) => ErrorView(error: e),
         data: (subs) {
           if (subs.isEmpty) {
             return Center(
@@ -46,7 +47,7 @@ class ChildExamScoresScreen extends ConsumerWidget {
                   Icon(Icons.assignment_outlined,
                       size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
                   const SizedBox(height: 12),
-                  Text('$displayName هنوز در امتحانی شرکت نکرده است',
+                  Text(context.tr('academy.childNoExamsYet', {'name': displayName}),
                       textAlign: TextAlign.center,
                       style: TextStyle(color: scheme.onSurfaceVariant)),
                 ]),
@@ -117,18 +118,21 @@ class _OverallHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('کارنامهٔ امتحانات $displayName',
+              Text(context.tr('academy.transcriptTitle', {'name': displayName}),
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 12),
               Row(children: [
-                _pill(Icons.assignment_turned_in_rounded, '${subs.length} امتحان'),
+                _pill(Icons.assignment_turned_in_rounded,
+                    context.tr('academy.examsCountChip', {'count': '${subs.length}'})),
                 const SizedBox(width: 6),
-                _pill(Icons.check_circle_rounded, '$passed قبول'),
+                _pill(Icons.check_circle_rounded,
+                    context.tr('academy.passedCountChip', {'count': '$passed'})),
               ]),
               if (failed > 0) ...[
                 const SizedBox(height: 6),
-                _pill(Icons.refresh_rounded, '$failed نیازمند تلاش دوباره'),
+                _pill(Icons.refresh_rounded,
+                    context.tr('academy.failedNeedsRetryChip', {'count': '$failed'})),
               ],
             ],
           ),
@@ -157,7 +161,7 @@ class _OverallHeader extends StatelessWidget {
               Text('${avg.toStringAsFixed(0)}٪',
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
-              Text('میانگین',
+              Text(context.tr('academy.averageLabel'),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 9.5)),
             ]),
           ]),
@@ -202,7 +206,7 @@ class _GradeHeader extends StatelessWidget {
             color: isCurrent ? null : scheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(AppRadii.pill),
           ),
-          child: Text(gradeLabel(gradeId),
+          child: Text(gradeLabel(context, gradeId),
               style: TextStyle(
                   color: isCurrent ? Colors.white : scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w800,
@@ -210,8 +214,8 @@ class _GradeHeader extends StatelessWidget {
         ),
         if (isCurrent) ...[
           const SizedBox(width: 8),
-          Text('صنف فعلی',
-              style: TextStyle(
+          Text(context.tr('academy.currentGradeBadge'),
+              style: const TextStyle(
                   fontSize: 11, color: AppColors.green600, fontWeight: FontWeight.w700)),
         ],
         const SizedBox(width: 10),
@@ -281,7 +285,8 @@ class _SubjectCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  '${attempts.length} نوبت · آخرین: ${formatDate(latest.submittedAt)}',
+                  context.tr('academy.attemptsCountAndLast',
+                      {'count': '${attempts.length}', 'date': formatDate(latest.submittedAt)}),
                   style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
                 ),
               ],
@@ -328,19 +333,24 @@ class _AttemptRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                Text('نوبت $number',
+                Text(context.tr('academy.attemptNumber', {'number': '$number'}),
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
                 if (attempt.aiAssisted) ...[
                   const SizedBox(width: 6),
                   Icon(Icons.auto_awesome_rounded, size: 12, color: scheme.tertiary),
                   const SizedBox(width: 2),
-                  Text('نمره‌دهی هوشمند',
+                  Text(context.tr('academy.aiScoredBadge'),
                       style: TextStyle(fontSize: 10, color: scheme.tertiary)),
                 ],
               ]),
               const SizedBox(height: 2),
               Text(
-                '${formatDate(attempt.submittedAt)} · ${attempt.earnedPoints.toStringAsFixed(attempt.earnedPoints.truncateToDouble() == attempt.earnedPoints ? 0 : 1)} از ${attempt.totalPoints.toStringAsFixed(0)} امتیاز',
+                context.tr('academy.attemptDateAndPoints', {
+                  'date': formatDate(attempt.submittedAt),
+                  'earned': attempt.earnedPoints.toStringAsFixed(
+                      attempt.earnedPoints.truncateToDouble() == attempt.earnedPoints ? 0 : 1),
+                  'total': attempt.totalPoints.toStringAsFixed(0),
+                }),
                 style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
               ),
             ],
@@ -355,7 +365,8 @@ class _AttemptRow extends StatelessWidget {
               color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(AppRadii.pill),
             ),
-            child: Text(attempt.passed ? 'قبول' : 'ناکام',
+            child: Text(
+                attempt.passed ? context.tr('academy.passedShort') : context.tr('academy.failedShort'),
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
           ),
         ]),

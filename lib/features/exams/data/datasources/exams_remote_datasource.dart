@@ -28,6 +28,9 @@ class ExamsRemoteDataSource implements ExamsDataSource {
               type: _typeFrom(e['type'] as String?),
               durationMinutes: (e['durationMinutes'] as num?)?.toInt() ?? 10,
               questionCount: (e['questionCount'] as num?)?.toInt() ?? 0,
+              gradeNumber: (e['gradeNumber'] as num?)?.toInt() ?? 0,
+              bestScorePercent: (e['bestScorePercent'] as num?)?.toDouble(),
+              passed: e['passed'] as bool? ?? false,
             ))
         .toList();
   }

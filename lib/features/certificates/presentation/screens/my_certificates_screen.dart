@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
@@ -34,12 +35,12 @@ class MyCertificatesScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: parentMode
-          ? 'گواهی‌نامه‌های ${studentName ?? 'فرزند'}'
-          : 'گواهی‌نامه‌های من',
+          ? context.tr('certificates.forChild', {'name': studentName ?? context.tr('certificates.childFallback')})
+          : context.tr('dashboard.myCertificates'),
       role: parentMode ? AppUserRole.parent : AppUserRole.student,
       body: certsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('خطا: $e')),
+        error: (e, _) => Center(child: Text(context.tr('certificates.errorLoading', {'error': '$e'}))),
         data: (certs) {
           // حالت نمایشی: اگر برای این شناسه گواهی‌ای نبود، همهٔ صادرشده‌ها
           // نشان داده می‌شود (تا بک‌اند واقعی، شناسه‌های Mock متفاوت‌اند).
@@ -68,11 +69,11 @@ class MyCertificatesScreen extends ConsumerWidget {
                         size: 46, color: scheme.outline),
                   ),
                   const SizedBox(height: 16),
-                  const Text('هنوز گواهی‌نامه‌ای صادر نشده',
-                      style: TextStyle(fontWeight: FontWeight.w800)),
+                  Text(context.tr('certificates.noneYetTitle'),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
                   Text(
-                    'بعد از ختم موفقانهٔ هر صنف، گواهی‌نامهٔ رسمی از طرف مدیر برایت ارسال می‌شود 🌸',
+                    context.tr('certificates.noneYetBody'),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 12.5, color: scheme.onSurfaceVariant),
@@ -87,7 +88,7 @@ class MyCertificatesScreen extends ConsumerWidget {
               if (demoFallback)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: Text('(حالت نمایشی — همهٔ گواهی‌نامه‌های صادرشده)',
+                  child: Text(context.tr('certificates.demoModeNotice'),
                       style: TextStyle(
                           fontSize: 11, color: scheme.onSurfaceVariant)),
                 ),
@@ -149,12 +150,16 @@ class _CertificateCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('گواهی‌نامهٔ اتمام صنف ${c.grade}',
+                    Text(context.tr('certificates.gradeCompletionTitle', {'grade': '${c.grade}'}),
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 14.5)),
                     const SizedBox(height: 3),
                     Text(
-                      'سال ${c.yearLabel} · میانگین ٪${c.average.toStringAsFixed(0)}${c.honor.isNotEmpty ? ' · ${c.honor}' : ''}',
+                      context.tr('certificates.yearAverageLine', {
+                        'year': c.yearLabel,
+                        'average': c.average.toStringAsFixed(0),
+                        'honor': c.honor.isNotEmpty ? ' · ${c.honor}' : '',
+                      }),
                       style: TextStyle(
                           fontSize: 12, color: scheme.onSurfaceVariant),
                     ),
@@ -172,7 +177,7 @@ class _CertificateCard extends StatelessWidget {
                   Icon(Icons.visibility_rounded,
                       size: 20, color: scheme.primary),
                   const SizedBox(height: 4),
-                  Text('مشاهده و دانلود',
+                  Text(context.tr('certificates.viewAndDownload'),
                       style: TextStyle(
                           fontSize: 9.5, color: scheme.primary)),
                 ],

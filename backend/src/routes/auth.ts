@@ -16,6 +16,7 @@
  */
 import { Hono } from 'hono';
 import { hashPassword, verifyPassword, signJwt, verifyJwt, verifyBearer } from '../lib/auth';
+import { logAudit, clientIp } from '../lib/audit';
 import {
   sendEmail,
   verificationEmailHtml,
@@ -40,8 +41,8 @@ const auth = new Hono<{ Bindings: Bindings }>();
 const uid = () => crypto.randomUUID();
 
 /** پاسخ خطای استاندارد مطابق قرارداد بخش ۱۹.۱۰ سند. */
-function fail(code: string, messageFa: string, messageEn: string) {
-  return { success: false, error: { code, message_fa: messageFa, message_en: messageEn } };
+function fail(code: string, messageFa: string, messageEn: string, messagePs?: string, messageFr?: string) {
+  return { success: false, error: { code, message_fa: messageFa, message_en: messageEn, message_ps: messagePs ?? messageEn, message_fr: messageFr ?? messageEn } };
 }
 
 /**
@@ -161,10 +162,10 @@ async function issueTokens(db: D1Database, secret: string, u: UserRow) {
 
 auth.post('/register', async (c) => {
   if (!c.env.JWT_SECRET) {
-    return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing'), 500);
+    return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing', 'د سرور امنیتي کیلي تنظیم شوې نه ده', 'La clé de sécurité du serveur n\'est pas configurée'), 500);
   }
   const body = await c.req.json<Record<string, any>>().catch(() => null);
-  if (!body) return c.json(fail('BAD_REQUEST', 'بدنهٔ درخواست نامعتبر است', 'Invalid body'), 400);
+  if (!body) return c.json(fail('BAD_REQUEST', 'بدنهٔ درخواست نامعتبر است', 'Invalid body', 'د غوښتنې متن ناسم دی', 'Le corps de la requête est invalide'), 400);
 
   const role = String(body.role ?? 'student');
   const email = String(body.email ?? '').trim().toLowerCase();
@@ -181,10 +182,10 @@ auth.post('/register', async (c) => {
 
   // اعتبارسنجی پایه (سرور همیشه قطعی — بخش ۴).
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return c.json(fail('INVALID_EMAIL', 'ایمیل نامعتبر است', 'Invalid email'), 400);
+    return c.json(fail('INVALID_EMAIL', 'ایمیل نامعتبر است', 'Invalid email', 'بریښنالیک نامعتبر دی', 'E-mail invalide'), 400);
   }
   if (password.length < 8) {
-    return c.json(fail('WEAK_PASSWORD', 'رمز عبور باید حداقل ۸ کاراکتر باشد', 'Password too short'), 400);
+    return c.json(fail('WEAK_PASSWORD', 'رمز عبور باید حداقل ۸ کاراکتر باشد', 'Password too short', 'پټنوم باید لږترلږه ۸ توري ولري', 'Le mot de passe doit comporter au moins 8 caractères'), 400);
   }
 
   // Invite Code برای دانش‌آموز و استاد اجباری است (بخش ۳ب.۲ / ۲.۲).
@@ -207,7 +208,7 @@ auth.post('/register', async (c) => {
       .first<{ id: string }>();
     // پیام یکسان برای نامعتبر/مصرف‌شده/منقضی (بخش ۳ب.۲.۴ — ضد Enumeration).
     if (!inviteRow) {
-      return c.json(fail('INVALID_INVITE_CODE', 'کد دعوت نامعتبر است', 'Invalid invite code'), 403);
+      return c.json(fail('INVALID_INVITE_CODE', 'کد دعوت نامعتبر است', 'Invalid invite code', 'د بلنې کوډ نامعتبر دی', 'Code d\'invitation invalide'), 403);
     }
   }
 
@@ -216,7 +217,7 @@ auth.post('/register', async (c) => {
     .bind(email)
     .first<{ id: string }>();
   if (existing) {
-    return c.json(fail('EMAIL_TAKEN', 'این ایمیل قبلاً ثبت شده است', 'Email already registered'), 409);
+    return c.json(fail('EMAIL_TAKEN', 'این ایمیل قبلاً ثبت شده است', 'Email already registered', 'دا بریښنالیک دمخه ثبت شوی دی', 'Cette adresse e-mail est déjà enregistrée'), 409);
   }
 
   const id = uid();
@@ -255,6 +256,30 @@ auth.post('/register', async (c) => {
       ).bind(id, inviteRow.id),
     );
   }
+
+  // اعلان ثبت‌نام تازه به همهٔ مدیران — بخش «اعلان‌های داشبورد مدیر» (رفع
+  // اشکال هماهنگی: قبلاً هیچ فعالیت جدیدی در بخش کاربران/مدیریت باعث اعلان
+  // نمی‌شد؛ مدیر فقط با رجوع دستی به فهرست کاربران می‌فهمید کسی ثبت‌نام
+  // کرده). طبق منطق داشبورد مدیر: کاربر تازه = رویدادی که باید فوراً دیده
+  // شود، دقیقاً مثل پیام‌های حساسِ ایمنی که همین الگو را دارند.
+  const roleLabelFa = role === 'seminar_instructor' ? 'استاد' : role === 'parent' ? 'والد' : 'دانش‌آموز';
+  const fullNameFa = `${firstName} ${lastName}`.trim() || email;
+  const { results: adminsForNotice } = await c.env.DB.prepare(
+    "SELECT id FROM users WHERE role = 'super_admin'",
+  ).all<{ id: string }>();
+  for (const admin of adminsForNotice) {
+    statements.push(
+      c.env.DB.prepare(
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'general')",
+      ).bind(
+        uid(),
+        admin.id,
+        'ثبت‌نام کاربر جدید 👋',
+        `«${fullNameFa}» به‌عنوان ${roleLabelFa} در برنامه ثبت‌نام کرد.`,
+      ),
+    );
+  }
+
   await c.env.DB.batch(statements);
 
   const user: UserRow = {
@@ -274,6 +299,19 @@ auth.post('/register', async (c) => {
   // ارسال لینک تأیید ایمیل — در پس‌زمینه تا پاسخ ثبت‌نام معطل نشود.
   c.executionCtx.waitUntil(
     sendVerificationEmail(c.env, c.req.url, { id, email, first_name: firstName }),
+  );
+
+  // Auditability (بخش ۲۰.۳): ثبت‌نام کاربر + مصرف کد دعوت (بخش ۳ب.۳).
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: id,
+      actorRole: role,
+      actionType: 'user_register',
+      targetTable: 'users',
+      targetId: id,
+      ipAddress: clientIp(c),
+      detail: { role, inviteCodeId: inviteRow?.id ?? null, currentGrade },
+    }),
   );
 
   const tokens = await issueTokens(c.env.DB, c.env.JWT_SECRET, user);
@@ -406,10 +444,10 @@ auth.post('/reset-password', async (c) => {
   const newPassword = String(body?.newPassword ?? '');
 
   if (!email || !/^\d{6}$/.test(code)) {
-    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر است', 'Invalid reset code'), 400);
+    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر است', 'Invalid reset code', 'د بیارغونې کوډ نامعتبر دی', 'Code de réinitialisation invalide'), 400);
   }
   if (newPassword.length < 8) {
-    return c.json(fail('WEAK_PASSWORD', 'رمز عبور باید حداقل ۸ کاراکتر باشد', 'Password too short'), 400);
+    return c.json(fail('WEAK_PASSWORD', 'رمز عبور باید حداقل ۸ کاراکتر باشد', 'Password too short', 'پټنوم باید لږترلږه ۸ توري ولري', 'Le mot de passe doit comporter au moins 8 caractères'), 400);
   }
 
   const user = await c.env.DB.prepare(
@@ -418,7 +456,7 @@ auth.post('/reset-password', async (c) => {
     .bind(email)
     .first<{ id: string }>();
   if (!user) {
-    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر یا منقضی است', 'Invalid or expired code'), 400);
+    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر یا منقضی است', 'Invalid or expired code', 'د بیارغونې کوډ نامعتبر یا پای ته رسیدلی دی', 'Code invalide ou expiré'), 400);
   }
 
   const row = await c.env.DB.prepare(
@@ -428,7 +466,7 @@ auth.post('/reset-password', async (c) => {
     .bind(user.id)
     .first<{ id: string; token_hash: string; attempts: number }>();
   if (!row || row.attempts >= RESET_MAX_ATTEMPTS) {
-    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر یا منقضی است', 'Invalid or expired code'), 400);
+    return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر یا منقضی است', 'Invalid or expired code', 'د بیارغونې کوډ نامعتبر یا پای ته رسیدلی دی', 'Code invalide ou expiré'), 400);
   }
 
   const codeHash = await sha256B64Url(code);
@@ -436,7 +474,7 @@ auth.post('/reset-password', async (c) => {
     await c.env.DB.prepare('UPDATE email_tokens SET attempts = attempts + 1 WHERE id = ?')
       .bind(row.id)
       .run();
-    return c.json(fail('INVALID_CODE', 'کد بازیابی نادرست است', 'Wrong reset code'), 400);
+    return c.json(fail('INVALID_CODE', 'کد بازیابی نادرست است', 'Wrong reset code', 'د بیارغونې کوډ ناسم دی', 'Code de réinitialisation incorrect'), 400);
   }
 
   const passwordHash = await hashPassword(newPassword);
@@ -455,7 +493,7 @@ auth.post('/reset-password', async (c) => {
 
 auth.post('/login', async (c) => {
   if (!c.env.JWT_SECRET) {
-    return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing'), 500);
+    return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing', 'د سرور امنیتي کیلي تنظیم شوې نه ده', 'La clé de sécurité du serveur n\'est pas configurée'), 500);
   }
   const body = await c.req.json<{ email?: string; password?: string }>().catch(() => null);
   const email = String(body?.email ?? '').trim().toLowerCase();
@@ -467,13 +505,45 @@ auth.post('/login', async (c) => {
 
   // پیام یکسان برای «ایمیل ناموجود» و «رمز اشتباه» (بخش ۳.۲ — ضد Enumeration).
   if (!user || !(await verifyPassword(password, user.password_hash))) {
-    return c.json(fail('INVALID_CREDENTIALS', 'ایمیل یا رمز اشتباه است', 'Invalid email or password'), 401);
+    // Auditability (بخش ۲۰.۳): ورود ناموفق (موفق و ناموفق هر دو ثبت می‌شوند).
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: user?.id ?? null,
+        actionType: 'login_failed',
+        targetTable: 'users',
+        targetId: user?.id ?? null,
+        ipAddress: clientIp(c),
+        detail: { email },
+      }),
+    );
+    return c.json(fail('INVALID_CREDENTIALS', 'ایمیل یا رمز اشتباه است', 'Invalid email or password', 'بریښنالیک یا پټنوم ناسم دی', 'E-mail ou mot de passe incorrect'), 401);
   }
   if (user.status === 'suspended' || user.status === 'deleted') {
-    return c.json(fail('ACCOUNT_SUSPENDED', 'حساب شما مسدود شده است', 'Account suspended'), 403);
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: user.id,
+        actorRole: user.role,
+        actionType: 'login_blocked',
+        targetTable: 'users',
+        targetId: user.id,
+        ipAddress: clientIp(c),
+        detail: { status: user.status },
+      }),
+    );
+    return c.json(fail('ACCOUNT_SUSPENDED', 'حساب شما مسدود شده است', 'Account suspended', 'ستاسو حساب بند شوی دی', 'Votre compte a été suspendu'), 403);
   }
 
   const tokens = await issueTokens(c.env.DB, c.env.JWT_SECRET, user);
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: user.id,
+      actorRole: user.role,
+      actionType: 'login_success',
+      targetTable: 'users',
+      targetId: user.id,
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ user: publicUser(user), ...tokens });
 });
 
@@ -486,7 +556,7 @@ auth.post('/refresh', async (c) => {
   const jti = payload?.['jti'] as string | undefined;
   const sub = payload?.['sub'] as string | undefined;
   if (!payload || !jti || !sub) {
-    return c.json(fail('INVALID_TOKEN', 'نشست نامعتبر است', 'Invalid refresh token'), 401);
+    return c.json(fail('INVALID_TOKEN', 'نشست نامعتبر است', 'Invalid refresh token', 'ناسته نامعتبره ده', 'Session invalide'), 401);
   }
 
   const row = await c.env.DB.prepare(
@@ -495,14 +565,14 @@ auth.post('/refresh', async (c) => {
     .bind(jti, sub)
     .first<{ id: string }>();
   if (!row) {
-    return c.json(fail('INVALID_TOKEN', 'نشست منقضی شده است', 'Refresh token expired/revoked'), 401);
+    return c.json(fail('INVALID_TOKEN', 'نشست منقضی شده است', 'Refresh token expired/revoked', 'ناسته پای ته رسیدلې ده', 'La session a expiré'), 401);
   }
 
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
     .bind(sub)
     .first<UserRow>();
   if (!user || user.status !== 'active') {
-    return c.json(fail('ACCOUNT_SUSPENDED', 'حساب فعال نیست', 'Account not active'), 403);
+    return c.json(fail('ACCOUNT_SUSPENDED', 'حساب فعال نیست', 'Account not active', 'حساب فعال نه دی', 'Le compte n\'est pas actif'), 403);
   }
 
   // Rotation: Refresh قدیمی باطل و یک جفت جدید صادر می‌شود (بخش ۳.۳).
@@ -520,6 +590,16 @@ auth.post('/logout', async (c) => {
     const jti = payload?.['jti'] as string | undefined;
     if (jti) {
       await c.env.DB.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?').bind(jti).run();
+      // Auditability (بخش ۲۰.۳): خروج نیز مانند ورود ثبت می‌شود.
+      c.executionCtx.waitUntil(
+        logAudit(c.env.DB, {
+          actorId: (payload?.['sub'] as string | undefined) ?? null,
+          actionType: 'logout',
+          targetTable: 'refresh_tokens',
+          targetId: jti,
+          ipAddress: clientIp(c),
+        }),
+      );
     }
   }
   return c.json({ success: true });
@@ -530,11 +610,11 @@ auth.post('/logout', async (c) => {
 auth.get('/me', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const sub = payload?.['sub'] as string | undefined;
-  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?')
     .bind(sub)
     .first<UserRow>();
-  if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found'), 401);
+  if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 401);
   return c.json({ user: publicUser(user) });
 });
 
@@ -544,16 +624,16 @@ auth.get('/me', async (c) => {
 auth.post('/change-password', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const sub = payload?.['sub'] as string | undefined;
-  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<{ currentPassword?: string; newPassword?: string }>().catch(() => null);
   const currentPassword = String(b?.currentPassword ?? '');
   const newPassword = String(b?.newPassword ?? '');
   if (newPassword.length < 8) {
-    return c.json(fail('WEAK_PASSWORD', 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد', 'Password too short'), 400);
+    return c.json(fail('WEAK_PASSWORD', 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد', 'Password too short', 'نوی پټنوم باید لږترلږه ۸ توري ولري', 'Le nouveau mot de passe doit comporter au moins 8 caractères'), 400);
   }
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
   if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
-    return c.json(fail('INVALID_CREDENTIALS', 'رمز عبور فعلی نادرست است', 'Current password is incorrect'), 401);
+    return c.json(fail('INVALID_CREDENTIALS', 'رمز عبور فعلی نادرست است', 'Current password is incorrect', 'اوسنی پټنوم ناسم دی', 'Le mot de passe actuel est incorrect'), 401);
   }
   const passwordHash = await hashPassword(newPassword);
   await c.env.DB.batch([
@@ -572,19 +652,20 @@ auth.post('/change-password', async (c) => {
 auth.patch('/me', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   const sub = payload?.['sub'] as string | undefined;
-  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized'), 401);
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const b = await c.req.json<{ firstName?: string; lastName?: string }>().catch(() => null);
   const firstName = String(b?.firstName ?? '').trim();
   const lastName = String(b?.lastName ?? '').trim();
   if (!firstName) {
-    return c.json(fail('BAD_REQUEST', 'نام نمی‌تواند خالی باشد', 'Name is required'), 400);
+    return c.json(fail('BAD_REQUEST', 'نام نمی‌تواند خالی باشد', 'Name is required', 'نوم نشي کولی خالي وي', 'Le nom est requis'), 400);
   }
   await c.env.DB.prepare("UPDATE users SET first_name = ?, last_name = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(firstName, lastName, sub)
     .run();
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
-  if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found'), 401);
+  if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 401);
   return c.json({ user: publicUser(user) });
 });
 
 export default auth;
+// (audit wiring v1 — بخش ۲۰.۳)

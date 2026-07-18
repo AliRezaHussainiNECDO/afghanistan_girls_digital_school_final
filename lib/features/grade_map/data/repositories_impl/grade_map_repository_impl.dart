@@ -11,9 +11,9 @@ class GradeMapRepositoryImpl implements GradeMapRepository {
   GradeMapRepositoryImpl(this.dataSource);
 
   @override
-  Future<Either<Failure, GradeMap>> getGradeMap(String studentId) async {
+  Future<Either<Failure, GradeMap>> getGradeMap(String studentId, {required int grade}) async {
     try {
-      final result = await dataSource.getGradeMap(studentId);
+      final result = await dataSource.getGradeMap(studentId, grade: grade);
       return Right(result);
     } catch (e) {
       return Left(ServerFailure(e.toString()));

@@ -15,6 +15,9 @@ class DashboardSummaryModel extends DashboardSummary {
     super.pointsTotal,
     super.pointsLevel,
     super.pointsLevelTitleFa,
+    super.pointsNextLevelAt,
+    super.pointsNextLevelTitleFa,
+    super.pointsProgressToNextPercent,
     super.certificatesCount,
   });
 }

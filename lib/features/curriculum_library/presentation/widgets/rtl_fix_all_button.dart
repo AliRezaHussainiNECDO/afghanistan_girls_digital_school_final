@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/network/network_providers.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 
 /// دکمهٔ یک‌کلیکی برای رفع اصلاحیِ متنِ **همهٔ** کتاب‌های قبلاً آپلودشده
@@ -36,18 +38,21 @@ class _RtlFixAllButtonState extends ConsumerState<RtlFixAllButton> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(changed > 0
-              ? 'بررسی شد: از $total کتاب، متن $changed کتاب معکوس بود و اصلاح/بازسازی شد ✓'
-              : 'بررسی شد: از $total کتاب، هیچ‌کدام مشکل متن معکوس نداشتند.'),
+              ? context.tr('rtlFix.checkedWithChanges', {'total': '$total', 'changed': '$changed'})
+              : context.tr('rtlFix.checkedNoIssues', {'total': '$total'})),
           duration: const Duration(seconds: 6),
         ),
       );
       // نصاب همهٔ مضامین ممکن است تغییر کرده باشد — کش کتابخانه را باطل می‌کنیم
       // تا هر بخش (آپلود کتاب، نصاب شاگردان، معلم هوشمند) داده‌های تازه بگیرد.
       ref.invalidate(booksForSubjectProvider);
+      ref.invalidate(chaptersProvider);
+      ref.invalidate(lessonsProvider);
+      ref.invalidate(lessonProvider);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطا در رفع اصلاحی: $e')),
+        SnackBar(content: Text(context.tr('rtlFix.fixErrorWithReason', {'error': '$e'}))),
       );
     } finally {
       if (mounted) setState(() => _running = false);
@@ -80,13 +85,13 @@ class _RtlFixAllButtonState extends ConsumerState<RtlFixAllButton> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('رفع متن‌های معکوس (همهٔ کتاب‌ها)',
+                    Text(context.tr('rtlFix.buttonTitle'),
                         style: TextStyle(
                             fontWeight: FontWeight.w800, color: scheme.onTertiaryContainer)),
                     Text(
                       _running
-                          ? 'در حال بررسی و اصلاح کتاب‌های همهٔ صنف‌ها و مضامین…'
-                          : 'کتاب‌هایی که متن‌شان نامنظم/بی‌مفهوم نمایش داده می‌شود را یک‌جا اصلاح می‌کند',
+                          ? context.tr('rtlFix.runningSubtitle')
+                          : context.tr('rtlFix.idleSubtitle'),
                       style: TextStyle(fontSize: 12, color: scheme.onTertiaryContainer),
                     ),
                   ],

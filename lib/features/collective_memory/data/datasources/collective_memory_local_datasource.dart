@@ -116,11 +116,13 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     await prefs.setBool(_seededKey, true);
   }
 
+  @override
   Future<List<MemoryPost>> getPosts() async {
     final all = await _readPosts();
     return all..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
+  @override
   Future<MemoryPost> createPost({
     required String authorId,
     required String authorName,
@@ -145,6 +147,7 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     return post;
   }
 
+  @override
   Future<MemoryPost> updatePost({
     required String postId,
     required String body,
@@ -163,6 +166,7 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     return updated;
   }
 
+  @override
   Future<void> deletePost(String postId) async {
     final all = await _readPosts();
     all.removeWhere((p) => p.id == postId);
@@ -173,6 +177,7 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     await _writeComments(comments);
   }
 
+  @override
   Future<MemoryPost> toggleReaction({
     required String postId,
     required String emoji,
@@ -198,12 +203,14 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     return updated;
   }
 
+  @override
   Future<List<MemoryComment>> getComments(String postId) async {
     final all = await _readComments();
     return all.where((c) => c.postId == postId).toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
+  @override
   Future<MemoryComment> addComment({
     required String postId,
     String? parentCommentId,
@@ -230,6 +237,7 @@ class CollectiveMemoryLocalDataSource implements CollectiveMemoryDataSource {
     return comment;
   }
 
+  @override
   Future<void> deleteComment(String commentId) async {
     final all = await _readComments();
     // اگر این کامنت اصلی است، پاسخ‌های آن هم پاک شوند (بدون یتیم ماندن Reply).

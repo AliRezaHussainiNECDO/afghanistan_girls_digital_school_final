@@ -68,7 +68,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onRefresh: () async => ref.invalidate(conversationsProvider),
         child: conversationsAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(message: e.toString()),
+          error: (e, st) => ErrorView(error: e),
           data: (conversations) {
             final filtered = _query.trim().isEmpty
                 ? conversations
@@ -211,7 +211,7 @@ class _ConversationTile extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontWeight: FontWeight.w700)),
                         ),
-                        Text(relativeTimeFa(c.lastMessageAt),
+                        Text(relativeTimeFa(context, c.lastMessageAt),
                             style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                       ],
                     ),
@@ -310,7 +310,68 @@ class _ClassmatesSheet extends ConsumerWidget {
             const SizedBox(height: 6),
             Text(context.tr('chat.classmatesHint'),
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            // «ارتباط با مدیریت» — همیشه در دسترس، جدا از فهرست هم‌صنفی‌ها.
+            // رفع اشکال: زیرساخت گفتگو با مدیریت (backend + مدل داده) از
+            // قبل کامل بود، اما هیچ دکمه‌ای در رابط کاربری آن را صدا
+            // نمی‌زد — شاگرد راهی برای شروع این گفتگو نداشت.
+            Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(AppRadii.md),
+                onTap: () => Navigator.of(context).pop('admin'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.successGradient,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                    boxShadow: AppShadows.soft,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.support_agent_rounded, color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(context.tr('chat.contactAdmin'),
+                                style: const TextStyle(
+                                    color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                            const SizedBox(height: 2),
+                            Text(context.tr('chat.contactAdminHint'),
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_left_rounded, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: Divider(color: scheme.outlineVariant)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(context.tr('chat.classmates'),
+                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                ),
+                Expanded(child: Divider(color: scheme.outlineVariant)),
+              ],
+            ),
+            const SizedBox(height: 10),
             Flexible(
               child: classmatesAsync.when(
                 loading: () => const Padding(

@@ -57,6 +57,7 @@ class AiTeacherManagementLocalDataSource implements AiTeacherManagementDataSourc
     await prefs.setString(_storageKey, jsonEncode(asJson));
   }
 
+  @override
   Future<List<AiTeacherConfig>> getConfigs() async {
     await Future.delayed(const Duration(milliseconds: 200));
     final all = await _readAll();
@@ -67,11 +68,13 @@ class AiTeacherManagementLocalDataSource implements AiTeacherManagementDataSourc
   /// چت با معلم هوشمند صدا زده می‌شود، پس باید سریع باشد). اگر مدیر هنوز
   /// شخصیتی برای این مضمون تنظیم نکرده، `null` برمی‌گرداند تا موتور از
   /// شخصیت پیش‌فرض گرم و تشویق‌کننده استفاده کند.
+  @override
   Future<String?> personaFor(String subjectId) async {
     final all = await _readAll();
     return all[subjectId]?.personaDescription;
   }
 
+  @override
   Future<void> updatePersona(String subjectId, String newDescription) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final all = await _readAll();
