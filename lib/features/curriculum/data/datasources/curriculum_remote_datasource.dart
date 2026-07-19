@@ -6,6 +6,9 @@ abstract class CurriculumDataSource {
   Future<List<Lesson>> getLessons(String chapterId);
   Future<Lesson> getLesson(String lessonId);
   Future<LessonViewResult> markLessonViewed(String lessonId);
+
+  /// «این درس را یاد گرفتم» — تنها نقطهٔ ساخت کار خانگی (یک‌بار برای هر درس).
+  Future<LessonLearnedResult> markLessonLearned(String lessonId);
 }
 
 class CurriculumRemoteDataSource implements CurriculumDataSource {
@@ -50,6 +53,16 @@ class CurriculumRemoteDataSource implements CurriculumDataSource {
       chapterBonusAwarded: (m['chapterBonusAwarded'] as num?)?.toInt() ?? 0,
     );
   }
+  @override
+  Future<LessonLearnedResult> markLessonLearned(String lessonId) async {
+    final data = await _api.post('/lessons/$lessonId/learned');
+    final m = Map<String, dynamic>.from(data as Map? ?? {});
+    return LessonLearnedResult(
+      assigned: m['assigned'] == true,
+      alreadyAssigned: m['alreadyAssigned'] == true,
+    );
+  }
+
   Lesson _lessonFromJson(dynamic e) => Lesson(
         id: e['id'] as String, chapterId: e['chapter_id'] as String, titleFa: e['title_fa'] as String,
         estimatedMinutes: (e['estimated_minutes'] as num?)?.toInt() ?? 15,

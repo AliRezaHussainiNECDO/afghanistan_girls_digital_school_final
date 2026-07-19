@@ -142,50 +142,73 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
   const result = await recordLessonView(c.env.DB, uid, lessonId);
   if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
 
-  // اتصال «کار خانگی» به نصاب درسی: اولین باری که شاگرد این درس را باز
-  // می‌کند (نه هر بار)، در پس‌زمینه یک کار خانگی متناسب با متن همین درس ساخته
-  // می‌شود (lib/lessonHomework.ts) — برای تمام مضامین/صنف‌ها یکسان، چون فقط
-  // از محتوای واقعی خودِ درس استفاده می‌کند. کاملاً fail-safe: اگر
-  // GEMINI_API_KEY تنظیم نشده یا مدل خطا بدهد، این درخواست (ثبت بازدید درس)
-  // بدون هیچ تأخیر یا خطایی طبیعی ادامه می‌یابد.
-  if (result.firstView) {
-    const lessonRow = await c.env.DB.prepare(
-      `SELECT l.title_fa, l.content_body, ch.id AS chapter_id, ch.subject_id, ch.grade_number, s.name_fa AS subject_name_fa
-         FROM lessons l
-         JOIN chapters ch ON ch.id = l.chapter_id
-         LEFT JOIN subjects s ON s.id = ch.subject_id
-        WHERE l.id = ?`,
-    )
-      .bind(lessonId)
-      .first<{
-        title_fa: string;
-        content_body: string;
-        chapter_id: string;
-        subject_id: string;
-        grade_number: number;
-        subject_name_fa: string | null;
-      }>();
-    if (lessonRow) {
-      c.executionCtx.waitUntil(
-        autoAssignLessonHomework(c.env, {
-          studentId: uid,
-          lessonId,
-          chapterId: lessonRow.chapter_id,
-          subjectId: lessonRow.subject_id,
-          subjectNameFa: lessonRow.subject_name_fa ?? '',
-          classLevel: lessonRow.grade_number,
-          lessonTitleFa: lessonRow.title_fa,
-          lessonContentBody: lessonRow.content_body,
-        }),
-      );
-    }
-  }
+  // رفع اشکال (طبق درخواست کاربر): قبلاً با همین بازدیدِ اول، کار خانگی
+  // خودکار ساخته و ارسال می‌شد — یعنی شاگرد هنوز درس را نخوانده، کار خانگی
+  // می‌گرفت. حالا کار خانگی فقط وقتی ساخته می‌شود که شاگرد خودش در صفحهٔ
+  // گفتگوی درس دکمهٔ «این درس را یاد گرفتم» را بزند
+  // (`POST /lessons/:lessonId/learned` — پایین همین فایل).
 
   return c.json({
     success: true,
     pointsAwarded: result.firstView ? 10 : 0,
     chapterJustCompleted: result.chapterJustCompleted,
     chapterBonusAwarded: result.chapterJustCompleted ? 25 : 0,
+  });
+});
+
+// «این درس را یاد گرفتم» — تنها نقطهٔ ساخت کار خانگی (طبق درخواست کاربر):
+// شاگرد بعد از خواندن درس، خودش این دکمه را در صفحهٔ گفتگوی همان درس می‌زند.
+// منطق: برای هر (شاگرد، درس) فقط **یک** کار خانگی ساخته می‌شود — اگر شاگرد
+// همان درس را دوباره بخواند و دوباره دکمه را بزند، کار خانگی تازه داده
+// نمی‌شود (idempotent — بررسی داخل lib/lessonHomework.ts). فقط وقتی به
+// درس‌های بعدی/جدید پیش برود، برای آن درس‌های تازه کار خانگی جدید می‌گیرد.
+c11m.post('/lessons/:lessonId/learned', async (c) => {
+  const uid = await userId(c);
+  if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const lessonId = c.req.param('lessonId');
+
+  // «یاد گرفتم» یعنی درس دیده شده — اگر بازدید هنوز ثبت نشده بود (مثلاً
+  // مستقیم از گفتگو)، همین‌جا ثبت می‌شود تا پیشرفت/امتیاز همه‌جا هماهنگ بماند.
+  const view = await recordLessonView(c.env.DB, uid, lessonId);
+  if (!view.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  const lessonRow = await c.env.DB.prepare(
+    `SELECT l.title_fa, l.content_body, ch.id AS chapter_id, ch.subject_id, ch.grade_number, s.name_fa AS subject_name_fa
+       FROM lessons l
+       JOIN chapters ch ON ch.id = l.chapter_id
+       LEFT JOIN subjects s ON s.id = ch.subject_id
+      WHERE l.id = ?`,
+  )
+    .bind(lessonId)
+    .first<{
+      title_fa: string;
+      content_body: string;
+      chapter_id: string;
+      subject_id: string;
+      grade_number: number;
+      subject_name_fa: string | null;
+    }>();
+  if (!lessonRow) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  // ساخت کار خانگی — این بار await می‌شود (نه waitUntil) تا کلاینت بداند
+  // نتیجه چه شد و پیام درست («ساخته شد» یا «قبلاً داده شده») نشان دهد.
+  const outcome = await autoAssignLessonHomework(c.env, {
+    studentId: uid,
+    lessonId,
+    chapterId: lessonRow.chapter_id,
+    subjectId: lessonRow.subject_id,
+    subjectNameFa: lessonRow.subject_name_fa ?? '',
+    classLevel: lessonRow.grade_number,
+    lessonTitleFa: lessonRow.title_fa,
+    lessonContentBody: lessonRow.content_body,
+  });
+
+  return c.json({
+    success: true,
+    // 'created' | 'exists' | 'failed' | 'not_configured'
+    homework: outcome,
+    assigned: outcome === 'created',
+    alreadyAssigned: outcome === 'exists',
   });
 });
 

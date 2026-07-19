@@ -31,3 +31,12 @@ class MarkLessonViewedUseCase implements UseCase<LessonViewResult, String> {
   @override
   Future<Either<Failure, LessonViewResult>> call(String lessonId) => repository.markLessonViewed(lessonId);
 }
+
+/// «این درس را یاد گرفتم» — کار خانگی فقط از همین مسیر ساخته می‌شود
+/// (یک‌بار برای هر درس؛ تکرارش کار خانگی تازه نمی‌دهد).
+class MarkLessonLearnedUseCase implements UseCase<LessonLearnedResult, String> {
+  final CurriculumRepository repository;
+  MarkLessonLearnedUseCase(this.repository);
+  @override
+  Future<Either<Failure, LessonLearnedResult>> call(String lessonId) => repository.markLessonLearned(lessonId);
+}

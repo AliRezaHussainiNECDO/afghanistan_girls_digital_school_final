@@ -41,6 +41,33 @@ class LessonDetailScreen extends ConsumerStatefulWidget {
 class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
   bool _marking = false;
 
+  /// «این درس را یاد گرفتم» — کار خانگی فقط با زدن همین دکمه ساخته می‌شود
+  /// (نه خودکار با باز کردن درس)؛ برای هر درس فقط یک‌بار (سرور idempotent).
+  bool _learning = false;
+  bool _learnedThisSession = false;
+
+  Future<void> _markLearned() async {
+    if (_learning) return;
+    setState(() => _learning = true);
+    final result = await ref.read(markLessonLearnedUseCaseProvider).call(widget.lessonId);
+    if (!mounted) return;
+    setState(() => _learning = false);
+    final messenger = ScaffoldMessenger.of(context);
+    result.fold(
+      (f) => messenger.showSnackBar(
+          SnackBar(content: Text(context.tr('curriculum.homeworkAssignFailed')))),
+      (r) {
+        setState(() => _learnedThisSession = true);
+        messenger.showSnackBar(SnackBar(
+            content: Text(r.assigned
+                ? context.tr('curriculum.homeworkAssigned')
+                : r.alreadyAssigned
+                    ? context.tr('curriculum.homeworkAlreadyAssigned')
+                    : context.tr('curriculum.homeworkAssignFailed'))));
+      },
+    );
+  }
+
   // ── «شنیدن درس» — پخش قطعه‌به‌قطعهٔ متن درس با TTS (Fail-safe) ──
   final _player = AudioPlayer();
   List<String> _ttsChunks = const [];
@@ -333,12 +360,22 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                     }
                   },
                 )
-              else
+              else ...[
+                // «این درس را یاد گرفتم» — بعد از خواندن درس، شاگرد خودش
+                // اعلام می‌کند تا کار خانگیِ همین درس (فقط یک‌بار) ساخته شود.
+                AppPrimaryButton(
+                  label: context.tr('curriculum.lessonLearnedButton'),
+                  loading: _learning,
+                  icon: _learnedThisSession ? Icons.check_circle_rounded : Icons.school_rounded,
+                  onPressed: _learnedThisSession ? null : _markLearned,
+                ),
+                const SizedBox(height: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.smart_toy_rounded),
                   label: Text(context.tr('nav.aiTeacher')),
                   onPressed: _openAiTeacher,
                 ),
+              ],
             ],
           ),
         ),

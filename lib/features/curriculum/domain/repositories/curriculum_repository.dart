@@ -10,4 +10,8 @@ abstract class CurriculumRepository {
   /// طبق `POST /lessons/{id}/view` بخش ۱۹.۳ — ثبت بازدید، ورودی منطق C1،
   /// و اهدای امتیاز فعالیت (Gamification).
   Future<Either<Failure, LessonViewResult>> markLessonViewed(String lessonId);
+
+  /// «این درس را یاد گرفتم» (`POST /lessons/{id}/learned`) — تنها نقطهٔ ساخت
+  /// کار خانگی؛ برای هر درس فقط یک‌بار (تکرار = alreadyAssigned).
+  Future<Either<Failure, LessonLearnedResult>> markLessonLearned(String lessonId);
 }

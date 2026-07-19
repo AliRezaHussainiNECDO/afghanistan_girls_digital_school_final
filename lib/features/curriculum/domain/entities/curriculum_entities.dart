@@ -56,6 +56,19 @@ class Lesson extends Equatable {
 
 /// نتیجهٔ ثبت بازدید یک درس — برای بازخورد فوری در UI (امتیاز/جشن تکمیل
 /// فصل) طبق سیستم امتیازدهی بر اساس فعالیت (Gamification).
+/// نتیجهٔ «این درس را یاد گرفتم» — طبق `POST /lessons/{id}/learned`:
+/// برای هر (شاگرد، درس) فقط یک کار خانگی ساخته می‌شود؛ زدن دوبارهٔ دکمه روی
+/// همان درس [alreadyAssigned] برمی‌گرداند، نه کار خانگی تکراری.
+class LessonLearnedResult extends Equatable {
+  final bool assigned;
+  final bool alreadyAssigned;
+
+  const LessonLearnedResult({required this.assigned, required this.alreadyAssigned});
+
+  @override
+  List<Object?> get props => [assigned, alreadyAssigned];
+}
+
 class LessonViewResult extends Equatable {
   final int pointsAwarded;
   final bool chapterJustCompleted;

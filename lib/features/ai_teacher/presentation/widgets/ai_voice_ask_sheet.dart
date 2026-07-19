@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../shared_models/subject.dart';
+import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../../domain/entities/chat_message.dart';
 import '../providers/ai_teacher_providers.dart';
 
@@ -78,6 +79,34 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
   bool _isRecording = false;
   bool _transcribing = false;
   String? _speakingId;
+
+  /// «این درس را یاد گرفتم» — کار خانگی فقط با زدن همین دکمه ساخته می‌شود
+  /// (نه با باز کردن درس). برای هر درس فقط یک کار خانگی؛ زدن دوباره روی
+  /// همان درس کار خانگی تازه نمی‌دهد (سرور idempotent است).
+  bool _learning = false;
+  bool _learnedThisSession = false;
+
+  Future<void> _markLearned() async {
+    if (_learning) return;
+    setState(() => _learning = true);
+    final result = await ref.read(markLessonLearnedUseCaseProvider).call(widget.lessonId);
+    if (!mounted) return;
+    setState(() => _learning = false);
+    result.fold(
+      (f) => _snack(context.tr('curriculum.homeworkAssignFailed')),
+      (r) {
+        setState(() => _learnedThisSession = true);
+        if (r.assigned) {
+          _snack(context.tr('curriculum.homeworkAssigned'));
+        } else if (r.alreadyAssigned) {
+          _snack(context.tr('curriculum.homeworkAlreadyAssigned'));
+        } else {
+          // AI هنوز پیکربندی نشده یا خطای موقتی — کار خانگی ساخته نشد.
+          _snack(context.tr('curriculum.homeworkAssignFailed'));
+        }
+      },
+    );
+  }
 
   Subject get _subject =>
       mockSubjects.firstWhere((s) => s.id == widget.subjectId, orElse: () => mockSubjects.first);
@@ -235,6 +264,26 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
                     ],
                   ),
                 ),
+                // ── «این درس را یاد گرفتم» — تنها راه دریافت کار خانگی؛
+                // یک‌بار برای هر درس (زدن دوباره = کار خانگی تکراری نمی‌دهد).
+                _learning
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                            width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : FilledButton.tonalIcon(
+                        onPressed: _learnedThisSession ? null : _markLearned,
+                        icon: Icon(
+                            _learnedThisSession
+                                ? Icons.check_circle_rounded
+                                : Icons.school_rounded,
+                            size: 18),
+                        label: Text(
+                          context.tr('curriculum.lessonLearnedButton'),
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
               ],
             ),
           ),

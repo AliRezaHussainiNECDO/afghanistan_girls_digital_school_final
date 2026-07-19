@@ -29,6 +29,8 @@ final getLessonUseCaseProvider =
     Provider((ref) => GetLessonUseCase(ref.watch(curriculumRepositoryProvider)));
 final markLessonViewedUseCaseProvider =
     Provider((ref) => MarkLessonViewedUseCase(ref.watch(curriculumRepositoryProvider)));
+final markLessonLearnedUseCaseProvider =
+    Provider((ref) => MarkLessonLearnedUseCase(ref.watch(curriculumRepositoryProvider)));
 
 // رفع اشکال ریشه‌ای «نصاب هنوز دیتای قبلی/صنف اشتباه را نشان می‌دهد»:
 //

@@ -3,6 +3,9 @@ import 'curriculum_remote_datasource.dart' show CurriculumDataSource;
 
 class CurriculumMockDataSource implements CurriculumDataSource {
   final Map<String, bool> _viewedLessons = {};
+
+  /// درس‌هایی که شاگرد «یاد گرفتم» زده — برای هر درس فقط یک کار خانگی (Mock).
+  final Set<String> _learnedLessons = {};
   static const int _lessonsPerChapter = 4;
 
   bool _isChapterCompleted(String chapterId) {
@@ -91,5 +94,13 @@ class CurriculumMockDataSource implements CurriculumDataSource {
       chapterJustCompleted: justCompleted,
       chapterBonusAwarded: justCompleted ? 25 : 0,
     );
+  }
+
+  @override
+  Future<LessonLearnedResult> markLessonLearned(String lessonId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    _viewedLessons[lessonId] = true;
+    final first = _learnedLessons.add(lessonId);
+    return LessonLearnedResult(assigned: first, alreadyAssigned: !first);
   }
 }

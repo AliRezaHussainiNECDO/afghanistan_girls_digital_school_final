@@ -57,22 +57,30 @@ function extractJsonBlock(text: string): any | null {
   }
 }
 
-/**
- * یک کار خانگی متناسب با درسی که شاگرد همین الان باز کرده می‌سازد و در
- * `student_homeworks` ثبت می‌کند. اگر قبلاً برای همین جفتِ (شاگرد، درس) یک
- * کار خانگی ساخته شده باشد، دوباره نمی‌سازد (idempotent — هم‌سو با
- * `student_lesson_views` که خودش هم فقط یک‌بار برای هر درس فعال می‌شود).
- */
-export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: LessonHomeworkParams): Promise<void> {
-  if (!env.GEMINI_API_KEY) return; // سرویس هنوز پیکربندی نشده — بی‌صدا نادیده گرفته می‌شود.
+/// نتیجهٔ تلاش برای ساخت کار خانگی — به کلاینت برمی‌گردد تا پیام درست نشان
+/// دهد (رفع اشکال: قبلاً void بود و صدازننده هیچ اطلاعی از نتیجه نداشت).
+export type HomeworkAssignOutcome = 'created' | 'exists' | 'failed' | 'not_configured';
 
+/**
+ * یک کار خانگی متناسب با درسی که شاگرد اعلام کرده «یاد گرفتم» می‌سازد و در
+ * `student_homeworks` ثبت می‌کند (صدازننده: `POST /lessons/:lessonId/learned`
+ * در routes/curriculum.ts — دیگر با بازدید خودکارِ درس ساخته نمی‌شود، طبق
+ * درخواست کاربر). اگر قبلاً برای همین جفتِ (شاگرد، درس) یک کار خانگی ساخته
+ * شده باشد، دوباره نمی‌سازد (idempotent) — یعنی زدنِ دوبارهٔ «این درس را یاد
+ * گرفتم» روی همان درس، کار خانگی تکراری نمی‌دهد؛ فقط درس‌های جدید کار خانگی
+ * تازه می‌گیرند.
+ */
+export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: LessonHomeworkParams): Promise<HomeworkAssignOutcome> {
   try {
+    // بررسی یکتایی قبل از بررسی کلید — تا حتی بدون GEMINI_API_KEY هم پیام
+    // «قبلاً داده شده» دقیق باشد.
     const existing = await env.DB.prepare(
       'SELECT id FROM student_homeworks WHERE student_id = ? AND lesson_id = ? LIMIT 1',
     )
       .bind(p.studentId, p.lessonId)
       .first();
-    if (existing) return;
+    if (existing) return 'exists';
+    if (!env.GEMINI_API_KEY) return 'not_configured'; // سرویس هنوز پیکربندی نشده.
 
     // نکته (رفع باگ واقعی — نه فقط لاگ‌گذاری): مدل قدیمی «gemini-1.5-flash» از
     // طرف گوگل به‌طور کامل خاموش شده (هر درخواستی ۴۰۴ برمی‌گرداند) — دقیقاً
@@ -119,7 +127,7 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
       // (هنوز fail-safe کامل — این تابع همچنان چیزی throw نمی‌کند).
       const errBody = await res.text().catch(() => '');
       console.error(`[lessonHomework] Gemini HTTP ${res.status} — ${errBody.slice(0, 500)}`);
-      return;
+      return 'failed';
     }
     const data = (await res.json()) as any;
     const text = data?.candidates?.[0]?.content?.parts?.map((part: any) => part.text ?? '').join('') ?? '';
@@ -127,7 +135,7 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
     const questionText = String(parsed?.questionText ?? '').trim();
     if (!questionText) {
       console.error(`[lessonHomework] پاسخ Gemini قابل‌تجزیه به questionText نبود — متن خام: ${text.slice(0, 500)}`);
-      return;
+      return 'failed';
     }
     const hintText = String(parsed?.hintText ?? '').trim();
 
@@ -161,7 +169,9 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
       'کار خانگی جدید 📝',
       `بر اساس درس «${p.lessonTitleFa}» یک کار خانگی تازه برایتان آماده شد — از بخش «کار خانگی» عکس حل‌تان را بفرستید.`,
     );
+    return 'created';
   } catch (err) {
     console.error('[lessonHomework] auto-generate failed —', err);
+    return 'failed';
   }
 }
