@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -41,10 +43,24 @@ class _HomeworkChatThreadViewState extends ConsumerState<HomeworkChatThreadView>
   final _scroll = ScrollController();
   bool _sending = false;
 
+  /// به‌روزرسانی زنده — هماهنگ با سایر چت‌های اپ: تا وقتی این گفتگو باز است،
+  /// پاسخ تازه (مثلاً بازبینی مدیر/معلم) همان لحظه دیده می‌شود.
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      ref.invalidate(homeworkRepliesProvider(widget.homework.id));
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
+    _pollTimer?.cancel();
     super.dispose();
   }
 

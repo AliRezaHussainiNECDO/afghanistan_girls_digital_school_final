@@ -37,9 +37,9 @@ class ChatRepositoryImpl implements ChatRepository {
       _guard(() => dataSource.getMessages(conversationId));
 
   @override
-  Future<Either<Failure, Unit>> sendMessage(String conversationId, String text) =>
+  Future<Either<Failure, Unit>> sendMessage(String conversationId, String text, {String? replyToId}) =>
       _guard(() async {
-        await dataSource.sendMessage(conversationId, text);
+        await dataSource.sendMessage(conversationId, text, replyToId: replyToId);
         return unit;
       });
 
@@ -88,9 +88,9 @@ class ChatRepositoryImpl implements ChatRepository {
       });
 
   @override
-  Future<Either<Failure, Unit>> sendAdminReply(String conversationId, String text) =>
+  Future<Either<Failure, Unit>> sendAdminReply(String conversationId, String text, {String? replyToId}) =>
       _guard(() async {
-        await dataSource.sendAdminReply(conversationId, text);
+        await dataSource.sendAdminReply(conversationId, text, replyToId: replyToId);
         return unit;
       });
 }

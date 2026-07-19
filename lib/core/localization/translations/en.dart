@@ -373,6 +373,11 @@ const Map<String, String> enStrings = {
 // chat
 'chat.conversations': 'Conversations',
 'chat.typeMessage': 'Type a message...',
+'chat.replyAction': 'Reply',
+'chat.reportAction': 'Report abuse',
+'chat.replyingTo': 'Replying to {name}',
+'chat.quotedVoice': '🎙 Voice message',
+'chat.quotedUnknown': 'Message',
 'chat.report': 'Report',
 'chat.newChat': 'New chat',
 'chat.classmates': 'Your classmates',

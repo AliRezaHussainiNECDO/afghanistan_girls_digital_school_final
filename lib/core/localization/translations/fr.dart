@@ -373,6 +373,11 @@ const Map<String, String> frStrings = {
 // chat
 'chat.conversations': 'Conversations',
 'chat.typeMessage': 'Écrivez votre message...',
+'chat.replyAction': 'Répondre',
+'chat.reportAction': 'Signaler un abus',
+'chat.replyingTo': 'En réponse à {name}',
+'chat.quotedVoice': '🎙 Message vocal',
+'chat.quotedUnknown': 'Message',
 'chat.report': 'Signaler',
 'chat.newChat': 'Nouvelle discussion',
 'chat.classmates': 'Vos camarades de classe',

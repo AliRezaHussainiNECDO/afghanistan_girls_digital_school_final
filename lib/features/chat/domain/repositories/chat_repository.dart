@@ -8,7 +8,8 @@ abstract class ChatRepository {
   Future<Either<Failure, List<Classmate>>> getClassmates();
   Future<Either<Failure, String>> startConversation(String classmateId);
   Future<Either<Failure, List<PeerMessage>>> getMessages(String conversationId);
-  Future<Either<Failure, Unit>> sendMessage(String conversationId, String text);
+  /// [replyToId]: شناسهٔ پیامِ نقل‌شده — «ریپلای» (migration 0031).
+  Future<Either<Failure, Unit>> sendMessage(String conversationId, String text, {String? replyToId});
   Future<Either<Failure, Unit>> sendVoiceMessage(
       String conversationId, String audioUrl, int durationMs);
   Future<Either<Failure, Unit>> reportMessage(String messageId, String reason);
@@ -21,5 +22,5 @@ abstract class ChatRepository {
   Future<Either<Failure, List<PeerMessage>>> getMessagesForAdmin(String conversationId);
   Future<Either<Failure, Unit>> reviewMessage(
       String conversationId, String messageId, bool approve);
-  Future<Either<Failure, Unit>> sendAdminReply(String conversationId, String text);
+  Future<Either<Failure, Unit>> sendAdminReply(String conversationId, String text, {String? replyToId});
 }

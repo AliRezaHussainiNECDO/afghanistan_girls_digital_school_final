@@ -302,6 +302,7 @@ class ChatLocalDataSource implements ChatDataSource {
       kind: (m['kind'] as String?) == 'voice' ? MessageKind.voice : MessageKind.text,
       audioUrl: m['audioUrl'] as String?,
       durationMs: m['durationMs'] as int?,
+      replyToId: m['replyToId'] as String?,
     );
   }
 
@@ -338,6 +339,7 @@ class ChatLocalDataSource implements ChatDataSource {
     bool flagged = false,
     bool touch = true,
     String? preview,
+    String? replyToId,
   }) async {
     final msgs = await _readMsgsRaw(conversationId);
     msgs.add({
@@ -352,6 +354,7 @@ class ChatLocalDataSource implements ChatDataSource {
       'kind': kind,
       'audioUrl': audioUrl,
       'durationMs': durationMs,
+      'replyToId': replyToId,
     });
     await _writeMsgsRaw(conversationId, msgs);
     if (touch) {
@@ -367,7 +370,7 @@ class ChatLocalDataSource implements ChatDataSource {
   }
 
   @override
-  Future<void> sendMessage(String conversationId, String text) async {
+  Future<void> sendMessage(String conversationId, String text, {String? replyToId}) async {
     final me = await _ensureInRoster();
     final flagged = _bannedWords.any((w) => text.contains(w));
     await _appendMessage(
@@ -377,6 +380,7 @@ class ChatLocalDataSource implements ChatDataSource {
       senderClassName: classNameOf(me['classId']!),
       body: text,
       flagged: flagged,
+      replyToId: replyToId,
     );
   }
 
@@ -577,13 +581,14 @@ class ChatLocalDataSource implements ChatDataSource {
 
   /// پاسخ مدیر در گفتگوی «شاگرد ↔ مدیریت».
   @override
-  Future<void> sendAdminReply(String conversationId, String text) async {
+  Future<void> sendAdminReply(String conversationId, String text, {String? replyToId}) async {
     await _appendMessage(
       conversationId: conversationId,
       senderId: kAdminUserId,
       senderName: kAdminDisplayName,
       senderClassName: '',
       body: text,
+      replyToId: replyToId,
     );
   }
 

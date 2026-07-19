@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,10 +34,27 @@ class _ContactAdminScreenState extends ConsumerState<ContactAdminScreen> {
   final _scroll = ScrollController();
   bool _sending = false;
 
+  /// پیامِ در حال ریپلای (migration 0031).
+  PeerMessage? _replyingTo;
+
+  /// به‌روزرسانی زنده — تا وقتی صفحه باز است، پاسخ مدیریت همان لحظه می‌رسد.
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      final id = ref.read(contactAdminConversationProvider).valueOrNull;
+      if (id != null) ref.invalidate(messagesProvider(id));
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
+    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -52,11 +71,14 @@ class _ContactAdminScreenState extends ConsumerState<ContactAdminScreen> {
     final text = raw.trim();
     if (text.isEmpty || _sending) return;
     _controller.clear();
-    setState(() => _sending = true);
+    final replyToId = _replyingTo?.id;
+    setState(() {
+      _sending = true;
+      _replyingTo = null;
+    });
     try {
-      await ref
-          .read(sendPeerMessageUseCaseProvider)
-          .call(SendPeerMessageParams(conversationId: conversationId, text: text));
+      await ref.read(sendPeerMessageUseCaseProvider).call(SendPeerMessageParams(
+          conversationId: conversationId, text: text, replyToId: replyToId));
       if (!mounted) return;
       ref.invalidate(messagesProvider(conversationId));
       _scrollToEnd();
@@ -81,6 +103,9 @@ class _ContactAdminScreenState extends ConsumerState<ContactAdminScreen> {
           controller: _controller,
           scroll: _scroll,
           sending: _sending,
+          replyingTo: _replyingTo,
+          onReply: (m) => setState(() => _replyingTo = m),
+          onCancelReply: () => setState(() => _replyingTo = null),
           onSend: (text) => _send(conversationId, text),
         ),
       ),
@@ -94,11 +119,14 @@ class _LoadingStage extends StatelessWidget {
   Widget build(BuildContext context) => const Center(child: CircularProgressIndicator());
 }
 
-class _Thread extends ConsumerWidget {
+class _Thread extends ConsumerStatefulWidget {
   final String conversationId;
   final TextEditingController controller;
   final ScrollController scroll;
   final bool sending;
+  final PeerMessage? replyingTo;
+  final ValueChanged<PeerMessage> onReply;
+  final VoidCallback onCancelReply;
   final ValueChanged<String> onSend;
 
   const _Thread({
@@ -106,11 +134,39 @@ class _Thread extends ConsumerWidget {
     required this.controller,
     required this.scroll,
     required this.sending,
+    required this.replyingTo,
+    required this.onReply,
+    required this.onCancelReply,
     required this.onSend,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Thread> createState() => _ThreadState();
+}
+
+class _ThreadState extends ConsumerState<_Thread> {
+  int _lastCount = -1;
+
+  String get conversationId => widget.conversationId;
+  TextEditingController get controller => widget.controller;
+  ScrollController get scroll => widget.scroll;
+  bool get sending => widget.sending;
+  ValueChanged<String> get onSend => widget.onSend;
+
+  /// پرش به پیام اصلیِ یک نقل‌قول — جای تقریبی آن در فهرست.
+  void _scrollToMessage(List<PeerMessage> messages, String messageId) {
+    final idx = messages.indexWhere((m) => m.id == messageId);
+    if (idx == -1 || !scroll.hasClients) return;
+    final fraction = messages.length <= 1 ? 0.0 : idx / (messages.length - 1);
+    scroll.animateTo(
+      scroll.position.maxScrollExtent * fraction,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider(conversationId));
     final scheme = Theme.of(context).colorScheme;
 
@@ -158,20 +214,48 @@ class _Thread extends ConsumerWidget {
             error: (e, st) => ErrorView(error: e),
             data: (messages) {
               if (messages.isEmpty) return _intro(context);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
-              });
+              // فقط با آمدن پیام تازه به انتها بپر — نه با هر تازه‌سازی زنده.
+              if (messages.length != _lastCount) {
+                _lastCount = messages.length;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
+                });
+              }
+              final byId = {for (final m in messages) m.id: m};
               return ListView.builder(
                 controller: scroll,
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
                 itemCount: messages.length,
-                itemBuilder: (context, i) => _Bubble(msg: messages[i])
-                    .animate()
-                    .fadeIn(duration: 200.ms)
-                    .slideY(begin: 0.08),
+                itemBuilder: (context, i) {
+                  final m = messages[i];
+                  return SwipeToReply(
+                    onReply: () => widget.onReply(m),
+                    child: GestureDetector(
+                      onLongPress: () => widget.onReply(m),
+                      child: _Bubble(
+                        msg: m,
+                        repliedTo: m.replyToId != null ? byId[m.replyToId] : null,
+                        onQuoteTap: m.replyToId != null
+                            ? () => _scrollToMessage(messages, m.replyToId!)
+                            : null,
+                      ),
+                    ),
+                  ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.08);
+                },
               );
             },
           ),
+        ),
+        // پیش‌نمایش «در پاسخ به …» — با انیمیشن ظاهر/پنهان می‌شود.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          child: widget.replyingTo == null
+              ? const SizedBox.shrink()
+              : ReplyComposerBar(
+                  replyingTo: widget.replyingTo!,
+                  onCancel: widget.onCancelReply,
+                ),
         ),
         if (sending)
           Padding(
@@ -260,7 +344,11 @@ class _Thread extends ConsumerWidget {
 
 class _Bubble extends StatelessWidget {
   final PeerMessage msg;
-  const _Bubble({required this.msg});
+
+  /// پیامِ نقل‌شده (اگر این پیام ریپلای باشد).
+  final PeerMessage? repliedTo;
+  final VoidCallback? onQuoteTap;
+  const _Bubble({required this.msg, this.repliedTo, this.onQuoteTap});
 
   @override
   Widget build(BuildContext context) {
@@ -289,9 +377,18 @@ class _Bubble extends StatelessWidget {
                 ),
                 border: fromMe ? null : Border.all(color: scheme.outlineVariant),
               ),
-              child: Text(
-                msg.body,
-                style: TextStyle(height: 1.6, color: fromMe ? scheme.onPrimary : scheme.onSurface),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (msg.replyToId != null)
+                    QuotedMessage(original: repliedTo, onGradient: fromMe, onTap: onQuoteTap),
+                  Text(
+                    msg.body,
+                    style: TextStyle(
+                        height: 1.6, color: fromMe ? scheme.onPrimary : scheme.onSurface),
+                  ),
+                ],
               ),
             ),
           ),

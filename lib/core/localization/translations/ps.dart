@@ -373,6 +373,11 @@ const Map<String, String> psStrings = {
 // chat
 'chat.conversations': 'خبرې اترې',
 'chat.typeMessage': 'خپل پیغام ولیکئ...',
+'chat.replyAction': 'ځواب (ریپلای)',
+'chat.reportAction': 'د سرغړونې راپور',
+'chat.replyingTo': '{name} ته په ځواب کې',
+'chat.quotedVoice': '🎙 غږیز پیغام',
+'chat.quotedUnknown': 'پیغام',
 'chat.report': 'راپور',
 'chat.newChat': 'نوې خبرې اترې',
 'chat.classmates': 'ستاسو ټولګيوال',

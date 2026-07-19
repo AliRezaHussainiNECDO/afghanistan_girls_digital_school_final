@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,25 @@ class ChatScreen extends ConsumerStatefulWidget {
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   String _query = '';
+
+  /// به‌روزرسانی زندهٔ فهرست گفتگوها — پیام تازه/شمار نخوانده همان لحظه
+  /// دیده می‌شود (Riverpod دادهٔ قبلی را حین تازه‌سازی نگه می‌دارد).
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (!mounted) return;
+      ref.invalidate(conversationsProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
 
   Future<void> _openNewChatSheet() async {
     final classmateId = await showModalBottomSheet<String>(

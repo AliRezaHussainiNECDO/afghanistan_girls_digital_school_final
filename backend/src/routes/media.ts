@@ -122,13 +122,22 @@ media.post('/conversations/:id/messages', async (c) => {
   const u = await me(c);
   if (!u) return c.json({ error: 'unauthorized' }, 401);
   const conversationId = c.req.param('id');
-  const body = await c.req.json<{ senderName: string; senderClassName: string; text: string }>();
+  const body = await c.req.json<{ senderName: string; senderClassName: string; text: string; replyToId?: string }>();
   const flagged = bannedWords.some((w) => body.text.includes(w));
   const id = uid();
+  // «ریپلای» (migration 0031): فقط به پیامی از همان گفتگو — تا شناسهٔ جعلی/
+  // متعلق به گفتگوی دیگر ذخیره نشود.
+  let replyToId: string | null = null;
+  if (body.replyToId && typeof body.replyToId === 'string') {
+    const target = await c.env.DB.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?')
+      .bind(body.replyToId, conversationId)
+      .first();
+    if (target) replyToId = body.replyToId;
+  }
   await c.env.DB.prepare(
-    'INSERT INTO messages (id, conversation_id, sender_id, sender_name, sender_class_name, body, kind, flagged, review_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO messages (id, conversation_id, sender_id, sender_name, sender_class_name, body, kind, flagged, review_status, reply_to_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, conversationId, u.sub, body.senderName ?? '', body.senderClassName ?? '', body.text, 'text', flagged ? 1 : 0, flagged ? 'pending' : 'none')
+    .bind(id, conversationId, u.sub, body.senderName ?? '', body.senderClassName ?? '', body.text, 'text', flagged ? 1 : 0, flagged ? 'pending' : 'none', replyToId)
     .run();
   await c.env.DB.prepare('UPDATE conversations SET last_message = ?, last_message_at = datetime("now") WHERE id = ?')
     .bind(flagged ? 'در انتظار بازبینی مدیر...' : body.text, conversationId)
@@ -337,7 +346,7 @@ media.post('/admin/messages/:id/review', async (c) => {
 media.post('/admin/conversations/:id/reply', async (c) => {
   if (!(await isAdmin(c))) return forbid(c);
   const conversationId = c.req.param('id');
-  const body = await c.req.json<{ text: string }>();
+  const body = await c.req.json<{ text: string; replyToId?: string }>();
 
   // رفع اشکال: اگر مدیر بخواهد پیش‌دستانه از داخل پروندهٔ خودِ کاربر (بخش
   // مدیریت کاربران) به او پیام بدهد و آن کاربر هنوز خودش گفتگویی با
@@ -398,10 +407,18 @@ media.post('/admin/conversations/:id/reply', async (c) => {
   }
 
   const id = uid();
+  // «ریپلای» مدیر به یک پیام مشخص همان گفتگو (migration 0031).
+  let replyToId: string | null = null;
+  if (body.replyToId && typeof body.replyToId === 'string') {
+    const target = await c.env.DB.prepare('SELECT id FROM messages WHERE id = ? AND conversation_id = ?')
+      .bind(body.replyToId, conversationId)
+      .first();
+    if (target) replyToId = body.replyToId;
+  }
   await c.env.DB.prepare(
-    "INSERT INTO messages (id, conversation_id, sender_id, sender_name, body, kind) VALUES (?, ?, 'admin', 'مدیریت و پشتیبانی مکتب', ?, 'text')",
+    "INSERT INTO messages (id, conversation_id, sender_id, sender_name, body, kind, reply_to_id) VALUES (?, ?, 'admin', 'مدیریت و پشتیبانی مکتب', ?, 'text', ?)",
   )
-    .bind(id, conversationId, body.text)
+    .bind(id, conversationId, body.text, replyToId)
     .run();
   await c.env.DB.prepare('UPDATE conversations SET last_message = ?, last_message_at = datetime("now") WHERE id = ?')
     .bind(body.text, conversationId)

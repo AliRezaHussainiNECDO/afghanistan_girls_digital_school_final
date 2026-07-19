@@ -76,6 +76,11 @@ class PeerMessage extends Equatable {
   final String? audioUrl; // مسیر/آدرس فایل صوتی برای پخش
   final int? durationMs;
 
+  /// «ریپلای» (migration 0031): شناسهٔ پیامی از همین گفتگو که این پیام در
+  /// پاسخ به آن فرستاده شده — کلاینت پیش‌نمایش نقل‌قول را از روی همین شناسه
+  /// (در فهرست همان گفتگو) نمایش می‌دهد. null یعنی پیام عادی.
+  final String? replyToId;
+
   const PeerMessage({
     required this.id,
     required this.senderId,
@@ -89,6 +94,7 @@ class PeerMessage extends Equatable {
     this.kind = MessageKind.text,
     this.audioUrl,
     this.durationMs,
+    this.replyToId,
   });
 
   /// آیا پیام هنوز در انتظار بازبینی مدیر است و نباید به گیرنده برسد؟

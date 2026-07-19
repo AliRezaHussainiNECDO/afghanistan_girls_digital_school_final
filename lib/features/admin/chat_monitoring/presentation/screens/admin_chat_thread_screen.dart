@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
@@ -28,11 +30,39 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
 
+  /// پیامِ در حال ریپلای (migration 0031) — مدیر به یک پیام مشخص پاسخ می‌دهد.
+  PeerMessage? _replyingTo;
+
+  /// به‌روزرسانی زنده — پیام تازهٔ کاربر همان لحظه در نمای مدیر دیده می‌شود.
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      ref.invalidate(adminMessagesProvider(widget.conversationId));
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _pollTimer?.cancel();
     super.dispose();
+  }
+
+  /// پرش به پیام اصلیِ یک نقل‌قول — جای تقریبی آن در فهرست.
+  void _scrollToMessage(List<PeerMessage> messages, String messageId) {
+    final idx = messages.indexWhere((m) => m.id == messageId);
+    if (idx == -1 || !_scrollController.hasClients) return;
+    final fraction = messages.length <= 1 ? 0.0 : idx / (messages.length - 1);
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent * fraction,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _refresh() {
@@ -58,8 +88,10 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
-    await ref.read(sendAdminReplyUseCaseProvider).call(
-        SendAdminReplyParams(conversationId: widget.conversationId, text: text));
+    final replyToId = _replyingTo?.id;
+    setState(() => _replyingTo = null);
+    await ref.read(sendAdminReplyUseCaseProvider).call(SendAdminReplyParams(
+        conversationId: widget.conversationId, text: text, replyToId: replyToId));
     if (!mounted) return;
     _refresh();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -147,28 +179,55 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
             child: messagesAsync.when(
               loading: () => const LoadingView(),
               error: (e, st) => ErrorView(error: e),
-              data: (messages) => ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: messages.length,
-                itemBuilder: (context, i) {
-                  final m = messages[i];
-                  final showDate = i == 0 ||
-                      dateLabelFa(context, messages[i - 1].timestamp) != dateLabelFa(context, m.timestamp);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (showDate) DateSeparator(date: m.timestamp),
-                      AdminMessageCard(
-                        message: m,
-                        onReview: m.isPendingReview ? (approve) => _review(m, approve) : null,
-                      ),
-                    ],
-                  );
-                },
-              ),
+              data: (messages) {
+                final byId = {for (final m in messages) m.id: m};
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: messages.length,
+                  itemBuilder: (context, i) {
+                    final m = messages[i];
+                    final showDate = i == 0 ||
+                        dateLabelFa(context, messages[i - 1].timestamp) != dateLabelFa(context, m.timestamp);
+                    final card = AdminMessageCard(
+                      message: m,
+                      repliedTo: m.replyToId != null ? byId[m.replyToId] : null,
+                      onQuoteTap: m.replyToId != null
+                          ? () => _scrollToMessage(messages, m.replyToId!)
+                          : null,
+                      onReplyTap:
+                          isSupport ? () => setState(() => _replyingTo = m) : null,
+                      onReview: m.isPendingReview ? (approve) => _review(m, approve) : null,
+                    );
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (showDate) DateSeparator(date: m.timestamp),
+                        isSupport
+                            ? SwipeToReply(
+                                onReply: () => setState(() => _replyingTo = m),
+                                child: card,
+                              )
+                            : card,
+                      ],
+                    );
+                  },
+                );
+              },
             ),
           ),
+          // پیش‌نمایش «در پاسخ به …» — با انیمیشن ظاهر/پنهان می‌شود.
+          if (isSupport)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: _replyingTo == null
+                  ? const SizedBox.shrink()
+                  : ReplyComposerBar(
+                      replyingTo: _replyingTo!,
+                      onCancel: () => setState(() => _replyingTo = null),
+                    ),
+            ),
           if (isSupport)
             SafeArea(
               child: Padding(
@@ -207,7 +266,21 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
 class AdminMessageCard extends StatelessWidget {
   final PeerMessage message;
   final void Function(bool approve)? onReview;
-  const AdminMessageCard({super.key, required this.message, this.onReview});
+
+  /// پیامِ نقل‌شده (اگر این پیام ریپلای باشد) + پرش به آن.
+  final PeerMessage? repliedTo;
+  final VoidCallback? onQuoteTap;
+
+  /// «ریپلای» مدیر به همین پیام (فقط گفتگوهای «کاربر ↔ مدیریت»).
+  final VoidCallback? onReplyTap;
+  const AdminMessageCard({
+    super.key,
+    required this.message,
+    this.onReview,
+    this.repliedTo,
+    this.onQuoteTap,
+    this.onReplyTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -255,9 +328,18 @@ class AdminMessageCard extends StatelessWidget {
               ),
               Text(clockFa(m.timestamp),
                   style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+              if (onReplyTap != null)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: context.tr('chat.replyAction'),
+                  icon: Icon(Icons.reply_rounded, size: 18, color: scheme.primary),
+                  onPressed: onReplyTap,
+                ),
             ],
           ),
           const SizedBox(height: 8),
+          if (m.replyToId != null)
+            QuotedMessage(original: repliedTo, onTap: onQuoteTap),
           if (m.kind == MessageKind.voice)
             VoiceBubble(message: m, fromMe: false)
           else

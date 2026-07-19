@@ -373,6 +373,11 @@ const Map<String, String> faStrings = {
 // chat
 'chat.conversations': 'گفتگوها',
 'chat.typeMessage': 'پیام خود را بنویسید...',
+'chat.replyAction': 'پاسخ (ریپلای)',
+'chat.reportAction': 'گزارش تخلف',
+'chat.replyingTo': 'در پاسخ به {name}',
+'chat.quotedVoice': '🎙 پیام صوتی',
+'chat.quotedUnknown': 'پیام',
 'chat.report': 'گزارش تخلف',
 'chat.newChat': 'گفتگوی جدید',
 'chat.classmates': 'هم‌صنفی‌های شما',

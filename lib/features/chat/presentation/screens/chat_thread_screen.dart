@@ -32,13 +32,76 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   Duration _recordDuration = Duration.zero;
   Timer? _recordTimer;
 
+  /// به‌روزرسانی زنده: تا وقتی این صفحه باز است، پیام‌ها هر چند ثانیه از
+  /// سرور تازه می‌شوند (Riverpod دادهٔ قبلی را حین تازه‌سازی نگه می‌دارد،
+  /// پس هیچ پرش/چشمک‌زدنی دیده نمی‌شود) — پیامِ رسیده همان لحظه ظاهر می‌شود.
+  Timer? _pollTimer;
+  int _lastMsgCount = -1;
+
+  /// پیامِ در حال ریپلای (migration 0031) — null یعنی حالت عادی.
+  PeerMessage? _replyingTo;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      ref.invalidate(messagesProvider(widget.conversationId));
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
     _recordTimer?.cancel();
+    _pollTimer?.cancel();
     _recorder.dispose();
     super.dispose();
+  }
+
+  /// پرش به پیام اصلیِ یک نقل‌قول — جای تقریبی آن در فهرست.
+  void _scrollToMessage(List<PeerMessage> messages, String messageId) {
+    final idx = messages.indexWhere((m) => m.id == messageId);
+    if (idx == -1 || !_scrollController.hasClients) return;
+    final fraction = messages.length <= 1 ? 0.0 : idx / (messages.length - 1);
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent * fraction,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// منوی اقدام روی پیام — «ریپلای» برای همه؛ «گزارش تخلف» فقط برای پیام دیگران.
+  Future<void> _showMessageActions(PeerMessage m) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply_rounded),
+              title: Text(ctx.tr('chat.replyAction')),
+              onTap: () => Navigator.pop(ctx, 'reply'),
+            ),
+            if (!m.fromMe)
+              ListTile(
+                leading: const Icon(Icons.flag_rounded),
+                title: Text(ctx.tr('chat.reportAction')),
+                onTap: () => Navigator.pop(ctx, 'report'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'reply') {
+      setState(() => _replyingTo = m);
+    } else if (action == 'report') {
+      await _showReportSheet(m);
+    }
   }
 
   void _scrollToBottom() {
@@ -57,9 +120,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
-    await ref
-        .read(sendPeerMessageUseCaseProvider)
-        .call(SendPeerMessageParams(conversationId: widget.conversationId, text: text));
+    final replyToId = _replyingTo?.id;
+    setState(() => _replyingTo = null);
+    await ref.read(sendPeerMessageUseCaseProvider).call(SendPeerMessageParams(
+        conversationId: widget.conversationId, text: text, replyToId: replyToId));
     if (!mounted) return;
     ref.invalidate(messagesProvider(widget.conversationId));
     ref.invalidate(conversationsProvider);
@@ -233,7 +297,13 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
               loading: () => const LoadingView(),
               error: (e, st) => ErrorView(error: e),
               data: (messages) {
-                _scrollToBottom();
+                // فقط با آمدن پیام تازه به انتها بپر — نه با هر تازه‌سازی زنده
+                // (تا وقتی کاربر مشغول خواندن پیام‌های قبلی است، مزاحم نشود).
+                if (messages.length != _lastMsgCount) {
+                  _lastMsgCount = messages.length;
+                  _scrollToBottom();
+                }
+                final byId = {for (final m in messages) m.id: m};
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(16),
@@ -246,9 +316,18 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (showDate) DateSeparator(date: m.timestamp),
-                        GestureDetector(
-                          onLongPress: m.fromMe ? null : () => _showReportSheet(m),
-                          child: _MessageBubble(message: m),
+                        SwipeToReply(
+                          onReply: () => setState(() => _replyingTo = m),
+                          child: GestureDetector(
+                            onLongPress: () => _showMessageActions(m),
+                            child: _MessageBubble(
+                              message: m,
+                              repliedTo: m.replyToId != null ? byId[m.replyToId] : null,
+                              onQuoteTap: m.replyToId != null
+                                  ? () => _scrollToMessage(messages, m.replyToId!)
+                                  : null,
+                            ),
+                          ),
                         ),
                       ],
                     );
@@ -256,6 +335,17 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
                 );
               },
             ),
+          ),
+          // پیش‌نمایش «در پاسخ به …» — با انیمیشن ظاهر/پنهان می‌شود.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            child: _replyingTo == null
+                ? const SizedBox.shrink()
+                : ReplyComposerBar(
+                    replyingTo: _replyingTo!,
+                    onCancel: () => setState(() => _replyingTo = null),
+                  ),
           ),
           SafeArea(
             child: Padding(
@@ -333,7 +423,11 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
 
 class _MessageBubble extends StatelessWidget {
   final PeerMessage message;
-  const _MessageBubble({required this.message});
+
+  /// پیامِ نقل‌شده (اگر این پیام ریپلای باشد) — null یعنی یافت نشد/عادی.
+  final PeerMessage? repliedTo;
+  final VoidCallback? onQuoteTap;
+  const _MessageBubble({required this.message, this.repliedTo, this.onQuoteTap});
 
   @override
   Widget build(BuildContext context) {
@@ -361,11 +455,23 @@ class _MessageBubble extends StatelessWidget {
               ),
               boxShadow: m.fromMe ? AppShadows.soft : null,
             ),
-            child: m.kind == MessageKind.voice
-                ? VoiceBubble(message: m, fromMe: m.fromMe)
-                : Text(m.body,
-                    style: TextStyle(
-                        color: m.fromMe ? Colors.white : scheme.onSurface, height: 1.5)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (m.replyToId != null)
+                  QuotedMessage(
+                    original: repliedTo,
+                    onGradient: m.fromMe,
+                    onTap: onQuoteTap,
+                  ),
+                m.kind == MessageKind.voice
+                    ? VoiceBubble(message: m, fromMe: m.fromMe)
+                    : Text(m.body,
+                        style: TextStyle(
+                            color: m.fromMe ? Colors.white : scheme.onSurface, height: 1.5)),
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),

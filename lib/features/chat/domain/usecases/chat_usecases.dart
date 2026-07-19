@@ -46,9 +46,12 @@ class GetMessagesUseCase implements UseCase<List<PeerMessage>, String> {
 class SendPeerMessageParams extends Equatable {
   final String conversationId;
   final String text;
-  const SendPeerMessageParams({required this.conversationId, required this.text});
+
+  /// شناسهٔ پیامِ نقل‌شده — «ریپلای» (اختیاری).
+  final String? replyToId;
+  const SendPeerMessageParams({required this.conversationId, required this.text, this.replyToId});
   @override
-  List<Object?> get props => [conversationId, text];
+  List<Object?> get props => [conversationId, text, replyToId];
 }
 
 class SendPeerMessageUseCase implements UseCase<Unit, SendPeerMessageParams> {
@@ -56,7 +59,7 @@ class SendPeerMessageUseCase implements UseCase<Unit, SendPeerMessageParams> {
   SendPeerMessageUseCase(this.repository);
   @override
   Future<Either<Failure, Unit>> call(SendPeerMessageParams params) =>
-      repository.sendMessage(params.conversationId, params.text);
+      repository.sendMessage(params.conversationId, params.text, replyToId: params.replyToId);
 }
 
 class SendVoiceMessageParams extends Equatable {
@@ -164,9 +167,12 @@ class ReviewMessageUseCase implements UseCase<Unit, ReviewMessageParams> {
 class SendAdminReplyParams extends Equatable {
   final String conversationId;
   final String text;
-  const SendAdminReplyParams({required this.conversationId, required this.text});
+
+  /// شناسهٔ پیامِ نقل‌شده — «ریپلای» مدیر به یک پیام مشخص (اختیاری).
+  final String? replyToId;
+  const SendAdminReplyParams({required this.conversationId, required this.text, this.replyToId});
   @override
-  List<Object?> get props => [conversationId, text];
+  List<Object?> get props => [conversationId, text, replyToId];
 }
 
 class SendAdminReplyUseCase implements UseCase<Unit, SendAdminReplyParams> {
@@ -174,5 +180,5 @@ class SendAdminReplyUseCase implements UseCase<Unit, SendAdminReplyParams> {
   SendAdminReplyUseCase(this.repository);
   @override
   Future<Either<Failure, Unit>> call(SendAdminReplyParams params) =>
-      repository.sendAdminReply(params.conversationId, params.text);
+      repository.sendAdminReply(params.conversationId, params.text, replyToId: params.replyToId);
 }

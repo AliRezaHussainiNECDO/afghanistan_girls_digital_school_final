@@ -14,7 +14,7 @@ abstract class ChatDataSource {
   Future<String> startConversationWith(String classmateId);
   Future<List<PeerConversation>> getConversations();
   Future<List<PeerMessage>> getMessages(String conversationId);
-  Future<void> sendMessage(String conversationId, String text);
+  Future<void> sendMessage(String conversationId, String text, {String? replyToId});
   Future<void> sendVoiceMessage(String conversationId, String audioUrl, int durationMs);
   Future<void> reportMessage(String messageId, String reason);
   Future<List<ClassChatSummary>> getClassChatSummaries();
@@ -23,7 +23,7 @@ abstract class ChatDataSource {
   Future<AdminConversationSummary> getConversationInfo(String conversationId);
   Future<List<PeerMessage>> getMessagesForAdmin(String conversationId);
   Future<void> reviewMessage(String conversationId, String messageId, bool approve);
-  Future<void> sendAdminReply(String conversationId, String text);
+  Future<void> sendAdminReply(String conversationId, String text, {String? replyToId});
 }
 
 /// پیاده‌سازی واقعی — روتر media زیر `/api/v1` (بخش ۱۰ سند). پیام صوتی روی
@@ -164,11 +164,12 @@ class ChatRemoteDataSource implements ChatDataSource {
   }
 
   @override
-  Future<void> sendMessage(String conversationId, String text) async {
+  Future<void> sendMessage(String conversationId, String text, {String? replyToId}) async {
     await _api.post('/conversations/$conversationId/messages', data: {
       'senderName': _uname,
       'senderClassName': _className,
       'text': text,
+      if (replyToId != null) 'replyToId': replyToId,
     });
   }
 
@@ -248,8 +249,11 @@ class ChatRemoteDataSource implements ChatDataSource {
   }
 
   @override
-  Future<void> sendAdminReply(String conversationId, String text) async {
-    await _api.post('/admin/conversations/$conversationId/reply', data: {'text': text});
+  Future<void> sendAdminReply(String conversationId, String text, {String? replyToId}) async {
+    await _api.post('/admin/conversations/$conversationId/reply', data: {
+      'text': text,
+      if (replyToId != null) 'replyToId': replyToId,
+    });
   }
 
   // ─────────────────────────── کمک‌کننده‌ها ─────────────────────────────
@@ -305,6 +309,7 @@ class ChatRemoteDataSource implements ChatDataSource {
             ? '$kApiBaseUrl/files/$audioKey'
             : null,
         durationMs: (m['duration_ms'] as num?)?.toInt(),
+        replyToId: m['reply_to_id'] as String?,
       );
     }).toList();
   }
