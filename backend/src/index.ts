@@ -6,6 +6,7 @@
  */
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { verifyBearer } from './lib/auth';
 import authRouter from './routes/auth';
 import curriculumRouter from './routes/curriculum';
 import examsRouter from './routes/exams';
@@ -55,6 +56,34 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/', (c) => c.json({ ok: true, service: 'afghan-girls-school-api' }));
+
+// ─────────────────── ضربان حضور (Presence Heartbeat) ────────────────────────
+// هر درخواستِ دارای توکن معتبر، `users.last_seen_at` را در پس‌زمینه تازه
+// می‌کند (migration 0032) — بدون هیچ تأخیری در پاسخ اصلی (waitUntil بعد از
+// next اجرا می‌شود). مبنای «کاربران آنلاین» در داشبورد زندهٔ مدیر
+// (GET /admin/dashboard/live). کاملاً fail-safe: هر خطایی بی‌صدا نادیده
+// گرفته می‌شود تا هرگز مسیر اصلی را نشکند.
+app.use('/api/v1/*', async (c, next) => {
+  await next();
+  const authHeader = c.req.header('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        try {
+          const p = await verifyBearer(authHeader, c.env.JWT_SECRET);
+          const sub = p?.['sub'] as string | undefined;
+          if (sub) {
+            await c.env.DB.prepare("UPDATE users SET last_seen_at=datetime('now') WHERE id=?")
+              .bind(sub)
+              .run();
+          }
+        } catch {
+          /* بی‌صدا — ضربان حضور هرگز نباید درخواست اصلی را خراب کند */
+        }
+      })(),
+    );
+  }
+});
 
 // ─────────────────── نگهبان سراسری خطا (Global Error Guard) ───────────────────
 // چرا لازم است؟ اگر یک Endpoint به هر دلیلی (مثلاً جدولی که هنوز مهاجرت

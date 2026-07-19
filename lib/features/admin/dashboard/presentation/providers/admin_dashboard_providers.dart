@@ -26,3 +26,13 @@ final adminStatsProvider = FutureProvider<AdminStats>((ref) async {
   final result = await ref.read(getAdminStatsUseCaseProvider).call(const NoParams());
   return result.fold((f) => throw f, (v) => v);
 });
+
+final getAdminLiveStatsUseCaseProvider =
+    Provider((ref) => GetAdminLiveStatsUseCase(ref.watch(adminDashboardRepositoryProvider)));
+
+/// «نبض زندهٔ مکتب» — صفحهٔ اول مدیر هر چند ثانیه این را باطل می‌کند؛
+/// Riverpod دادهٔ قبلی را حین تازه‌سازی نگه می‌دارد (بدون چشمک‌زدن).
+final adminLiveStatsProvider = FutureProvider<AdminLiveStats>((ref) async {
+  final result = await ref.read(getAdminLiveStatsUseCaseProvider).call(const NoParams());
+  return result.fold((f) => throw f, (v) => v);
+});

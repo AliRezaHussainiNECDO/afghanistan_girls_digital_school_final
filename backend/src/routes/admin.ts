@@ -343,6 +343,102 @@ admin.get('/dashboard/stats', async (c) => {
   });
 });
 
+// ───────────────────── نبض زندهٔ مکتب (داشبورد مدیر) ─────────────────────────
+// GET /admin/dashboard/live — همهٔ اعداد زندهٔ صفحهٔ اول مدیر در یک درخواست:
+//   * شمار کاربران فعال به تفکیک هر ۳ نقش (شاگرد/والد/استاد)
+//   * «آنلاین همین حالا» = last_seen_at در ۲ دقیقهٔ اخیر (ضربان حضور —
+//     src/index.ts + migration 0032) — شمارش به تفکیک نقش + فهرست تازه‌ترین‌ها
+//   * فعالیت امروز: درس‌های دیده‌شده، تلاش‌های امتحان، پیام‌های چت،
+//     کارهای خانگی ثبت‌شده، ثبت‌نام‌های تازه
+//   * موارد نیازمند اقدام: پیام‌های چتِ در انتظار بازبینی + پرچم‌های ایمنی
+// کلاینت این Endpoint را هر چند ثانیه صدا می‌زند (سبک — چند COUNT ایندکس‌دار).
+admin.get('/dashboard/live', async (c) => {
+  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const one = async (sql: string, ...b: any[]) => {
+    const r = await c.env.DB.prepare(sql).bind(...b).first<{ n: number }>();
+    return r?.n ?? 0;
+  };
+
+  // شمار کاربران فعال به تفکیک نقش — «هر سه نقش» در یک پرس‌وجو.
+  const { results: roleRows } = await c.env.DB.prepare(
+    "SELECT role, COUNT(*) AS n FROM users WHERE status='active' GROUP BY role",
+  ).all<{ role: string; n: number }>();
+  const roleCount = (role: string) => roleRows.find((r) => r.role === role)?.n ?? 0;
+
+  // آنلاین همین حالا (۲ دقیقهٔ اخیر) — به تفکیک نقش.
+  const { results: onlineRows } = await c.env.DB.prepare(
+    "SELECT role, COUNT(*) AS n FROM users WHERE status='active' AND last_seen_at >= datetime('now','-2 minutes') GROUP BY role",
+  ).all<{ role: string; n: number }>();
+  const onlineCount = (role: string) => onlineRows.find((r) => r.role === role)?.n ?? 0;
+
+  // تازه‌ترین کاربران آنلاین/اخیر (۱۵ دقیقهٔ اخیر) برای فهرست زنده.
+  const { results: recentOnline } = await c.env.DB.prepare(
+    `SELECT id, first_name, last_name, role, current_grade, avatar_url, last_seen_at
+       FROM users
+      WHERE status='active' AND last_seen_at >= datetime('now','-15 minutes') AND role != 'super_admin'
+      ORDER BY last_seen_at DESC LIMIT 20`,
+  ).all<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    role: string;
+    current_grade: number | null;
+    avatar_url: string | null;
+    last_seen_at: string;
+  }>();
+
+  // فعالیت امروز.
+  const lessonsToday = await one("SELECT COUNT(*) AS n FROM student_lesson_views WHERE date(viewed_at)=date('now')");
+  const examsToday = await one("SELECT COUNT(*) AS n FROM exam_attempts WHERE date(submitted_at)=date('now')");
+  const messagesToday = await one("SELECT COUNT(*) AS n FROM messages WHERE date(created_at)=date('now')");
+  const homeworksToday = await one(
+    "SELECT COUNT(*) AS n FROM student_homeworks WHERE submitted_at IS NOT NULL AND date(submitted_at)=date('now')",
+  ).catch(() => 0);
+  const newUsersToday = await one("SELECT COUNT(*) AS n FROM users WHERE date(created_at)=date('now')");
+
+  // نیازمند اقدام مدیر.
+  const pendingChatReviews = await one(
+    "SELECT COUNT(*) AS n FROM messages WHERE flagged=1 AND review_status='pending'",
+  );
+  const pendingSafetyFlags = await one(
+    "SELECT COUNT(*) AS n FROM safety_events WHERE status='open'",
+  ).catch(() => 0);
+
+  return c.json({
+    now: new Date().toISOString(),
+    roles: {
+      students: roleCount('student'),
+      parents: roleCount('parent'),
+      instructors: roleCount('seminar_instructor'),
+    },
+    online: {
+      total: onlineCount('student') + onlineCount('parent') + onlineCount('seminar_instructor'),
+      students: onlineCount('student'),
+      parents: onlineCount('parent'),
+      instructors: onlineCount('seminar_instructor'),
+      recent: recentOnline.map((u) => ({
+        id: u.id,
+        name: `${u.first_name} ${u.last_name}`.trim(),
+        role: u.role,
+        gradeNumber: u.current_grade,
+        avatarUrl: u.avatar_url,
+        lastSeenAt: u.last_seen_at,
+      })),
+    },
+    today: {
+      lessonsViewed: lessonsToday,
+      examAttempts: examsToday,
+      chatMessages: messagesToday,
+      homeworksSubmitted: homeworksToday,
+      newUsers: newUsersToday,
+    },
+    pending: {
+      chatReviews: pendingChatReviews,
+      safetyFlags: pendingSafetyFlags,
+    },
+  });
+});
+
 // ─────────────────────── سلامت زندهٔ سیستم (پایش مدیر) ──────────────────────
 // دیتابیس (D1) و فضای ذخیره‌سازی (R2) به‌صورت واقعی و زنده تست می‌شوند؛
 // خدمات جانبی (AI، ایمیل، پخش زنده) فقط از نظر «پیکربندی‌شده بودن» بررسی

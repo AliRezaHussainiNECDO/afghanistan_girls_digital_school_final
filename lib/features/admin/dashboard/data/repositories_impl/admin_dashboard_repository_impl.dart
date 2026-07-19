@@ -16,4 +16,13 @@ class AdminDashboardRepositoryImpl implements AdminDashboardRepository {
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, AdminLiveStats>> getLiveStats() async {
+    try {
+      return Right(await dataSource.getLiveStats());
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
 }

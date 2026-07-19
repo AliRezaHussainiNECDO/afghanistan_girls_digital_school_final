@@ -10,3 +10,11 @@ class GetAdminStatsUseCase implements UseCase<AdminStats, NoParams> {
   @override
   Future<Either<Failure, AdminStats>> call(NoParams params) => repository.getStats();
 }
+
+/// «نبض زندهٔ مکتب» — آمار زندهٔ صفحهٔ اول مدیر (هر چند ثانیه تازه می‌شود).
+class GetAdminLiveStatsUseCase implements UseCase<AdminLiveStats, NoParams> {
+  final AdminDashboardRepository repository;
+  GetAdminLiveStatsUseCase(this.repository);
+  @override
+  Future<Either<Failure, AdminLiveStats>> call(NoParams params) => repository.getLiveStats();
+}
