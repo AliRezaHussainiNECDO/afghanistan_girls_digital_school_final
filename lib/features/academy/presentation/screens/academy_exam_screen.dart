@@ -137,6 +137,9 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
       ));
       ref.invalidate(mySubmissionsProvider);
       ref.invalidate(allSubmissionsProvider);
+      // بعد از `await service.gradeEssay(...)` بالا — قبل از استفادهٔ بعدی از
+      // context باید مطمئن شویم ویجت هنوز در درخت است.
+      if (!mounted) return;
       NotificationCenter.instance.push(
         title: submission.passed
             ? context.tr('academy.practiceScoreNotifTitlePassed')
@@ -297,16 +300,22 @@ class _QuestionInput extends StatelessWidget {
   List<Widget> _inputs(BuildContext context) {
     switch (q.kind) {
       case QuestionKind.mcq:
-        return List.generate(q.options.length, (i) {
-          return RadioListTile<int>(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            value: i,
+        return [
+          RadioGroup<int>(
             groupValue: mcqValue,
             onChanged: (v) => onMcq(v ?? 0),
-            title: Text(q.options[i]),
-          );
-        });
+            child: Column(
+              children: List.generate(q.options.length, (i) {
+                return RadioListTile<int>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  value: i,
+                  title: Text(q.options[i]),
+                );
+              }),
+            ),
+          ),
+        ];
       case QuestionKind.trueFalse:
         return [
           SegmentedButton<bool>(

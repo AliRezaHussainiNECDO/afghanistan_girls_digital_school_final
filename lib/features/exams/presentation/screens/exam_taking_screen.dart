@@ -31,19 +31,44 @@ class ExamTakingScreen extends ConsumerStatefulWidget {
 
 class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
   final Map<String, int> _answers = {};
+
+  /// پاسخ متنی سؤالات تشریحی (migration 0030) — نمره‌دهی AI سمت سرور.
+  final Map<String, TextEditingController> _essayCtrls = {};
   bool _submitting = false;
   ExamResult? _result;
 
+  TextEditingController _essayCtrl(String qid) =>
+      _essayCtrls.putIfAbsent(qid, () => TextEditingController());
+
+  bool _isAnswered(ExamQuestion q) => q.isEssay
+      ? (_essayCtrls[q.id]?.text.trim().isNotEmpty ?? false)
+      : _answers.containsKey(q.id);
+
+  int _answeredCount(List<ExamQuestion> questions) => questions.where(_isAnswered).length;
+
+  @override
+  void dispose() {
+    for (final c in _essayCtrls.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
   Future<void> _submit(List<ExamQuestion> questions) async {
     setState(() => _submitting = true);
+    final textAnswers = <String, String>{
+      for (final e in _essayCtrls.entries)
+        if (e.value.text.trim().isNotEmpty) e.key: e.value.text.trim(),
+    };
     final result = await ref
         .read(submitAnswersUseCaseProvider)
-        .call(SubmitAnswersParams(examId: widget.examId, answers: _answers));
+        .call(SubmitAnswersParams(examId: widget.examId, answers: _answers, textAnswers: textAnswers));
+    if (!mounted) return;
     setState(() {
       _submitting = false;
       _result = result.fold((f) => null, (r) => r);
     });
-    if (mounted && _result != null && _result!.scorePercent >= 50) {
+    if (_result != null && _result!.scorePercent >= 50) {
       CelebrationOverlay.of(context)?.burst();
     }
 
@@ -87,7 +112,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
           return Column(
             children: [
               LinearProgressIndicator(
-                value: questions.isEmpty ? 0 : _answers.length / questions.length,
+                value: questions.isEmpty ? 0 : _answeredCount(questions) / questions.length,
                 minHeight: 4,
                 backgroundColor: scheme.surfaceContainerHigh,
               ),
@@ -98,7 +123,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, i) {
                     final q = questions[i];
-                    final answered = _answers.containsKey(q.id);
+                    final answered = _isAnswered(q);
                     return Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
@@ -140,6 +165,19 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
                             ],
                           ),
                           const SizedBox(height: 10),
+                          // سؤال تشریحی — جواب متنی (نمره‌دهی AI سمت سرور).
+                          if (q.isEssay)
+                            TextField(
+                              controller: _essayCtrl(q.id),
+                              maxLines: 4,
+                              minLines: 3,
+                              onChanged: (_) => setState(() {}),
+                              decoration: InputDecoration(
+                                hintText: context.tr('exams.essayAnswerHint'),
+                                border: const OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
                           ...List.generate(q.options.length, (optIndex) {
                             final selected = _answers[q.id] == optIndex;
                             return Padding(
@@ -191,7 +229,7 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
                   child: AppPrimaryButton(
                     label: context.tr('exams.submit'),
                     loading: _submitting,
-                    onPressed: questions.isEmpty || _answers.length < questions.length
+                    onPressed: questions.isEmpty || _answeredCount(questions) < questions.length
                         ? null
                         : () => _submit(questions),
                   ),

@@ -174,6 +174,18 @@ class StudentDashboardScreen extends ConsumerWidget {
               onTap: () => context.push(AppRoutes.certificates),
             ).animate().fadeIn(delay: 160.ms, duration: 380.ms).slideY(
                 begin: 0.15, end: 0, delay: 160.ms, duration: 380.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 12),
+            // ── مشق کاغذی + نمره‌دهی هوشمند — همیشه نمایش داده می‌شود (وابسته
+            // به خلاصهٔ سرور نیست) تا شاگرد همیشه راه سریعی برای فرستادن عکس
+            // مشق داشته باشد.
+            _ActionCard(
+              icon: Icons.assignment_turned_in_rounded,
+              iconColor: AppColors.orange500,
+              title: context.tr('dashboard.homeworkCardTitle'),
+              subtitle: context.tr('dashboard.homeworkCardSubtitle'),
+              onTap: () => context.push(AppRoutes.homework),
+            ).animate().fadeIn(delay: 180.ms, duration: 380.ms).slideY(
+                begin: 0.15, end: 0, delay: 180.ms, duration: 380.ms, curve: Curves.easeOutCubic),
             // نکته (رفع اشکال): باید هم عنوان و هم تاریخ موجود باشد؛ سرور
             // ممکن است فقط عنوان امتحان را بفرستد و تاریخ را null بگذارد
             // (چون هنوز فیلد تاریخ در جدول امتحانات وجود ندارد) — قبلاً این‌جا

@@ -164,11 +164,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       });
       lesson.titleFa = titleController.text.trim();
       lesson.contentBody = contentController.text;
+      if (!mounted) return;
       _snack(context.tr('lessonEditor.lessonSaved'));
       _invalidateStudentCurriculumCaches();
-      if (mounted) setState(() {});
+      setState(() {});
     } catch (e) {
-      _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -184,11 +185,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
         lesson.titleFa = map['titleFa'] as String? ?? lesson.titleFa;
         lesson.contentBody = map['contentBody'] as String? ?? lesson.contentBody;
       }
+      if (!mounted) return;
       _snack(changed ? context.tr('lessonEditor.lessonFixedNotice') : context.tr('lessonEditor.lessonNoTextIssue'));
       if (changed) _invalidateStudentCurriculumCaches();
-      if (mounted) setState(() {});
+      setState(() {});
     } catch (e) {
-      _snack(context.tr('lessonEditor.rebuildErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.rebuildErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -211,11 +213,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     try {
       await ref.read(apiClientProvider).delete('/admin/curriculum-library/lessons/${lesson.id}');
       chapter.lessons.removeWhere((l) => l.id == lesson.id);
+      if (!mounted) return;
       _snack(context.tr('lessonEditor.lessonDeleted'));
       _invalidateStudentCurriculumCaches();
-      if (mounted) setState(() {});
+      setState(() {});
     } catch (e) {
-      _snack(context.tr('lessonEditor.deleteErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.deleteErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -243,11 +246,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       });
       fromChapter.lessons.removeWhere((l) => l.id == lesson.id);
       target.lessons.add(lesson);
+      if (!mounted) return;
       _snack(context.tr('lessonEditor.lessonMovedTo', {'title': target.titleFa}));
       _invalidateStudentCurriculumCaches();
-      if (mounted) setState(() {});
+      setState(() {});
     } catch (e) {
-      _snack(context.tr('lessonEditor.moveErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.moveErrorWithReason', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
     }
@@ -310,13 +314,16 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
         'secondContent': secondController.text,
         'secondTitleFa': secondTitleController.text.trim(),
       });
-      _snack(context.tr('lessonEditor.lessonSplit'));
       _busyLessonIds.remove(lesson.id);
+      if (!mounted) return;
+      _snack(context.tr('lessonEditor.lessonSplit'));
       _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack(context.tr('lessonEditor.splitErrorWithReason', {'error': '$e'}));
-      if (mounted) setState(() => _busyLessonIds.remove(lesson.id));
+      if (mounted) {
+        _snack(context.tr('lessonEditor.splitErrorWithReason', {'error': '$e'}));
+        setState(() => _busyLessonIds.remove(lesson.id));
+      }
     }
   }
 
@@ -332,6 +339,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       ),
     );
     if (target == null) return;
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -346,11 +354,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).post('/admin/curriculum-library/chapters/${source.id}/merge-into/${target.id}');
+      if (!mounted) return;
       _snack(context.tr('lessonEditor.chapterMerged', {'source': source.titleFa, 'target': target.titleFa}));
       _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack(context.tr('lessonEditor.mergeErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.mergeErrorWithReason', {'error': '$e'}));
     }
   }
 
@@ -374,11 +383,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
       await ref.read(apiClientProvider).patch('/admin/curriculum-library/chapters/${chapter.id}', data: {
         'titleFa': newTitle,
       });
+      if (!mounted) return;
       setState(() => chapter.titleFa = newTitle);
       _snack(context.tr('lessonEditor.chapterTitleSaved'));
       _invalidateStudentCurriculumCaches();
     } catch (e) {
-      _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.saveErrorWithReason', {'error': '$e'}));
     }
   }
 
@@ -397,11 +407,12 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).delete('/admin/curriculum-library/chapters/${chapter.id}');
+      if (!mounted) return;
       _snack(context.tr('lessonEditor.chapterDeleted', {'title': chapter.titleFa}));
       _invalidateStudentCurriculumCaches();
       await _load();
     } catch (e) {
-      _snack(context.tr('lessonEditor.deleteChapterErrorWithReason', {'error': '$e'}));
+      if (mounted) _snack(context.tr('lessonEditor.deleteChapterErrorWithReason', {'error': '$e'}));
     }
   }
 

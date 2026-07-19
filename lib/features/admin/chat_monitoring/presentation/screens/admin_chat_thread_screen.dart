@@ -207,7 +207,7 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
 class AdminMessageCard extends StatelessWidget {
   final PeerMessage message;
   final void Function(bool approve)? onReview;
-  const AdminMessageCard({required this.message, this.onReview});
+  const AdminMessageCard({super.key, required this.message, this.onReview});
 
   @override
   Widget build(BuildContext context) {

@@ -69,6 +69,9 @@ class AuditLogEntry {
       'content_delete',
       'curriculum_wipe',
       'safety_resolve',
+      'certificate_issue',
+      'certificate_revoke',
+      'exam_delete',
     };
     if (sensitive.contains(actionType)) return AuditCategory.sensitive;
     return AuditCategory.general;

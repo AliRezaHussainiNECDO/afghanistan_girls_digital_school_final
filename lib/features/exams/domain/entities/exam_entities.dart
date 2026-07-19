@@ -3,6 +3,38 @@ import 'package:equatable/equatable.dart';
 /// طبق بخش ۷.۱ سند.
 enum ExamType { dailyQuiz, homework, monthly, finalExam }
 
+/// نوع سؤال — مطابق ستون `q_type` جدول واقعی `questions`
+/// (backend/migrations/0030_question_types.sql):
+///   mcq       چهارگزینه‌ای (رفتار قبلی)
+///   trueFalse صحیح / غلط (دو گزینهٔ ثابت)
+///   essay     تشریحی (شاگرد متن می‌نویسد؛ نمره‌دهی AI سمت سرور)
+enum QuestionType { mcq, trueFalse, essay }
+
+extension QuestionTypeX on QuestionType {
+  String get key {
+    switch (this) {
+      case QuestionType.mcq:
+        return 'mcq';
+      case QuestionType.trueFalse:
+        return 'true_false';
+      case QuestionType.essay:
+        return 'essay';
+    }
+  }
+
+  static QuestionType fromKey(String? key) {
+    switch (key) {
+      case 'true_false':
+        return QuestionType.trueFalse;
+      case 'essay':
+        return QuestionType.essay;
+      case 'mcq':
+      default:
+        return QuestionType.mcq;
+    }
+  }
+}
+
 class ExamSummary extends Equatable {
   final String id;
   final String subjectNameFa;
@@ -39,15 +71,19 @@ class ExamSummary extends Equatable {
 class ExamQuestion extends Equatable {
   final String id;
   final String text;
-  final List<String> options;
+  final QuestionType qType;
+  final List<String> options; // برای تشریحی خالی است
   final int correctIndex; // فقط سؤالات بسته — نمره‌دهی خودکار Backend، بخش ۷.۲
 
   const ExamQuestion({
     required this.id,
     required this.text,
+    this.qType = QuestionType.mcq,
     required this.options,
     required this.correctIndex,
   });
+
+  bool get isEssay => qType == QuestionType.essay;
 
   @override
   List<Object?> get props => [id];

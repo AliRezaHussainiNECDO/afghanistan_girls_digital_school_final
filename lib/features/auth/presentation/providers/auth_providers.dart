@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/localization/locale_provider.dart';
+import '../../../../core/push/push_notifications_service.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
 import '../../data/datasources/auth_mock_datasource.dart';
@@ -74,7 +77,18 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
   /// ورود به داشبورد نقش خودش هدایت می‌کند.
   Future<void> _restoreSession() async {
     final user = await ref.read(authRepositoryProvider).restoreSession();
-    if (user != null && mounted) state = user;
+    if (user != null && mounted) {
+      state = user;
+      _registerPushDevice();
+    }
+  }
+
+  /// ثبت توکن دستگاه برای Push Notification واقعی — بعد از هر ورود موفق
+  /// (این تابع، و خودِ سرویس، کاملاً Fail-safe‌اند: تا وقتی پروژهٔ Firebase
+  /// وصل نشده باشد، بی‌صدا هیچ کاری نمی‌کند و جریان ورود/ثبت‌نام را کند یا
+  /// خراب نمی‌کند — به همین دلیل عمداً `await` نمی‌شود).
+  void _registerPushDevice() {
+    unawaited(ref.read(pushNotificationsServiceProvider).registerCurrentDevice());
   }
 
   Future<bool> login(String email, String password) async {
@@ -92,6 +106,7 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
       },
       (user) {
         state = user;
+        _registerPushDevice();
         return true;
       },
     );
@@ -107,6 +122,7 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
       return false;
     }, (user) {
       state = user;
+      _registerPushDevice();
       return true;
     });
   }
@@ -121,6 +137,7 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
       return false;
     }, (user) {
       state = user;
+      _registerPushDevice();
       return true;
     });
   }
@@ -136,6 +153,7 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
       return false;
     }, (user) {
       state = user;
+      _registerPushDevice();
       return true;
     });
   }
@@ -189,6 +207,13 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
   }
 
   Future<void> logout() async {
+    // قبل از پاک‌کردن نشست: این دستگاه دیگر نباید برای این کاربر Push بگیرد
+    // (مثلاً روی گوشی مشترک بین چند شاگرد). Fail-safe — اگر Firebase وصل
+    // نباشد یا شبکه قطع باشد، خروج از حساب هرگز به همین دلیل معطل نمی‌ماند.
+    await ref.read(pushNotificationsServiceProvider).unregisterCurrentDevice().timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {},
+        );
     await ref.read(logoutUseCaseProvider).call(const NoParams());
     state = null;
     ref.read(profilePhotoProvider.notifier).state = null;

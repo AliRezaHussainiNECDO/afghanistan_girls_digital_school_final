@@ -18,26 +18,54 @@ class ExamsMockDataSource implements ExamsDataSource {
   Future<List<ExamQuestion>> getQuestions(String examId) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final exam = _exams.firstWhere((e) => e.id == examId);
-    return List.generate(
-      exam.questionCount,
-      (i) => ExamQuestion(
-        id: '$examId-q${i + 1}',
-        text: 'سؤال ${i + 1} — کدام گزینه صحیح است؟',
-        options: const ['گزینهٔ الف', 'گزینهٔ ب', 'گزینهٔ ج', 'گزینهٔ د'],
-        correctIndex: i % 4,
-      ),
-    );
+    // برای پیش‌نمایش، هر سه نوع سؤال (migration 0030) به نوبت تولید می‌شود.
+    return List.generate(exam.questionCount, (i) {
+      switch (i % 3) {
+        case 1:
+          return ExamQuestion(
+            id: '$examId-q${i + 1}',
+            text: 'سؤال ${i + 1} — این گزاره صحیح است یا غلط؟',
+            qType: QuestionType.trueFalse,
+            options: const ['صحیح', 'غلط'],
+            correctIndex: i % 2,
+          );
+        case 2:
+          return ExamQuestion(
+            id: '$examId-q${i + 1}',
+            text: 'سؤال ${i + 1} — به‌صورت تشریحی توضیح دهید.',
+            qType: QuestionType.essay,
+            options: const [],
+            correctIndex: -1,
+          );
+        default:
+          return ExamQuestion(
+            id: '$examId-q${i + 1}',
+            text: 'سؤال ${i + 1} — کدام گزینه صحیح است؟',
+            options: const ['گزینهٔ الف', 'گزینهٔ ب', 'گزینهٔ ج', 'گزینهٔ د'],
+            correctIndex: i % 4,
+          );
+      }
+    });
   }
 
   @override
-  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers) async {
+  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers, Map<String, String> textAnswers) async {
     await Future.delayed(const Duration(milliseconds: 500));
     final questions = await getQuestions(examId);
     var correct = 0;
+    var total = 0;
     for (final q in questions) {
-      if (answers[q.id] == q.correctIndex) correct++;
+      if (q.isEssay) {
+        // Mock: پاسخ تشریحیِ غیرخالی نمرهٔ کامل می‌گیرد (نمره‌دهی واقعی AI سمت سرور است).
+        if ((textAnswers[q.id] ?? '').trim().isNotEmpty) {
+          correct++;
+          total++;
+        }
+      } else {
+        if (answers[q.id] == q.correctIndex) correct++;
+        total++;
+      }
     }
-    final total = questions.length;
     return ExamResult(
       scorePercent: total == 0 ? 0 : (correct / total) * 100,
       correctCount: correct,

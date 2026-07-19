@@ -19,6 +19,8 @@ import cmsRouter from './routes/cms';
 import memoryRouter from './routes/memory';
 import academyRouter from './routes/academy';
 import advisorRouter from './routes/advisor';
+import homeworkRouter from './routes/homework';
+import devicesRouter from './routes/devices';
 
 type Bindings = {
   DB: D1Database;
@@ -36,6 +38,13 @@ type Bindings = {
   AI_TTS_VOICE?: string;
   AI_STT_URL?: string;
   AI_STT_MODEL?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
+  // ── Push Notification واقعی (FCM HTTP v1) — lib/push.ts. همه اختیاری‌اند؛
+  //    در نبودشان اعلان‌ها فقط داخل‌اپی (زنگ 🔔) می‌مانند، بدون کرش/تأخیر.
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -122,5 +131,11 @@ app.route('/api/v1', academyRouter);
 
 // ───────────────────────────── مشاور هوشمند ─────────────────────────────────
 app.route('/api/v1', advisorRouter);
+
+// ───────────────── کار خانگی + نمره‌دهی هوشمند (Vision) ─────────────────────
+app.route('/api/v1', homeworkRouter);
+
+// ─────────────── ثبت/حذف توکن دستگاه برای Push Notification (FCM) ──────────
+app.route('/api/v1', devicesRouter);
 
 export default app;

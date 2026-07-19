@@ -23,6 +23,7 @@ class NotificationsRemoteDataSource implements NotificationsDataSource {
           bodyFa: n['bodyFa'] as String? ?? '',
           priority: _priorityFrom(n['priority'] as String?),
           kind: _kindFrom(n['kind'] as String?),
+          relatedId: n['relatedId'] as String?,
           createdAt: DateTime.tryParse(n['createdAt'] as String? ?? '') ?? DateTime.now(),
           read: n['read'] == true,
         )).toList();

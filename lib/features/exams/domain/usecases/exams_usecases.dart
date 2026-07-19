@@ -22,9 +22,12 @@ class GetQuestionsUseCase implements UseCase<List<ExamQuestion>, String> {
 class SubmitAnswersParams extends Equatable {
   final String examId;
   final Map<String, int> answers;
-  const SubmitAnswersParams({required this.examId, required this.answers});
+
+  /// پاسخ متنی سؤالات تشریحی — questionId → متن (migration 0030).
+  final Map<String, String> textAnswers;
+  const SubmitAnswersParams({required this.examId, required this.answers, this.textAnswers = const {}});
   @override
-  List<Object?> get props => [examId, answers];
+  List<Object?> get props => [examId, answers, textAnswers];
 }
 
 class SubmitAnswersUseCase implements UseCase<ExamResult, SubmitAnswersParams> {
@@ -32,5 +35,5 @@ class SubmitAnswersUseCase implements UseCase<ExamResult, SubmitAnswersParams> {
   SubmitAnswersUseCase(this.repository);
   @override
   Future<Either<Failure, ExamResult>> call(SubmitAnswersParams params) =>
-      repository.submitAnswers(params.examId, params.answers);
+      repository.submitAnswers(params.examId, params.answers, params.textAnswers);
 }

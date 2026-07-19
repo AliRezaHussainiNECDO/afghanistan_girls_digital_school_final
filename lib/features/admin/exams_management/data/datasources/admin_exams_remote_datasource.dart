@@ -12,6 +12,9 @@ abstract class AdminExamsDataSource {
   Future<List<AdminQuestionRow>> getQuestions(String examId);
   Future<AdminQuestionRow> saveQuestion(AdminQuestionRow row);
   Future<void> deleteQuestion(String id);
+
+  /// تولید سؤال با هوش مصنوعی بر اساس صنف/مضمونِ خود امتحان (migration 0030).
+  Future<List<AdminQuestionRow>> generateQuestions(GenerateQuestionsParams params);
 }
 
 /// پیاده‌سازی واقعی — روتر `/api/v1/admin/exams*` و
@@ -60,15 +63,28 @@ class AdminExamsRemoteDataSource implements AdminExamsDataSource {
     final data = await _api.post('/admin/exams/${row.examId}/questions', data: {
       if (!row.id.startsWith('new')) 'id': row.id,
       'text': row.text,
+      'qType': row.qType.key,
       'options': row.options,
       'correctIndex': row.correctIndex,
       'orderIndex': row.orderIndex,
+      'answerText': row.answerText,
     });
     return _questionFrom(data['question']);
   }
 
   @override
   Future<void> deleteQuestion(String id) => _api.delete('/admin/questions/$id');
+
+  @override
+  Future<List<AdminQuestionRow>> generateQuestions(GenerateQuestionsParams params) async {
+    final data = await _api.post('/admin/exams/${params.examId}/generate-questions', data: {
+      'mcqCount': params.mcqCount,
+      'trueFalseCount': params.trueFalseCount,
+      'essayCount': params.essayCount,
+      if (params.topic.isNotEmpty) 'topic': params.topic,
+    });
+    return ((data['questions'] as List?) ?? []).map(_questionFrom).toList();
+  }
 
   AdminExamRow _examFrom(dynamic e) => AdminExamRow(
         id: e['id'] as String,
@@ -87,8 +103,10 @@ class AdminExamsRemoteDataSource implements AdminExamsDataSource {
         id: e['id'] as String,
         examId: e['examId'] as String? ?? '',
         text: e['text'] as String? ?? '',
+        qType: QuestionTypeX.fromKey(e['qType'] as String?),
         options: ((e['options'] as List?) ?? []).map((o) => o.toString()).toList(),
         correctIndex: (e['correctIndex'] as num?)?.toInt() ?? 0,
         orderIndex: (e['orderIndex'] as num?)?.toInt() ?? 0,
+        answerText: e['answerText'] as String? ?? '',
       );
 }

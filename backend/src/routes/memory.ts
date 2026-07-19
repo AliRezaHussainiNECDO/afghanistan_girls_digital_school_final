@@ -7,6 +7,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
@@ -147,6 +148,22 @@ memory.delete('/memory/posts/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM memory_comments WHERE post_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM memory_posts WHERE id = ?').bind(id),
   ]);
+  // فقط وقتی مدیر پست کاربر دیگری را حذف می‌کند در لاگ بازبینی ثبت می‌شود
+  // (بخش ۲۰.۳) — حذف پست خودِ کاربر یک اقدام عادی است، نه یک تصمیم مدیریتی.
+  if (row.author_id !== u.sub && u.role === 'super_admin') {
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: u.sub,
+        actorRole: u.role,
+        actionType: 'content_delete',
+        targetTable: 'memory_posts',
+        targetId: id,
+        beforeValue: { authorId: row.author_id },
+        ipAddress: clientIp(c),
+        priority: 'high',
+      }),
+    );
+  }
   return c.json({ success: true });
 });
 
@@ -236,6 +253,19 @@ memory.delete('/memory/comments/:id', async (c) => {
   await c.env.DB.prepare('DELETE FROM memory_comments WHERE id = ? OR parent_comment_id = ?')
     .bind(id, id)
     .run();
+  if (row.author_id !== u.sub && u.role === 'super_admin') {
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: u.sub,
+        actorRole: u.role,
+        actionType: 'content_delete',
+        targetTable: 'memory_comments',
+        targetId: id,
+        beforeValue: { authorId: row.author_id },
+        ipAddress: clientIp(c),
+      }),
+    );
+  }
   return c.json({ success: true });
 });
 

@@ -46,6 +46,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
     setState(() => _saving = true);
     try {
       final png = await _capturePng();
+      if (!mounted) return;
       if (png == null) {
         _toast(context.tr('certificates.prepareImageFailed'));
         return;
@@ -70,6 +71,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
         ext = 'png';
       }
 
+      if (!mounted) return;
       if (kIsWeb) {
         _toast(context.tr('certificates.webDownloadUnavailable'));
         return;
@@ -84,6 +86,7 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
         allowedExtensions: [ext],
         bytes: bytes,
       );
+      if (!mounted) return;
       if (path == null) return; // کاربر منصرف شد
 
       // در دسکتاپ ممکن است فقط مسیر برگردد — بایت‌ها را خودمان می‌نویسیم.
@@ -91,9 +94,10 @@ class _CertificateViewerScreenState extends State<CertificateViewerScreen> {
       if (!await file.exists() || (await file.length()) == 0) {
         await file.writeAsBytes(bytes);
       }
+      if (!mounted) return;
       _toast(context.tr('certificates.savedSuccess'));
     } catch (e) {
-      _toast(context.tr('certificates.saveError', {'error': '$e'}));
+      if (mounted) _toast(context.tr('certificates.saveError', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

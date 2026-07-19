@@ -84,7 +84,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
                         const SizedBox(height: 2),
                         Text(
                             context.tr('studyPlan.gradeWeek',
-                                {'grade': '$grade', 'week': '${plan.weekKey}'}),
+                                {'grade': '$grade', 'week': plan.weekKey}),
                             style: TextStyle(
                                 color: Colors.white.withValues(alpha: .9),
                                 fontSize: 11)),

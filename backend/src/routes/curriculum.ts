@@ -27,8 +27,10 @@ import {
   recordLessonView,
   getPromotionStatus,
 } from '../lib/progress';
+import { autoAssignLessonHomework } from '../lib/lessonHomework';
+import { logAudit, clientIp } from '../lib/audit';
 
-type Bindings = { DB: D1Database; JWT_SECRET: string; };
+type Bindings = { DB: D1Database; JWT_SECRET: string; GEMINI_API_KEY?: string; GEMINI_VISION_MODEL?: string; };
 const c11m = new Hono<{ Bindings: Bindings }>();
 
 function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
@@ -41,6 +43,11 @@ async function userId(c: any): Promise<string | null> {
 async function isAdmin(c: any): Promise<boolean> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   return payload?.['role'] === 'super_admin';
+}
+/** شناسهٔ مدیر جاری — برای audit_logs (بخش ۲۰.۳). null یعنی مجاز نیست. */
+async function adminId(c: any): Promise<string | null> {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  return payload?.['role'] === 'super_admin' ? ((payload['sub'] as string) ?? null) : null;
 }
 
 // ─────────────────────────────── Grades ───────────────────────────────────
@@ -134,6 +141,46 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
   const lessonId = c.req.param('lessonId');
   const result = await recordLessonView(c.env.DB, uid, lessonId);
   if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  // اتصال «کار خانگی» به نصاب درسی: اولین باری که شاگرد این درس را باز
+  // می‌کند (نه هر بار)، در پس‌زمینه یک کار خانگی متناسب با متن همین درس ساخته
+  // می‌شود (lib/lessonHomework.ts) — برای تمام مضامین/صنف‌ها یکسان، چون فقط
+  // از محتوای واقعی خودِ درس استفاده می‌کند. کاملاً fail-safe: اگر
+  // GEMINI_API_KEY تنظیم نشده یا مدل خطا بدهد، این درخواست (ثبت بازدید درس)
+  // بدون هیچ تأخیر یا خطایی طبیعی ادامه می‌یابد.
+  if (result.firstView) {
+    const lessonRow = await c.env.DB.prepare(
+      `SELECT l.title_fa, l.content_body, ch.id AS chapter_id, ch.subject_id, ch.grade_number, s.name_fa AS subject_name_fa
+         FROM lessons l
+         JOIN chapters ch ON ch.id = l.chapter_id
+         LEFT JOIN subjects s ON s.id = ch.subject_id
+        WHERE l.id = ?`,
+    )
+      .bind(lessonId)
+      .first<{
+        title_fa: string;
+        content_body: string;
+        chapter_id: string;
+        subject_id: string;
+        grade_number: number;
+        subject_name_fa: string | null;
+      }>();
+    if (lessonRow) {
+      c.executionCtx.waitUntil(
+        autoAssignLessonHomework(c.env, {
+          studentId: uid,
+          lessonId,
+          chapterId: lessonRow.chapter_id,
+          subjectId: lessonRow.subject_id,
+          subjectNameFa: lessonRow.subject_name_fa ?? '',
+          classLevel: lessonRow.grade_number,
+          lessonTitleFa: lessonRow.title_fa,
+          lessonContentBody: lessonRow.content_body,
+        }),
+      );
+    }
+  }
+
   return c.json({
     success: true,
     pointsAwarded: result.firstView ? 10 : 0,
@@ -476,6 +523,18 @@ c11m.delete('/curriculum-library/books/:id', async (c) => {
   }
 
   await c.env.DB.prepare('DELETE FROM curriculum_library_books WHERE id = ?').bind(bookId).run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: await adminId(c),
+      actorRole: 'super_admin',
+      actionType: 'content_delete',
+      targetTable: 'curriculum_library_books',
+      targetId: bookId,
+      afterValue: { deletedChapters: chapters.length },
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
   return c.json({ success: true, deletedChapters: chapters.length });
 });
 
@@ -586,17 +645,31 @@ c11m.post('/admin/curriculum/lessons', async (c) => {
 });
 
 c11m.patch('/admin/curriculum/lessons/:id/status', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const admin = await adminId(c);
+  if (!admin) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = b?.status === 'published' ? 'published' : 'draft';
+  const id = c.req.param('id');
   await c.env.DB.prepare("UPDATE lessons SET status = ?, updated_at = datetime('now') WHERE id = ?")
-    .bind(status, c.req.param('id'))
+    .bind(status, id)
     .run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: admin,
+      actorRole: 'super_admin',
+      actionType: 'content_status_change',
+      targetTable: 'lessons',
+      targetId: id,
+      afterValue: { status },
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ success: true });
 });
 
 c11m.delete('/admin/curriculum/lessons/:id', async (c) => {
-  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const admin = await adminId(c);
+  if (!admin) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM student_lesson_views WHERE lesson_id = ?').bind(id).run();
   try {
@@ -605,6 +678,17 @@ c11m.delete('/admin/curriculum/lessons/:id', async (c) => {
     // جدول ممکن است هنوز مهاجرت نشده باشد.
   }
   await c.env.DB.prepare('DELETE FROM lessons WHERE id = ?').bind(id).run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: admin,
+      actorRole: 'super_admin',
+      actionType: 'content_delete',
+      targetTable: 'lessons',
+      targetId: id,
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
   return c.json({ success: true });
 });
 

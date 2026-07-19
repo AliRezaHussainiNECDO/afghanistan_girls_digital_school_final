@@ -25,6 +25,7 @@ class AppRoutes {
   static String curriculumLessonDetail(String subjectId, String chapterId, String lessonId) =>
       '/student/curriculum/$subjectId/$chapterId/$lessonId';
   static const aiTeacher = '/student/ai-teacher';
+  static const homework = '/student/homework';
   static const advisor = '/student/advisor';
   static const studyPlan = '/student/study-plan';
   static const certificates = '/student/certificates';

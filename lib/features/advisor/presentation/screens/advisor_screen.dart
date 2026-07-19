@@ -72,7 +72,7 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         flagged: reply.flagged,
         topic: reply.topic,
       );
-      if (reply.flagged) {
+      if (reply.flagged && mounted) {
         // اطلاع واقعی به همهٔ مدیران از سرور می‌رسد (داخل POST
         // /advisor/messages که `store.add(...)` بالا آن را صدا می‌زند).
         // این یکی فقط برای بازخورد آنیِ محلی/همین‌نشست به خودِ شاگرد است.
@@ -84,12 +84,14 @@ class _AdvisorScreenState extends ConsumerState<AdvisorScreen> {
         );
       }
     } catch (_) {
-      store.add(
-        studentId: _studentId,
-        studentName: _studentName,
-        role: AdvisorRole.advisor,
-        text: context.tr('advisor.errorFallback'),
-      );
+      if (mounted) {
+        store.add(
+          studentId: _studentId,
+          studentName: _studentName,
+          role: AdvisorRole.advisor,
+          text: context.tr('advisor.errorFallback'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
       _scrollToEnd();

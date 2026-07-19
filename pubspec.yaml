@@ -37,6 +37,16 @@ dependencies:
   # ویدیوکنفرانس واقعی چندنفره برای اتاق فال‌بک سمینار (وقتی Cloudflare Stream
   # و لینک جلسهٔ خارجی هیچ‌کدام تنظیم نشده باشند) — فقط اندروید/iOS.
   jitsi_meet_flutter_sdk: 12.1.3
+  # Push Notification واقعی روی گوشی (حتی وقتی اپ بسته است) — Firebase Cloud
+  # Messaging. اختیاری و کاملاً Fail-safe: تا وقتی پروژهٔ Firebase وصل نشده
+  # (google-services.json/GoogleService-Info.plist)، core/push/push_notifications_service.dart
+  # هر خطا را بی‌صدا می‌بلعد و بقیهٔ اپ عادی کار می‌کند.
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.6
+  # جایگزین تایپ‌دار dart:html (منسوخ‌شده) برای انتخاب/دانلود فایل در وب —
+  # pdf_picker_web.dart و pdf_saver_web.dart. قبلاً فقط به‌صورت transitive
+  # (از طریق بسته‌های دیگر) در دسترس بود؛ حالا صریح اعلام شده.
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

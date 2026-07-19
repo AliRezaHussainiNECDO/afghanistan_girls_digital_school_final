@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
@@ -26,6 +28,10 @@ IconData _kindIcon(NotificationKind k) {
       return Icons.notifications_rounded;
     case NotificationKind.chat:
       return Icons.chat_bubble_rounded;
+    case NotificationKind.homework:
+      return Icons.edit_note_rounded;
+    case NotificationKind.account:
+      return Icons.person_rounded;
   }
 }
 
@@ -45,6 +51,10 @@ Color _kindColor(NotificationKind k) {
       return AppColors.gold600;
     case NotificationKind.chat:
       return AppColors.orange600;
+    case NotificationKind.homework:
+      return AppColors.info;
+    case NotificationKind.account:
+      return AppColors.gold600;
   }
 }
 
@@ -103,6 +113,81 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  /// رفع اشکال «لمس اعلان هیچ‌جا را باز نمی‌کرد»: مقصد باز شدن هر اعلان بر
+  /// اساس `kind` + `relatedId` + نقش کاربر تعیین می‌شود (بخش ۱۳.۱ سند —
+  /// ستون `related_id` در migration 0029). اگر مقصد مشخصی نباشد (null)،
+  /// لمس فقط اعلان را خوانده‌شده می‌کند (رفتار قبلی).
+  String? _routeFor(AppNotification n, AppUserRole role) {
+    final rid = n.relatedId;
+    switch (n.kind) {
+      case NotificationKind.chat:
+        if (rid == null) return null;
+        return switch (role) {
+          AppUserRole.superAdmin => AppRoutes.adminChatThread(rid),
+          AppUserRole.student => AppRoutes.chatThread(rid),
+          AppUserRole.parent => AppRoutes.parentContactAdmin,
+          AppUserRole.seminarInstructor => AppRoutes.instructorContactAdmin,
+        };
+      case NotificationKind.exam:
+        // relatedId = examId — شاگرد به صفحهٔ امتحان‌ها (نتیجه/فهرست) می‌رود؛
+        // مدیر به مدیریت امتحانات.
+        return switch (role) {
+          AppUserRole.student => AppRoutes.exams,
+          AppUserRole.superAdmin => AppRoutes.adminExamsManagement,
+          _ => null,
+        };
+      case NotificationKind.homework:
+        return role == AppUserRole.student ? AppRoutes.homework : null;
+      case NotificationKind.seminar:
+        // relatedId = seminarId — هر نقش به فهرست سمینارهای خودش.
+        return switch (role) {
+          AppUserRole.student => AppRoutes.seminars,
+          AppUserRole.parent => AppRoutes.parentSeminars,
+          AppUserRole.superAdmin => AppRoutes.adminSeminars,
+          AppUserRole.seminarInstructor => AppRoutes.instructorHome,
+        };
+      case NotificationKind.safety:
+        // relatedId = studentId (اعلان ایمنی مشاور به مدیر).
+        if (role != AppUserRole.superAdmin) return null;
+        return rid != null ? AppRoutes.adminStudentDetail(rid) : AppRoutes.adminSafetyQueue;
+      case NotificationKind.account:
+        if (role == AppUserRole.superAdmin) {
+          // relatedId به شکل `role:userId` (ثبت‌نام تازه — auth.ts).
+          final parts = rid?.split(':');
+          if (parts != null && parts.length == 2) {
+            final (r, userId) = (parts[0], parts[1]);
+            return switch (r) {
+              'student' => AppRoutes.adminStudentDetail(userId),
+              'parent' => AppRoutes.adminParentDetail(userId),
+              'seminar_instructor' => AppRoutes.adminInstructorDetail(userId),
+              _ => AppRoutes.adminUsers,
+            };
+          }
+          return AppRoutes.adminUsers;
+        }
+        // شاگرد: درخواست پیوند والد در پروفایل تأیید/رد می‌شود (parents.ts).
+        return role == AppUserRole.student ? AppRoutes.profile : null;
+      case NotificationKind.book:
+        return role == AppUserRole.student ? AppRoutes.library : null;
+      case NotificationKind.grade:
+        return switch (role) {
+          AppUserRole.parent => AppRoutes.parentScores,
+          AppUserRole.student => AppRoutes.exams,
+          _ => null,
+        };
+      case NotificationKind.general:
+        return null;
+    }
+  }
+
+  Future<void> _openNotification(AppNotification n, AppUserRole role) async {
+    // اول مقصد را بگیر و ناوبری کن تا await شدنِ markRead (رفت‌وبرگشت شبکه)
+    // باز شدن صفحه را عقب نیندازد.
+    final route = _routeFor(n, role);
+    if (route != null && mounted) context.push(route);
+    await _markRead(n.id);
+  }
+
   Future<void> _markRead(String id) async {
     final center = NotificationCenter.instance;
     final wasServerSourced = center.isServerSourced(id);
@@ -187,7 +272,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 ),
                 ...buckets[s]!.asMap().entries.map((e) => _NotificationCard(
                       n: e.value,
-                      onTap: () => _markRead(e.value.id),
+                      onTap: () => _openNotification(e.value, role),
                     ).animate().fadeIn(delay: (30 * e.key).ms, duration: 240.ms).slideX(begin: 0.06)),
               ],
             ],

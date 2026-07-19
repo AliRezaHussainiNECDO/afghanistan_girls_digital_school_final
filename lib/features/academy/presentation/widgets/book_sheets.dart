@@ -131,6 +131,9 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
       }
 
       _refresh(ref);
+      // بعد از await های بالا (ذخیره/آپلود روی سرور) — قبل از استفادهٔ بعدی
+      // از context باید مطمئن شویم ویجت هنوز در درخت است.
+      if (!mounted) return;
       if (saved.status == PublishStatus.published) {
         NotificationCenter.instance.push(
           title: context.tr('academy.newBookNotifTitle'),

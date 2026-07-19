@@ -66,12 +66,12 @@ class _LanguageSelectScreenState extends ConsumerState<LanguageSelectScreen> {
       backgroundColor: scheme.surface,
       body: Stack(
         children: [
-          Positioned(
+          const Positioned(
             top: -60,
             right: -40,
             child: FloatingBlob(gradient: AppColors.sunriseGradient, size: 220, opacity: 0.16),
           ),
-          Positioned(
+          const Positioned(
             bottom: -80,
             left: -60,
             child: FloatingBlob(gradient: AppColors.heroGradient, size: 260, opacity: 0.12, reverse: true),

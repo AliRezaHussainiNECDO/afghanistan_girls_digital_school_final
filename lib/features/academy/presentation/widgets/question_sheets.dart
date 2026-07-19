@@ -211,26 +211,32 @@ class _QuestionFormSheetState extends ConsumerState<QuestionFormSheet> {
           Text(context.tr('academy.optionsPickCorrectHint'),
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 6),
-          ...List.generate(4, (i) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Radio<int>(value: i, groupValue: _correctIndex, onChanged: (v) => setState(() => _correctIndex = v ?? 0)),
-                  Expanded(
-                    child: TextField(
-                      controller: _opts[i],
-                      decoration: InputDecoration(
-                        labelText: context.tr('academy.optionNumberLabel', {'number': '${i + 1}'}),
-                        border: const OutlineInputBorder(),
-                        isDense: true,
+          RadioGroup<int>(
+            groupValue: _correctIndex,
+            onChanged: (v) => setState(() => _correctIndex = v ?? 0),
+            child: Column(
+              children: List.generate(4, (i) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      Radio<int>(value: i),
+                      Expanded(
+                        child: TextField(
+                          controller: _opts[i],
+                          decoration: InputDecoration(
+                            labelText: context.tr('academy.optionNumberLabel', {'number': '${i + 1}'}),
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }),
+                );
+              }),
+            ),
+          ),
         ];
       case QuestionKind.trueFalse:
         return [
@@ -409,6 +415,8 @@ class _AiGenerateSheetState extends ConsumerState<AiGenerateSheet> {
       );
       AcademyStore().addQuestions(generated);
       _refreshQ(ref);
+      // بعد از `await service.generateQuestions(...)` بالا.
+      if (!mounted) return;
       NotificationCenter.instance.push(
         title: context.tr('academy.aiQuestionsGeneratedNotifTitle'),
         body: context.tr('academy.aiQuestionsGeneratedNotifBody', {

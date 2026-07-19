@@ -78,11 +78,30 @@ Future<void> startSeminarLive(
     }
   } catch (e) {
     if (context.mounted) Navigator.of(context).pop();
-    messenger.showSnackBar(SnackBar(content: Text(context.tr('liveStream.startError', {'error': '$e'}))));
+    if (context.mounted) {
+      messenger.showSnackBar(SnackBar(content: Text(context.tr('liveStream.startError', {'error': '$e'}))));
+    }
   }
 }
 
-/// انتخاب روش پخش: مستقیم از همین اپ (پیشنهادی) یا با نرم‌افزار بیرونی (OBS).
+/// انتخاب روش پخش.
+///
+/// رفع ریشه‌ای اشکال «استاد هنگام شروع سمینار از برنامه خارج می‌شود»: تحقیق
+/// روی ردیاب مشکلات پکیج `apivideo_live_stream` (که مسیر «پخش مستقیم از
+/// همین اپ» از آن استفاده می‌کند) نشان داد این یک Crash بومی (SIGSEGV در
+/// libssl هنگام اتصال RTMPS) روی برخی دستگاه‌ها/نسخه‌های اندروید است که خودِ
+/// سازندهٔ پکیج هم تأیید کرده در سطح کتابخانه رفع‌شدنی نیست (Issue #29:
+/// «I don't see anything to fix the issue you face»). چون این خرابی در کد
+/// بومی رخ می‌دهد، هیچ try/catch یا `runZonedGuarded` سمت Dart نمی‌تواند
+/// جلویش را بگیرد — پس تنها راه واقعیِ حذف ریشهٔ مشکل این است که این مسیر
+/// خطرناک دیگر به‌طور پیش‌فرض به استاد پیشنهاد نشود.
+///
+/// به همین دلیل ترتیب/برجستگی گزینه‌ها این‌جا عمداً برعکس نسخهٔ قبلی است:
+/// «نرم‌افزار بیرونی (OBS/Larix)» — که هرگز کد بومی این پکیج را صدا نمی‌زند و
+/// در عمل هیچ‌گاه این‌طور Crash نکرده — حالا گزینهٔ سبز/پیشنهادی است. «پخش
+/// مستقیم از اپ» به گزینهٔ دوم با برچسب «تجربی» و هشدار صریح تبدیل شده. محافظ
+/// Crash در `SeminarBroadcastScreen` هم به‌عنوان لایهٔ دفاعی دوم برای کسی که
+/// همچنان مسیر تجربی را انتخاب کند، فعال می‌ماند.
 Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult r) {
   return showModalBottomSheet(
     context: context,
@@ -113,6 +132,8 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
           Text(context.tr('liveStream.howToBroadcast'),
               style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 18),
+          // گزینهٔ پیشنهادی/پیش‌فرض تازه: نرم‌افزار بیرونی (OBS/Larix) — کد
+          // بومی پرتصادف apivideo_live_stream را اصلاً صدا نمی‌زند.
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -122,7 +143,30 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
               ),
               onPressed: () {
                 Navigator.of(ctx).pop();
-                Navigator.of(context).push(
+                _showIngestSheet(context, r);
+              },
+              icon: const Icon(Icons.desktop_windows_rounded, size: 20),
+              label: Text(context.tr('liveStream.broadcastExternal'),
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Text(context.tr('liveStream.recommendedBadge'),
+                style: const TextStyle(fontSize: 11, color: AppColors.green500, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                // اگر دفعهٔ قبل ورود به این صفحه با Crash بومی تمام شده باشد،
+                // صفحه به‌جای باز کردن دوباره‌، `true` برمی‌گرداند تا این‌جا
+                // مستقیم شیت «پخش با نرم‌افزار خارجی» باز شود (لایهٔ دفاعی دوم).
+                final preferExternal = await Navigator.of(context).push<bool>(
                   MaterialPageRoute(
                     builder: (_) => SeminarBroadcastScreen(
                       seminarId: seminar.id,
@@ -132,24 +176,19 @@ Future<void> _showLiveChoice(BuildContext context, Seminar seminar, GoLiveResult
                     ),
                   ),
                 );
+                if (preferExternal == true && context.mounted) {
+                  _showIngestSheet(context, r);
+                }
               },
-              icon: const Icon(Icons.podcasts_rounded, size: 20),
-              label: Text(context.tr('liveStream.broadcastFromApp'),
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              icon: const Icon(Icons.podcasts_rounded, size: 18),
+              label: Text(context.tr('liveStream.broadcastFromApp')),
             ),
           ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showIngestSheet(context, r);
-              },
-              icon: const Icon(Icons.desktop_windows_rounded, size: 18),
-              label: Text(context.tr('liveStream.broadcastExternal')),
-            ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: Text(context.tr('liveStream.inAppRiskWarning'),
+                style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.onSurfaceVariant, height: 1.5)),
           ),
         ],
       ),

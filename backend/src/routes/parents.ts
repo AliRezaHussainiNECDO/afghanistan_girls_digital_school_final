@@ -14,10 +14,14 @@ import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
+import { sendPushToUser } from '../lib/push';
 
 type Bindings = {
   DB: D1Database;
   JWT_SECRET: string;
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const parents = new Hono<{ Bindings: Bindings }>();
@@ -119,12 +123,17 @@ parents.post('/parents/link-requests', async (c) => {
       .bind(uid(), me.sub, studentId, parentName)
       .run();
   }
-  // اعلان به دانش‌آموز.
+  // اعلان به دانش‌آموز — kind='account' (نه 'general') تا لمس آن دقیقاً به
+  // پروفایل (جایی که درخواست پیوند تأیید/رد می‌شود) هدایت شود، نه یک مقصد
+  // نامشخص.
   await c.env.DB.prepare(
-    "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'general')",
+    "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'account', ?)",
   )
-    .bind(uid(), studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`)
+    .bind(uid(), studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`, me.sub)
     .run();
+  c.executionCtx.waitUntil(
+    sendPushToUser(c.env, studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`),
+  );
   // Auditability (بخش ۲۰.۳ — «تأیید/رد پیوند Parent-Student ثبت می‌شود»).
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {

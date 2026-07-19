@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../shared_models/subject.dart';
-import '../../../../exams/domain/entities/exam_entities.dart';
 import '../../domain/entities/admin_exam_entities.dart';
 import '../providers/admin_exams_providers.dart';
 
@@ -253,20 +252,34 @@ class ExamQuestionFormSheet extends ConsumerStatefulWidget {
   ConsumerState<ExamQuestionFormSheet> createState() => _ExamQuestionFormSheetState();
 }
 
+String questionTypeLabel(BuildContext context, QuestionType t) {
+  switch (t) {
+    case QuestionType.mcq:
+      return context.tr('examAdmin.qTypeMcq');
+    case QuestionType.trueFalse:
+      return context.tr('examAdmin.qTypeTrueFalse');
+    case QuestionType.essay:
+      return context.tr('examAdmin.qTypeEssay');
+  }
+}
+
 class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
   late final _text = TextEditingController(text: widget.existing?.text ?? '');
+  late final _answerText = TextEditingController(text: widget.existing?.answerText ?? '');
   late final List<TextEditingController> _opts = List.generate(
     4,
     (i) => TextEditingController(
       text: (widget.existing != null && i < widget.existing!.options.length) ? widget.existing!.options[i] : '',
     ),
   );
+  late QuestionType _qType = widget.existing?.qType ?? QuestionType.mcq;
   late int _correctIndex = widget.existing?.correctIndex ?? 0;
   bool _saving = false;
 
   @override
   void dispose() {
     _text.dispose();
+    _answerText.dispose();
     for (final c in _opts) {
       c.dispose();
     }
@@ -274,20 +287,41 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
   }
 
   Future<void> _save() async {
-    final opts = _opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
-    if (_text.text.trim().isEmpty || opts.length < 2) {
-      _toast(context, context.tr('examAdmin.questionAndOptionsRequired'));
+    if (_text.text.trim().isEmpty) {
+      _toast(context, context.tr('examAdmin.questionTextRequired'));
       return;
     }
-    final correctIndex = _correctIndex >= opts.length ? 0 : _correctIndex;
+    // اعتبارسنجی/ساخت بر اساس نوع سؤال — هماهنگ با backend (migration 0030).
+    List<String> opts;
+    int correctIndex;
+    switch (_qType) {
+      case QuestionType.essay:
+        opts = const [];
+        correctIndex = -1;
+        break;
+      case QuestionType.trueFalse:
+        opts = [context.tr('examAdmin.trueOption'), context.tr('examAdmin.falseOption')];
+        correctIndex = _correctIndex == 1 ? 1 : 0;
+        break;
+      case QuestionType.mcq:
+        opts = _opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+        if (opts.length < 2) {
+          _toast(context, context.tr('examAdmin.questionAndOptionsRequired'));
+          return;
+        }
+        correctIndex = _correctIndex >= opts.length ? 0 : _correctIndex;
+        break;
+    }
     setState(() => _saving = true);
     final row = AdminQuestionRow(
       id: widget.existing?.id ?? 'new',
       examId: widget.examId,
       text: _text.text.trim(),
+      qType: _qType,
       options: opts,
       correctIndex: correctIndex,
       orderIndex: widget.existing?.orderIndex ?? 0,
+      answerText: _qType == QuestionType.essay ? _answerText.text.trim() : '',
     );
     try {
       await ref.read(saveQuestionUseCaseProvider).call(row);
@@ -311,36 +345,227 @@ class _ExamQuestionFormSheetState extends ConsumerState<ExamQuestionFormSheet> {
       title: widget.existing == null ? context.tr('examAdmin.newQuestionTitle') : context.tr('examAdmin.editQuestionTitle'),
       onSave: _saving ? () async {} : _save,
       children: [
+        // نوع سؤال — چهارگزینه‌ای / صحیح‌وغلط / تشریحی (migration 0030).
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SegmentedButton<QuestionType>(
+            segments: QuestionType.values
+                .map((t) => ButtonSegment(value: t, label: Text(questionTypeLabel(context, t), style: const TextStyle(fontSize: 12))))
+                .toList(),
+            selected: {_qType},
+            onSelectionChanged: (s) => setState(() {
+              _qType = s.first;
+              if (_qType == QuestionType.trueFalse && _correctIndex > 1) _correctIndex = 0;
+            }),
+          ),
+        ),
         _field(_text, context.tr('examAdmin.questionTextField'), maxLines: 2),
-        const SizedBox(height: 4),
-        Text(context.tr('examAdmin.optionsHint'),
-            style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 8),
-        ...List.generate(4, (i) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Radio<int>(
-                  value: i,
-                  groupValue: _correctIndex,
-                  onChanged: (v) => setState(() => _correctIndex = v ?? 0),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _opts[i],
-                    decoration: InputDecoration(
-                      label: Text(context.tr('examAdmin.optionField', {'number': '${i + 1}'})),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
+        if (_qType == QuestionType.mcq) ...[
+          const SizedBox(height: 4),
+          Text(context.tr('examAdmin.optionsHint'),
+              style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          RadioGroup<int>(
+            groupValue: _correctIndex,
+            onChanged: (v) => setState(() => _correctIndex = v ?? 0),
+            child: Column(
+              children: List.generate(4, (i) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Radio<int>(value: i),
+                      Expanded(
+                        child: TextField(
+                          controller: _opts[i],
+                          decoration: InputDecoration(
+                            label: Text(context.tr('examAdmin.optionField', {'number': '${i + 1}'})),
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+        if (_qType == QuestionType.trueFalse) ...[
+          const SizedBox(height: 4),
+          Text(context.tr('examAdmin.trueFalseHint'),
+              style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          RadioGroup<int>(
+            groupValue: _correctIndex,
+            onChanged: (v) => setState(() => _correctIndex = v ?? 0),
+            child: Column(
+              children: List.generate(2, (i) {
+                final label = i == 0 ? context.tr('examAdmin.trueOption') : context.tr('examAdmin.falseOption');
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Radio<int>(value: i),
+                      Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+                    ],
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+        if (_qType == QuestionType.essay) ...[
+          const SizedBox(height: 4),
+          Text(context.tr('examAdmin.essayHint'),
+              style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          _field(_answerText, context.tr('examAdmin.modelAnswerField'), maxLines: 3),
+        ],
+      ],
+    );
+  }
+}
+
+// ═══════════════════════ AI QUESTION GENERATION ═══════════════════════
+/// «تولید سؤال با هوش مصنوعی» — مدیر تعداد دلخواه از هر نوع سؤال را انتخاب
+/// می‌کند؛ صنف و مضمون از خودِ امتحان گرفته می‌شود و سرور سؤالات دری متناسب
+/// با نصاب همان صنف تولید و مستقیم ذخیره می‌کند.
+class ExamAiGenerateSheet extends ConsumerStatefulWidget {
+  final String examId;
+  const ExamAiGenerateSheet({super.key, required this.examId});
+  @override
+  ConsumerState<ExamAiGenerateSheet> createState() => _ExamAiGenerateSheetState();
+}
+
+class _ExamAiGenerateSheetState extends ConsumerState<ExamAiGenerateSheet> {
+  final _topic = TextEditingController();
+  int _mcq = 5;
+  int _trueFalse = 3;
+  int _essay = 2;
+  bool _generating = false;
+
+  @override
+  void dispose() {
+    _topic.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    if (_mcq + _trueFalse + _essay == 0) {
+      _toast(context, context.tr('examAdmin.aiAtLeastOne'));
+      return;
+    }
+    setState(() => _generating = true);
+    final result = await ref.read(generateQuestionsUseCaseProvider).call(GenerateQuestionsParams(
+          examId: widget.examId,
+          mcqCount: _mcq,
+          trueFalseCount: _trueFalse,
+          essayCount: _essay,
+          topic: _topic.text.trim(),
+        ));
+    if (!mounted) return;
+    setState(() => _generating = false);
+    result.fold(
+      (f) => _toast(context, context.tr('examAdmin.errorWithReason', {'error': f.message})),
+      (questions) {
+        ref.invalidate(adminExamQuestionsProvider(widget.examId));
+        ref.invalidate(adminExamsProvider);
+        Navigator.pop(context);
+        _toast(context, context.tr('examAdmin.aiGeneratedCount', {'count': '${questions.length}'}));
+      },
+    );
+  }
+
+  Widget _counter(String label, int value, ValueChanged<int> onChanged) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600))),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: value <= 0 ? null : () => onChanged(value - 1),
+            icon: const Icon(Icons.remove_circle_outline_rounded, size: 22),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text('$value',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: scheme.primary)),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            onPressed: value >= 30 ? null : () => onChanged(value + 1),
+            icon: const Icon(Icons.add_circle_outline_rounded, size: 22),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded, color: scheme.primary, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(context.tr('examAdmin.aiGenerateTitle'),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(context.tr('examAdmin.aiGenerateSubtitle'),
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 16),
+              _counter(context.tr('examAdmin.qTypeMcq'), _mcq, (v) => setState(() => _mcq = v)),
+              _counter(context.tr('examAdmin.qTypeTrueFalse'), _trueFalse, (v) => setState(() => _trueFalse = v)),
+              _counter(context.tr('examAdmin.qTypeEssay'), _essay, (v) => setState(() => _essay = v)),
+              const SizedBox(height: 4),
+              _field(_topic, context.tr('examAdmin.aiTopicField')),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _generating ? null : () => Navigator.pop(context),
+                      child: Text(context.tr('common.cancel')),
                     ),
                   ),
-                ),
-              ],
-            ),
-          );
-        }),
-      ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _generating ? null : _generate,
+                      icon: _generating
+                          ? const SizedBox(
+                              width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.auto_awesome_rounded, size: 18),
+                      label: Text(_generating
+                          ? context.tr('examAdmin.aiGenerating')
+                          : context.tr('examAdmin.aiGenerateButton')),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -25,10 +25,27 @@ class AdminExamQuestionsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(examTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showExamSheet(context, ExamQuestionFormSheet(examId: examId)),
-        icon: const Icon(Icons.add_rounded),
-        label: Text(context.tr('examQuestions.newQuestionButton')),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // تولید سؤال با هوش مصنوعی — صنف/مضمون از خودِ امتحان (migration 0030).
+          FloatingActionButton.extended(
+            heroTag: 'ai_generate',
+            backgroundColor: scheme.tertiaryContainer,
+            foregroundColor: scheme.onTertiaryContainer,
+            onPressed: () => showExamSheet(context, ExamAiGenerateSheet(examId: examId)),
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: Text(context.tr('examQuestions.aiGenerateButton')),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'new_question',
+            onPressed: () => showExamSheet(context, ExamQuestionFormSheet(examId: examId)),
+            icon: const Icon(Icons.add_rounded),
+            label: Text(context.tr('examQuestions.newQuestionButton')),
+          ),
+        ],
       ),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
@@ -79,6 +96,19 @@ class _QuestionCard extends ConsumerWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // نشان نوع سؤال (چهارگزینه‌ای/صحیح‌وغلط/تشریحی — migration 0030).
+              Container(
+                margin: const EdgeInsetsDirectional.only(end: 8, top: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  questionTypeLabel(context, q.qType),
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: scheme.onSecondaryContainer),
+                ),
+              ),
               Expanded(
                 child: Text(q.text, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
               ),
@@ -118,6 +148,23 @@ class _QuestionCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 8),
+          // تشریحی: به‌جای گزینه‌ها، پاسخ نمونه (کلید نمره‌دهی AI) نمایش داده می‌شود.
+          if (q.qType == QuestionType.essay)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.edit_note_rounded, size: 16, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    q.answerText.isEmpty
+                        ? context.tr('examQuestions.noModelAnswer')
+                        : context.tr('examQuestions.modelAnswerPrefix', {'answer': q.answerText}),
+                    style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
           ...List.generate(q.options.length, (i) {
             final isCorrect = i == q.correctIndex;
             return Padding(

@@ -1,6 +1,11 @@
 import 'package:equatable/equatable.dart';
 import '../../../../exams/domain/entities/exam_entities.dart';
 
+// نوع سؤال (QuestionType) بین بخش شاگرد و مدیر مشترک است — یک‌جا تعریف شده
+// (exam_entities.dart) و اینجا re-export می‌شود تا مصرف‌کننده‌های بخش مدیر
+// بدون import جداگانه به آن دسترسی داشته باشند و منطق دو نسخه‌ای نشود.
+export '../../../../exams/domain/entities/exam_entities.dart' show ExamType, QuestionType, QuestionTypeX;
+
 /// وضعیت انتشار امتحان — مطابق ستون `status` جدول واقعی `exams`
 /// (backend/migrations/0004_exams.sql): draft|published|closed.
 enum ExamAdminStatus { draft, published, closed }
@@ -118,40 +123,74 @@ class AdminExamRow extends Equatable {
       [id, subjectId, gradeNumber, type, title, durationMinutes, status, questionCount];
 }
 
-/// یک سؤال چهارگزینه‌ای — پاسخ صحیح فقط در همین بخش مدیر دیده می‌شود
-/// (endpoint شاگردی `correctIndex` را هرگز برنمی‌گرداند — بخش ۷.۲).
+/// یک سؤال امتحان — پاسخ صحیح/پاسخ نمونه فقط در همین بخش مدیر دیده می‌شود
+/// (endpoint شاگردی `correctIndex`/`answerText` را هرگز برنمی‌گرداند — بخش ۷.۲).
+///
+/// [qType] (migration 0030): چهارگزینه‌ای | صحیح‌وغلط | تشریحی.
+/// [answerText]: پاسخ نمونهٔ سؤال تشریحی — کلید نمره‌دهی AI سمت سرور.
 class AdminQuestionRow extends Equatable {
   final String id;
   final String examId;
   final String text;
-  final List<String> options;
-  final int correctIndex;
+  final QuestionType qType;
+  final List<String> options; // برای تشریحی خالی است
+  final int correctIndex; // برای تشریحی -۱
   final int orderIndex;
+  final String answerText;
 
   const AdminQuestionRow({
     required this.id,
     required this.examId,
     required this.text,
+    this.qType = QuestionType.mcq,
     required this.options,
     required this.correctIndex,
     this.orderIndex = 0,
+    this.answerText = '',
   });
 
   AdminQuestionRow copyWith({
     String? text,
+    QuestionType? qType,
     List<String>? options,
     int? correctIndex,
     int? orderIndex,
+    String? answerText,
   }) =>
       AdminQuestionRow(
         id: id,
         examId: examId,
         text: text ?? this.text,
+        qType: qType ?? this.qType,
         options: options ?? this.options,
         correctIndex: correctIndex ?? this.correctIndex,
         orderIndex: orderIndex ?? this.orderIndex,
+        answerText: answerText ?? this.answerText,
       );
 
   @override
-  List<Object?> get props => [id, examId, text, options, correctIndex, orderIndex];
+  List<Object?> get props => [id, examId, text, qType, options, correctIndex, orderIndex, answerText];
+}
+
+/// پارامترهای «تولید سؤال با هوش مصنوعی» — تعداد دلخواه از هر نوع؛ صنف و
+/// مضمون از خودِ امتحان گرفته می‌شود (POST /admin/exams/:id/generate-questions).
+class GenerateQuestionsParams extends Equatable {
+  final String examId;
+  final int mcqCount;
+  final int trueFalseCount;
+  final int essayCount;
+  final String topic;
+
+  const GenerateQuestionsParams({
+    required this.examId,
+    this.mcqCount = 0,
+    this.trueFalseCount = 0,
+    this.essayCount = 0,
+    this.topic = '',
+  });
+
+  int get total => mcqCount + trueFalseCount + essayCount;
+
+  @override
+  List<Object?> get props => [examId, mcqCount, trueFalseCount, essayCount, topic];
 }

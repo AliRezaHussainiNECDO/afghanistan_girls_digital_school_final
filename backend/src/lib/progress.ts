@@ -204,6 +204,9 @@ export async function getChapterList(
 export const POINTS_PER_LESSON_VIEW = 10;
 export const POINTS_PER_CHAPTER_COMPLETE = 25;
 
+/** مشق کاغذی نمره‌گذاری‌شده توسط هوش مصنوعی (بخش «مشق کاغذی + نمره‌دهی هوشمند»). */
+export const POINTS_PER_HOMEWORK_GRADED = 15;
+
 export async function awardPoints(
   db: D1Database,
   studentId: string,

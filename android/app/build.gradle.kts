@@ -5,6 +5,9 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    // Push Notification واقعی (FCM) — مقادیر google-services.json را در زمان
+    // build به کد بومی تزریق می‌کند (نیاز firebase_core/firebase_messaging).
+    id("com.google.gms.google-services")
 }
 
 // امضای نسخهٔ release: اگر android/key.properties وجود داشته باشد (که در گیت

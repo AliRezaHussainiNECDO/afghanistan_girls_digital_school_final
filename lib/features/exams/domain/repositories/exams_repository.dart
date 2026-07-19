@@ -8,5 +8,7 @@ abstract class ExamsRepository {
 
   /// طبق بخش ۷.۲ سند: `Score = (تعداد پاسخ صحیح / تعداد کل) × ۱۰۰`،
   /// محاسبه در Backend انجام می‌شود — Client فقط پاسخ‌ها را می‌فرستد.
-  Future<Either<Failure, ExamResult>> submitAnswers(String examId, Map<String, int> answers);
+  /// [textAnswers]: پاسخ متنی سؤالات تشریحی (نمره‌دهی AI سمت سرور).
+  Future<Either<Failure, ExamResult>> submitAnswers(
+      String examId, Map<String, int> answers, Map<String, String> textAnswers);
 }

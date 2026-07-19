@@ -26,6 +26,7 @@ const _studentItems = [
   _DrawerItem(Icons.home_rounded, 'nav.home', AppRoutes.studentHome),
   _DrawerItem(Icons.map_rounded, 'nav.gradeMap', AppRoutes.gradeMap),
   _DrawerItem(Icons.menu_book_rounded, 'nav.curriculum', AppRoutes.curriculum),
+  _DrawerItem(Icons.assignment_turned_in_rounded, 'nav.homework', AppRoutes.homework),
   _DrawerItem(Icons.volunteer_activism_rounded, 'nav.advisor', AppRoutes.advisor),
   _DrawerItem(Icons.assignment_rounded, 'nav.exams', AppRoutes.exams),
   _DrawerItem(Icons.event_available_rounded, 'nav.attendance', AppRoutes.attendance),

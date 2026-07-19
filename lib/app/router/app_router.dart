@@ -28,6 +28,7 @@ import '../../features/study_plan/presentation/screens/weekly_plan_screen.dart';
 import '../../features/admin/user_management/presentation/screens/student_list_screen.dart';
 import '../../features/admin/user_management/presentation/screens/user_management_screen.dart';
 import '../../features/ai_teacher/presentation/screens/ai_teacher_screen.dart';
+import '../../features/academy/homework/presentation/screens/homework_dashboard_screen.dart';
 import '../../features/attendance/presentation/screens/attendance_screen.dart';
 import '../../features/auth/domain/entities/app_user.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
@@ -189,6 +190,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
           path: AppRoutes.aiTeacher, pageBuilder: (c, s) => fadeSlidePage(s, const AiTeacherScreen())),
+      GoRoute(
+          path: AppRoutes.homework,
+          pageBuilder: (c, s) => fadeSlidePage(s, const HomeworkDashboardScreen())),
       GoRoute(
           path: AppRoutes.advisor, pageBuilder: (c, s) => fadeSlidePage(s, const AdvisorScreen())),
       GoRoute(

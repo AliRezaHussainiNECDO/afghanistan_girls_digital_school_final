@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 execute afghan_girls_school_db --remote --file=./schema.sql",
-    "db:migrate:local": "wrangler d1 execute afghan_girls_school_db --local --file=./schema.sql"
+    "db:migrate": "wrangler d1 migrations apply afghan_girls_school_db --remote",
+    "db:migrate:local": "wrangler d1 migrations apply afghan_girls_school_db --local",
+    "db:migrate:list": "wrangler d1 migrations list afghan_girls_school_db --remote"
   },
   "devDependencies": {
     "wrangler": "^3.90.0",

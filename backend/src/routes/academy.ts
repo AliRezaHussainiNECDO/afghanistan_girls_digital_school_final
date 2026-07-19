@@ -8,6 +8,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
@@ -122,6 +123,17 @@ academy.delete('/academy/books/:id', async (c) => {
   const row = await c.env.DB.prepare('SELECT pdf_key FROM academy_books WHERE id = ?').bind(id).first<{ pdf_key: string }>();
   if (row?.pdf_key) await c.env.BUCKET.delete(row.pdf_key);
   await c.env.DB.prepare('DELETE FROM academy_books WHERE id = ?').bind(id).run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: u.sub,
+      actorRole: u.role,
+      actionType: 'content_delete',
+      targetTable: 'academy_books',
+      targetId: id,
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
   return c.json({ success: true });
 });
 
@@ -229,7 +241,18 @@ academy.post('/academy/questions', async (c) => {
 academy.delete('/academy/questions/:id', async (c) => {
   const u = await me(c);
   if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
-  await c.env.DB.prepare('DELETE FROM academy_questions WHERE id = ?').bind(c.req.param('id')).run();
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM academy_questions WHERE id = ?').bind(id).run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: u.sub,
+      actorRole: u.role,
+      actionType: 'content_delete',
+      targetTable: 'academy_questions',
+      targetId: id,
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ success: true });
 });
 

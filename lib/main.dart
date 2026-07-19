@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
 import 'core/errors/app_error_handler.dart';
+import 'core/push/push_notifications_service.dart';
 
 /// نقطهٔ ورود اپ.
 ///
@@ -35,6 +38,21 @@ void main() {
       // ۳) به‌جای صفحهٔ قرمز/خاکستری پیش‌فرض، یک کارت خطای آرام نشان بده تا
       //    یک ویجتِ خراب کلِ صفحه را از کار نیندازد.
       ErrorWidget.builder = (FlutterErrorDetails details) => FriendlyErrorWidget(details: details);
+
+      // ۴) Push Notification واقعی (FCM) — تلاش زودهنگام و کاملاً Fail-safe:
+      //    طبق مستندات خودِ Firebase، ثبت `onBackgroundMessage` باید همین‌جا
+      //    (قبل از runApp) انجام شود تا پیام‌هایی که وقتی اپ کاملاً بسته است
+      //    می‌رسند هم درست مدیریت شوند. اگر پروژهٔ Firebase هنوز به این اپ
+      //    وصل نشده (google-services.json/GoogleService-Info.plist موجود
+      //    نیست)، `Firebase.initializeApp()` Exception می‌دهد که همین‌جا
+      //    بلعیده می‌شود — برنامه دقیقاً مثل قبل، بدون Push، بالا می‌آید.
+      unawaited(
+        Firebase.initializeApp().then((_) {
+          FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+        }).catchError((Object e) {
+          debugPrint('[push] Firebase not configured yet — push notifications disabled ($e)');
+        }),
+      );
 
       runApp(const ProviderScope(child: App()));
     },

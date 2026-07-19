@@ -6,7 +6,10 @@ import '../../domain/entities/exam_entities.dart';
 abstract class ExamsDataSource {
   Future<List<ExamSummary>> getAvailableExams();
   Future<List<ExamQuestion>> getQuestions(String examId);
-  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers);
+
+  /// [answers]: سؤالات بسته (گزینهٔ انتخابی)؛ [textAnswers]: پاسخ متنی
+  /// سؤالات تشریحی (نمره‌دهی AI سمت سرور — migration 0030).
+  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers, Map<String, String> textAnswers);
 }
 
 /// پیاده‌سازی واقعی — روتر exams زیر `/api/v1` (بخش ۷/۸ سند).
@@ -43,6 +46,7 @@ class ExamsRemoteDataSource implements ExamsDataSource {
         .map((q) => ExamQuestion(
               id: q['id'] as String,
               text: q['text'] as String? ?? '',
+              qType: QuestionTypeX.fromKey(q['qType'] as String?),
               options: (q['options'] as List? ?? []).map((o) => o.toString()).toList(),
               correctIndex: -1, // مخفی — نمره‌دهی سمت سرور
             ))
@@ -50,8 +54,11 @@ class ExamsRemoteDataSource implements ExamsDataSource {
   }
 
   @override
-  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers) async {
-    final data = await _api.post('/exams/$examId/submit', data: {'answers': answers});
+  Future<ExamResult> submitAnswers(String examId, Map<String, int> answers, Map<String, String> textAnswers) async {
+    final data = await _api.post('/exams/$examId/submit', data: {
+      'answers': answers,
+      if (textAnswers.isNotEmpty) 'textAnswers': textAnswers,
+    });
     return ExamResult(
       scorePercent: (data['scorePercent'] as num?)?.toDouble() ?? 0,
       correctCount: (data['correctCount'] as num?)?.toInt() ?? 0,

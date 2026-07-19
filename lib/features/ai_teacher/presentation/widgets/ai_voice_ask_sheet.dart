@@ -148,7 +148,9 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
       }
       await _sendText(text);
     } else {
-      if (!await _recorder.hasPermission()) {
+      final hasPermission = await _recorder.hasPermission();
+      if (!mounted) return;
+      if (!hasPermission) {
         _snack(context.tr('aiTeacher.micPermissionRequired'));
         return;
       }

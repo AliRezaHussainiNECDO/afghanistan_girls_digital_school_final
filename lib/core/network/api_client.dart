@@ -417,7 +417,6 @@ class ApiClient {
       case DioExceptionType.unknown:
         break; // پایین پردازش می‌شود.
       case DioExceptionType.transformTimeout:
-      default:
         return ApiException(
           message: _t('transformError'),
           type: ApiErrorType.unknown,

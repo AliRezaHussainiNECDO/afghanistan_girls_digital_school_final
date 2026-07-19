@@ -25,12 +25,16 @@ import {
   randomToken,
   randomSixDigitCode,
 } from '../lib/email';
+import { sendPushToUsers } from '../lib/push';
 
 type Bindings = {
   DB: D1Database;
   JWT_SECRET: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const ACCESS_TTL = 60 * 15; // ۱۵ دقیقه (بخش ۳.۳)
@@ -171,6 +175,18 @@ auth.post('/register', async (c) => {
   const email = String(body.email ?? '').trim().toLowerCase();
   const password = String(body.password ?? '');
 
+  // رفع اشکال امنیتی حیاتی: قبلاً «role» بدون هیچ محدودیتی از بدنهٔ درخواست
+  // پذیرفته می‌شد — یعنی هر کاربر ناشناس می‌توانست با ارسال
+  // `{"role":"super_admin"}` مستقیماً یک حساب مدیر کل بسازد (چون نیاز به
+  // Invite Code فقط برای student/seminar_instructor بررسی می‌شد، نه برای
+  // بقیهٔ نقش‌ها). ثبت‌نام عمومی فقط باید به نقش‌های غیرحساس اجازه دهد؛
+  // super_admin هرگز نباید از این Endpoint قابل‌دستیابی باشد (فقط با
+  // migrations/0012_super_admin.sql یا توسط مدیر دیگر ساخته می‌شود).
+  const PUBLIC_REGISTRABLE_ROLES = new Set(['student', 'parent', 'seminar_instructor']);
+  if (!PUBLIC_REGISTRABLE_ROLES.has(role)) {
+    return c.json(fail('INVALID_ROLE', 'نقش انتخاب‌شده معتبر نیست', 'Invalid role', 'ټاکل شوی رول معتبر نه دی', 'Le rôle sélectionné est invalide'), 400);
+  }
+
   // نام: از firstName/lastName یا fullName.
   let firstName = String(body.firstName ?? '').trim();
   let lastName = String(body.lastName ?? '').trim();
@@ -267,20 +283,34 @@ auth.post('/register', async (c) => {
   const { results: adminsForNotice } = await c.env.DB.prepare(
     "SELECT id FROM users WHERE role = 'super_admin'",
   ).all<{ id: string }>();
+  // kind='account' (نه 'general') + related_id به‌صورت `role:userId` تا
+  // کلاینت بداند لمس این اعلان باید کدام صفحهٔ جزئیات مدیر (شاگرد/استاد/
+  // والد) را باز کند.
   for (const admin of adminsForNotice) {
     statements.push(
       c.env.DB.prepare(
-        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'general')",
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'account', ?)",
       ).bind(
         uid(),
         admin.id,
         'ثبت‌نام کاربر جدید 👋',
         `«${fullNameFa}» به‌عنوان ${roleLabelFa} در برنامه ثبت‌نام کرد.`,
+        `${role}:${id}`,
       ),
     );
   }
 
   await c.env.DB.batch(statements);
+  if (adminsForNotice.length > 0) {
+    c.executionCtx.waitUntil(
+      sendPushToUsers(
+        c.env,
+        adminsForNotice.map((a) => a.id),
+        'ثبت‌نام کاربر جدید 👋',
+        `«${fullNameFa}» به‌عنوان ${roleLabelFa} در برنامه ثبت‌نام کرد.`,
+      ),
+    );
+  }
 
   const user: UserRow = {
     id,

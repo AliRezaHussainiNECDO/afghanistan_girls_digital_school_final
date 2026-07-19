@@ -135,11 +135,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               label: Text(dialogContext.tr('profile.copyCode')),
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: invite.code));
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(SnackBar(content: Text(context.tr('profile.inviteCodeCopied'))));
-                }
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(context.tr('profile.inviteCodeCopied'))));
               },
             ),
           ],
@@ -194,9 +193,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     firstName: firstNameController.text,
                     lastName: lastNameController.text,
                   );
-              if (!dialogContext.mounted) return;
-              Navigator.of(dialogContext).pop();
-              if (!context.mounted) return;
+              if (!mounted) return;
+              Navigator.of(context).pop();
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text(ok
                     ? context.tr('profile.profileUpdated')
@@ -267,9 +265,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 currentPassword: currentController.text,
                 newPassword: newController.text,
               );
-              if (!dialogContext.mounted) return;
-              Navigator.of(dialogContext).pop();
-              if (!context.mounted) return;
+              if (!mounted) return;
+              Navigator.of(context).pop();
               if (ok) {
                 // سرور همهٔ نشست‌ها (این دستگاه هم) را باطل کرده؛ کاربر باید
                 // با رمز تازه دوباره وارد شود.

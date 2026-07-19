@@ -33,11 +33,18 @@ npx wrangler d1 create afghan_girls_school_db
 npx wrangler r2 bucket create afghan-girls-school-files
 ```
 
-## قدم ۵ — اجرای Schema دیتابیس (یک‌بار، و هر بار که schema.sql تغییر کرد)
+## قدم ۵ — اجرای Migrationهای دیتابیس (یک‌بار، و هر بار که فایل تازه‌ای به پوشهٔ `migrations/` اضافه شد)
 
 ```
 npm run db:migrate
 ```
+
+این دستور از سیستم Migration داخلی Wrangler استفاده می‌کند (`wrangler d1
+migrations apply`) — یک جدول `d1_migrations` روی خودِ D1 نگه می‌دارد که چه
+فایل‌هایی قبلاً اجرا شده‌اند، پس همیشه امن است که دوباره اجرایش کنید: فقط
+migrationهای *تازه* (که هنوز اجرا نشده‌اند) را اعمال می‌کند و خطای «duplicate
+column» نمی‌دهد. (نکته: فایل قدیمی `schema.sql` دیگر استفاده نمی‌شود و بسیار
+ناقص/قدیمی است — منبع حقیقتِ ساختار دیتابیس همین پوشهٔ `migrations/` است.)
 
 ## قدم ۶ — دیپلوی
 

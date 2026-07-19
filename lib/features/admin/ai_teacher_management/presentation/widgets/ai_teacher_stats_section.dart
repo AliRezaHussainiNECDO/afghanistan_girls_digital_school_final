@@ -152,6 +152,7 @@ class _EmbeddingBackfillButtonState extends ConsumerState<_EmbeddingBackfillButt
     try {
       final data = await ref.read(apiClientProvider).post('/admin/ai-teacher/embeddings/backfill');
       final queued = (data is Map ? data['queued'] as num? : null) ?? 0;
+      if (!mounted) return;
       messenger.showSnackBar(SnackBar(
         content: Text(queued > 0
             ? context.tr('aiTeacherStats.embeddingQueuedToast', {'count': '$queued'})
@@ -159,7 +160,9 @@ class _EmbeddingBackfillButtonState extends ConsumerState<_EmbeddingBackfillButt
       ));
       ref.invalidate(aiTeacherStatsProvider);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(context.tr('aiTeacherStats.embeddingFailedToast'))));
+      if (mounted) {
+        messenger.showSnackBar(SnackBar(content: Text(context.tr('aiTeacherStats.embeddingFailedToast'))));
+      }
     } finally {
       if (mounted) setState(() => _running = false);
     }

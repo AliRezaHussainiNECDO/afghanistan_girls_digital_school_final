@@ -16,10 +16,14 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { sendPushToUsers } from '../lib/push';
 
 type Bindings = {
   DB: D1Database;
   JWT_SECRET: string;
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const advisor = new Hono<{ Bindings: Bindings }>();
@@ -96,15 +100,26 @@ advisor.post('/advisor/messages', async (c) => {
     }>();
     for (const a of admins) {
       await c.env.DB.prepare(
-        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'high', 'safety')",
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'high', 'safety', ?)",
       )
         .bind(
           uid(),
           a.id,
           'گفتگوی مشاور نیاز به توجه دارد 💙',
           `${studentName || 'یک شاگرد'} پیامی حساس ارسال کرد — لطفاً در جزئیات شاگرد بازبینی شود.`,
+          u.sub,
         )
         .run();
+    }
+    if (admins.length > 0) {
+      c.executionCtx.waitUntil(
+        sendPushToUsers(
+          c.env,
+          admins.map((a) => a.id),
+          'گفتگوی مشاور نیاز به توجه دارد 💙',
+          `${studentName || 'یک شاگرد'} پیامی حساس ارسال کرد — لطفاً در جزئیات شاگرد بازبینی شود.`,
+        ),
+      );
     }
 
     const student = await c.env.DB.prepare('SELECT current_grade FROM users WHERE id = ?')

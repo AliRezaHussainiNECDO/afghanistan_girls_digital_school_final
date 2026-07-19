@@ -465,7 +465,10 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
             duration: const Duration(milliseconds: 280),
             transitionBuilder: (child, anim) => SizeTransition(
               sizeFactor: anim,
-              axisAlignment: -1,
+              // رفع اشکال: axisAlignment منسوخ شده — طبق راهنمای رسمی مهاجرت
+              // فلاتر (axis پیش‌فرض اینجا Axis.vertical است):
+              // Alignment(-1.0, axisAlignment ?? 0.0).
+              alignment: const Alignment(-1.0, -1.0),
               child: FadeTransition(opacity: anim, child: child),
             ),
             child: _extracting
@@ -535,7 +538,10 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
             duration: const Duration(milliseconds: 350),
             transitionBuilder: (child, anim) => SizeTransition(
               sizeFactor: anim,
-              axisAlignment: -1,
+              // رفع اشکال: axisAlignment منسوخ شده — طبق راهنمای رسمی مهاجرت
+              // فلاتر (axis پیش‌فرض اینجا Axis.vertical است):
+              // Alignment(-1.0, axisAlignment ?? 0.0).
+              alignment: const Alignment(-1.0, -1.0),
               child: FadeTransition(opacity: anim, child: child),
             ),
             child: _showSuccess

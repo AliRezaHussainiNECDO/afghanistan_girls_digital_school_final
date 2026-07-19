@@ -27,9 +27,10 @@ class ExamsRepositoryImpl implements ExamsRepository {
   }
 
   @override
-  Future<Either<Failure, ExamResult>> submitAnswers(String examId, Map<String, int> answers) async {
+  Future<Either<Failure, ExamResult>> submitAnswers(
+      String examId, Map<String, int> answers, Map<String, String> textAnswers) async {
     try {
-      return Right(await dataSource.submitAnswers(examId, answers));
+      return Right(await dataSource.submitAnswers(examId, answers, textAnswers));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }

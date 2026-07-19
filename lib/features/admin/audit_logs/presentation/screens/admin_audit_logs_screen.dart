@@ -74,6 +74,12 @@ String _actionLabel(BuildContext context, String t) {
       return context.tr('auditLogs.actionParentLinkRequest');
     case 'parent_link_decision':
       return context.tr('auditLogs.actionParentLinkDecision');
+    case 'certificate_issue':
+      return context.tr('auditLogs.actionCertificateIssue');
+    case 'certificate_revoke':
+      return context.tr('auditLogs.actionCertificateRevoke');
+    case 'exam_delete':
+      return context.tr('auditLogs.actionExamDelete');
     default:
       return t;
   }
@@ -110,6 +116,12 @@ IconData _actionIcon(String t) {
     case 'parent_link_request':
     case 'parent_link_decision':
       return Icons.family_restroom_rounded;
+    case 'certificate_issue':
+      return Icons.workspace_premium_rounded;
+    case 'certificate_revoke':
+      return Icons.remove_moderator_rounded;
+    case 'exam_delete':
+      return Icons.delete_sweep_rounded;
     default:
       return Icons.receipt_long_rounded;
   }
@@ -1047,7 +1059,7 @@ class _MetaGrid extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(context.tr('auditLogs.referenceIdsTitle'),
-              style: TextStyle(
+              style: const TextStyle(
                   color: _Cine.textDim, fontSize: 12, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           cell('Log ID', entry.id),

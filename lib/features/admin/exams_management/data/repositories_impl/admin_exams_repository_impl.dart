@@ -47,4 +47,8 @@ class AdminExamsRepositoryImpl implements AdminExamsRepository {
         await dataSource.deleteQuestion(id);
         return unit;
       });
+
+  @override
+  Future<Either<Failure, List<AdminQuestionRow>>> generateQuestions(GenerateQuestionsParams params) =>
+      _guard(() => dataSource.generateQuestions(params));
 }

@@ -1,4 +1,3 @@
-import '../../../../exams/domain/entities/exam_entities.dart';
 import '../../domain/entities/admin_exam_entities.dart';
 import 'admin_exams_remote_datasource.dart';
 
@@ -99,6 +98,67 @@ class AdminExamsMockDataSource implements AdminExamsDataSource {
       _exams[examIdx] = _exams[examIdx].copyWith(questionCount: list.length);
     }
     return saved;
+  }
+
+  @override
+  Future<List<AdminQuestionRow>> generateQuestions(GenerateQuestionsParams params) async {
+    // Mock: سؤالات نمونهٔ محلی — تولید واقعی AI فقط با backend زنده.
+    await Future.delayed(const Duration(milliseconds: 600));
+    final list = _questions.putIfAbsent(params.examId, () => []);
+    final generated = <AdminQuestionRow>[];
+    var order = list.length;
+    AdminQuestionRow make(QuestionType t, int i) {
+      order += 1;
+      final id = 'q_ai_${DateTime.now().microsecondsSinceEpoch}_$order';
+      switch (t) {
+        case QuestionType.trueFalse:
+          return AdminQuestionRow(
+            id: id,
+            examId: params.examId,
+            text: 'سؤال صحیح/غلط نمونهٔ ${i + 1}${params.topic.isNotEmpty ? ' — ${params.topic}' : ''}',
+            qType: QuestionType.trueFalse,
+            options: const ['صحیح', 'غلط'],
+            correctIndex: i % 2,
+            orderIndex: order,
+          );
+        case QuestionType.essay:
+          return AdminQuestionRow(
+            id: id,
+            examId: params.examId,
+            text: 'سؤال تشریحی نمونهٔ ${i + 1}${params.topic.isNotEmpty ? ' — ${params.topic}' : ''}',
+            qType: QuestionType.essay,
+            options: const [],
+            correctIndex: -1,
+            orderIndex: order,
+            answerText: 'پاسخ نمونهٔ تولیدشده برای کلید نمره‌دهی.',
+          );
+        case QuestionType.mcq:
+          return AdminQuestionRow(
+            id: id,
+            examId: params.examId,
+            text: 'سؤال چهارگزینه‌ای نمونهٔ ${i + 1}${params.topic.isNotEmpty ? ' — ${params.topic}' : ''}',
+            options: const ['گزینهٔ الف', 'گزینهٔ ب', 'گزینهٔ ج', 'گزینهٔ د'],
+            correctIndex: i % 4,
+            orderIndex: order,
+          );
+      }
+    }
+
+    for (var i = 0; i < params.mcqCount; i++) {
+      generated.add(make(QuestionType.mcq, i));
+    }
+    for (var i = 0; i < params.trueFalseCount; i++) {
+      generated.add(make(QuestionType.trueFalse, i));
+    }
+    for (var i = 0; i < params.essayCount; i++) {
+      generated.add(make(QuestionType.essay, i));
+    }
+    list.addAll(generated);
+    final examIdx = _exams.indexWhere((e) => e.id == params.examId);
+    if (examIdx != -1) {
+      _exams[examIdx] = _exams[examIdx].copyWith(questionCount: list.length);
+    }
+    return generated;
   }
 
   @override

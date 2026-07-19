@@ -7,11 +7,16 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { sendPushToUser, sendPushToUsers } from '../lib/push';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
   BUCKET: R2Bucket;
   JWT_SECRET: string;
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const media = new Hono<{ Bindings: Bindings }>();
@@ -142,10 +147,15 @@ media.post('/conversations/:id/messages', async (c) => {
     }>();
     for (const a of admins) {
       await c.env.DB.prepare(
-        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'chat')",
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'chat', ?)",
       )
-        .bind(uid(), a.id, `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text)
+        .bind(uid(), a.id, `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text, conversationId)
         .run();
+    }
+    if (admins.length > 0) {
+      c.executionCtx.waitUntil(
+        sendPushToUsers(c.env, admins.map((a) => a.id), `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text),
+      );
     }
   }
   return c.json({ id, flagged });
@@ -286,11 +296,41 @@ media.get('/admin/conversations/:id/messages', async (c) => {
 });
 
 media.post('/admin/messages/:id/review', async (c) => {
-  if (!(await isAdmin(c))) return forbid(c);
+  const actor = await me(c);
+  if (actor?.role !== 'super_admin') return forbid(c);
+  const messageId = c.req.param('id');
   const body = await c.req.json<{ approve: boolean }>();
+  const newStatus = body.approve ? 'approved' : 'rejected';
+
+  // رفع اشکال هماهنگی: تصمیم مدیر دربارهٔ پیام flag-شده (که می‌تواند برای
+  // ایمنی یک شاگرد حساس باشد) تا امروز هیچ‌جا ثبت نمی‌شد — «مرکز عملیات و
+  // لاگ بازبینی» هیچ ردی از این نوع تصمیم مدیریتی نداشت. اکنون مثل بقیهٔ
+  // اقدام‌های حساس (بخش ۲۰.۳) با before/after ثبت می‌شود.
+  const before = await c.env.DB.prepare(
+    'SELECT id, conversation_id, sender_id, body, review_status FROM messages WHERE id = ?',
+  )
+    .bind(messageId)
+    .first<{ id: string; conversation_id: string; sender_id: string; body: string | null; review_status: string }>();
+
   await c.env.DB.prepare('UPDATE messages SET review_status = ? WHERE id = ?')
-    .bind(body.approve ? 'approved' : 'rejected', c.req.param('id'))
+    .bind(newStatus, messageId)
     .run();
+
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: actor.sub,
+      actorRole: actor.role,
+      actionType: 'content_status_change',
+      targetTable: 'messages',
+      targetId: messageId,
+      reason: `chat_message_${newStatus}`,
+      beforeValue: before ? { reviewStatus: before.review_status, body: before.body, conversationId: before.conversation_id, senderId: before.sender_id } : null,
+      afterValue: { reviewStatus: newStatus },
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
+
   return c.json({ ok: true });
 });
 
@@ -371,10 +411,11 @@ media.post('/admin/conversations/:id/reply', async (c) => {
   // باز کردن دستیِ چت) ببیند که مدیریت پاسخ داده است.
   if (targetUserId) {
     await c.env.DB.prepare(
-      "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'chat')",
+      "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'chat', ?)",
     )
-      .bind(uid(), targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text)
+      .bind(uid(), targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text, conversationId)
       .run();
+    c.executionCtx.waitUntil(sendPushToUser(c.env, targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text));
   }
 
   return c.json({ id });

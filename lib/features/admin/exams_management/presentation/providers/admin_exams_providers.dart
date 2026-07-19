@@ -34,6 +34,8 @@ final saveQuestionUseCaseProvider =
     Provider((ref) => SaveQuestionUseCase(ref.watch(adminExamsRepositoryProvider)));
 final deleteQuestionUseCaseProvider =
     Provider((ref) => DeleteQuestionUseCase(ref.watch(adminExamsRepositoryProvider)));
+final generateQuestionsUseCaseProvider =
+    Provider((ref) => GenerateQuestionsUseCase(ref.watch(adminExamsRepositoryProvider)));
 
 final adminExamsProvider = FutureProvider.autoDispose<List<AdminExamRow>>((ref) async {
   final result = await ref.read(getAdminExamsUseCaseProvider).call(const NoParams());

@@ -16,6 +16,8 @@
  */
 import { Hono, type Context } from 'hono';
 import { verifyBearer } from '../lib/auth';
+import { sendPushToUsers } from '../lib/push';
+import { logAudit, clientIp } from '../lib/audit';
 
 type Bindings = {
   DB: D1Database;
@@ -25,6 +27,9 @@ type Bindings = {
   CF_ACCOUNT_ID?: string; // شناسهٔ حساب Cloudflare
   CF_STREAM_TOKEN?: string; // توکن API با دسترسی Stream:Edit (از wrangler secret)
   CF_STREAM_CUSTOMER?: string; // زیردامنهٔ مشتری استریم (customer-XXXX)
+  FCM_PROJECT_ID?: string;
+  FCM_CLIENT_EMAIL?: string;
+  FCM_PRIVATE_KEY?: string;
 };
 
 const seminars = new Hono<{ Bindings: Bindings }>();
@@ -263,15 +268,24 @@ seminars.post('/seminars', async (c) => {
     if (recipients.length > 0) {
       const notifStatements = recipients.map((r) =>
         c.env.DB.prepare(
-          "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind) VALUES (?, ?, ?, ?, 'medium', 'seminar')",
+          "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'seminar', ?)",
         ).bind(
           uid(),
           r.id,
           'سمینار جدید 🎥',
           `«${String(b.title)}» با استاد ${instructorName || 'مکتب'} برگزار می‌شود.`,
+          id,
         ),
       );
       await c.env.DB.batch(notifStatements);
+      c.executionCtx.waitUntil(
+        sendPushToUsers(
+          c.env,
+          recipients.map((r) => r.id),
+          'سمینار جدید 🎥',
+          `«${String(b.title)}» با استاد ${instructorName || 'مکتب'} برگزار می‌شود.`,
+        ),
+      );
     }
   }
 
@@ -386,6 +400,17 @@ seminars.delete('/seminars/:id', async (c) => {
     c.env.DB.prepare('DELETE FROM seminar_registrations WHERE seminar_id = ?').bind(id),
     c.env.DB.prepare('DELETE FROM seminars WHERE id = ?').bind(id),
   ]);
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: me.sub,
+      actorRole: me.role,
+      actionType: 'content_delete',
+      targetTable: 'seminars',
+      targetId: id,
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
   return c.json({ success: true });
 });
 
@@ -406,6 +431,17 @@ seminars.patch('/seminars/:id/status', async (c) => {
   await c.env.DB.prepare('UPDATE seminars SET status = ? WHERE id = ?')
     .bind(b.status, c.req.param('id'))
     .run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: me.sub,
+      actorRole: me.role,
+      actionType: 'content_status_change',
+      targetTable: 'seminars',
+      targetId: c.req.param('id'),
+      afterValue: { status: b.status },
+      ipAddress: clientIp(c),
+    }),
+  );
   return c.json({ success: true });
 });
 

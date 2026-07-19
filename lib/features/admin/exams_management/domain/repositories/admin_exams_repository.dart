@@ -11,4 +11,7 @@ abstract class AdminExamsRepository {
   Future<Either<Failure, List<AdminQuestionRow>>> getQuestions(String examId);
   Future<Either<Failure, AdminQuestionRow>> saveQuestion(AdminQuestionRow row);
   Future<Either<Failure, Unit>> deleteQuestion(String id);
+
+  /// تولید سؤال با هوش مصنوعی — صنف/مضمون از خودِ امتحان (migration 0030).
+  Future<Either<Failure, List<AdminQuestionRow>>> generateQuestions(GenerateQuestionsParams params);
 }

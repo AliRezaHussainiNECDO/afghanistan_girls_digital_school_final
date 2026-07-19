@@ -61,3 +61,12 @@ class DeleteQuestionUseCase implements UseCase<Unit, String> {
   @override
   Future<Either<Failure, Unit>> call(String id) => repository.deleteQuestion(id);
 }
+
+/// تولید سؤال با هوش مصنوعی (چهارگزینه‌ای/صحیح‌وغلط/تشریحی — هر تعداد).
+class GenerateQuestionsUseCase implements UseCase<List<AdminQuestionRow>, GenerateQuestionsParams> {
+  final AdminExamsRepository repository;
+  GenerateQuestionsUseCase(this.repository);
+  @override
+  Future<Either<Failure, List<AdminQuestionRow>>> call(GenerateQuestionsParams params) =>
+      repository.generateQuestions(params);
+}

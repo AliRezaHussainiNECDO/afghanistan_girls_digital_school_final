@@ -80,6 +80,7 @@ engage.get('/notifications', async (c) => {
     bodyFa: n.body_fa,
     priority: n.priority,
     kind: n.kind,
+    relatedId: n.related_id ?? null,
     createdAt: n.created_at,
     read: n.read_at != null,
   }));

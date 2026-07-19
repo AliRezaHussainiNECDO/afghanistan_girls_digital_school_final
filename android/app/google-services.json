@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "306928389292",
+    "project_id": "afghan-girls-digital-school",
+    "storage_bucket": "afghan-girls-digital-school.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:306928389292:android:4e3016d458e99560df6309",
+        "android_client_info": {
+          "package_name": "com.example.afghanistan_girls_digital_school"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAY4bhUd2a--gp2rpi8-Sh0uNkvwSVQ6d8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

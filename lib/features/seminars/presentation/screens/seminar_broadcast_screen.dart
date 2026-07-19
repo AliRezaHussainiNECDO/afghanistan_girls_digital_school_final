@@ -2,6 +2,7 @@ import 'package:apivideo_live_stream/apivideo_live_stream.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
@@ -13,7 +14,19 @@ import '../providers/seminars_providers.dart';
 ///
 /// ورودی‌های [rtmpsUrl] و [streamKey] از پاسخ go-live گرفته می‌شوند. کاربر فقط
 /// دکمهٔ «شروع پخش» را می‌زند؛ نیازی به OBS یا نرم‌افزار جداگانه نیست.
-/// ═══════════════════════════════════════════════════════════════════════════
+///
+/// رفع اشکال «استاد وقتی سمینار را شروع می‌کند از برنامه خارج می‌شود» (در حالی
+/// که شاگردانِ ثبت‌نامی که فقط پخش HLS را تماشا می‌کنند مشکلی ندارند): طبق
+/// گزارش‌های شناخته‌شدهٔ همین پکیج (apivideo_live_stream) — که سازندهٔ آن هم
+/// تأیید کرده رفع‌شدنی نیست — روی برخی دستگاه‌ها/نسخه‌های اندروید، لحظهٔ
+/// راه‌اندازی دوربین/اتصال RTMPS واقعاً باعث Crash بومی (native، خارج از کنترل
+/// Dart و `runZonedGuarded`) می‌شود، نه یک خطای قابل مدیریت. چون این Crash در
+/// سطح کد بومی رخ می‌دهد، هیچ try/catch سمت Dart نمی‌تواند جلوی آن را بگیرد.
+/// راه‌حل: یک «محافظ Crash» با SharedPreferences — قبل از ورود به این صفحه یک
+/// پرچم ثبت می‌شود؛ اگر برنامه Crash کند، پرچم پاک نمی‌شود (چون `dispose` صدا
+/// زده نمی‌شود) و دفعهٔ بعد که استاد دوباره بخواهد پخش کند، به‌جای تکرار همان
+/// Crash، هشدار داده می‌شود و پخش با نرم‌افزار خارجی (OBS) — که این مشکل را
+/// ندارد — پیشنهاد می‌شود.
 class SeminarBroadcastScreen extends ConsumerStatefulWidget {
   final String seminarId;
   final String seminarTitle;
@@ -34,12 +47,17 @@ class SeminarBroadcastScreen extends ConsumerStatefulWidget {
 
 class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
     with WidgetsBindingObserver {
+  // کلید محافظ Crash — ثابت برای این دستگاه (SharedPreferences محلی است، نه
+  // سروری)، پس هر دستگاه تاریخچهٔ Crash خودش را جدا نگه می‌دارد.
+  static const _crashGuardKey = 'seminar_inapp_broadcast_open_guard';
+
   late final ApiVideoLiveStreamController _controller;
   bool _initialized = false;
   bool _isStreaming = false;
   bool _isMuted = false;
   bool _busy = false;
   String? _permissionError;
+  bool _cleanExit = false;
 
   @override
   void initState() {
@@ -54,14 +72,52 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
       onConnectionFailed: (error) {
         if (mounted) {
           setState(() => _isStreaming = false);
-          _snack(context.tr('liveStream.connectionFailed', {'error': '$error'}));
+          _snack(context.tr('liveStream.connectionFailed', {'error': error}));
         }
       },
       onDisconnection: () {
         if (mounted) setState(() => _isStreaming = false);
       },
     );
-    _bootstrap();
+    _checkCrashGuardThenStart();
+  }
+
+  /// اگر دفعهٔ قبل ورود به همین صفحه با Crash بومی تمام شده (یعنی هیچ‌وقت
+  /// `dispose` صدا زده نشده تا پرچم پاک شود)، قبل از امتحان دوبارهٔ همان مسیر
+  /// خطرناک از استاد می‌پرسیم. اگر ترجیح داد، صفحه با `true` بسته می‌شود تا
+  /// [go_live_flow] مستقیم شیت «پخش با نرم‌افزار خارجی» را باز کند.
+  Future<void> _checkCrashGuardThenStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    final crashedLastTime = prefs.getBool(_crashGuardKey) ?? false;
+    await prefs.setBool(_crashGuardKey, true);
+    if (!mounted) return;
+    if (crashedLastTime) {
+      final wantsExternal = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text(context.tr('liveStream.priorCrashTitle')),
+          content: Text(context.tr('liveStream.priorCrashMessage')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(context.tr('liveStream.tryInAppAnyway')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(context.tr('liveStream.useExternalInstead')),
+            ),
+          ],
+        ),
+      );
+      if (wantsExternal == true) {
+        await prefs.setBool(_crashGuardKey, false); // انتخاب آگاهانه بود، نه Crash.
+        _cleanExit = true;
+        if (mounted) Navigator.of(context).pop(true);
+        return;
+      }
+    }
+    await _bootstrap();
   }
 
   Future<void> _bootstrap() async {
@@ -95,6 +151,13 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
+    // خروج تمیز (بستن دستی/پایان کلاس) — پرچم محافظ Crash را پاک می‌کنیم تا
+    // دفعهٔ بعد دوباره اجازهٔ امتحان مستقیم پخش داخل اپ داده شود. اگر این خط
+    // هرگز اجرا نشود (یعنی برنامه Crash کرده)، پرچم `true` باقی می‌ماند و
+    // `_checkCrashGuardThenStart` دفعهٔ بعد هشدار می‌دهد.
+    if (!_cleanExit) {
+      SharedPreferences.getInstance().then((p) => p.setBool(_crashGuardKey, false));
+    }
     super.dispose();
   }
 
@@ -118,7 +181,7 @@ class _SeminarBroadcastScreenState extends ConsumerState<SeminarBroadcastScreen>
         // وضعیت واقعی از callback onConnectionSuccess می‌آید.
       }
     } catch (e) {
-      _snack(context.tr('liveStream.genericError', {'error': '$e'}));
+      if (mounted) _snack(context.tr('liveStream.genericError', {'error': '$e'}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
