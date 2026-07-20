@@ -22,6 +22,7 @@
  */
 
 import { sendPushToUser } from './push';
+import { DARI_OUTPUT_RULES, sanitizeDariText } from './gemini';
 
 type LessonHomeworkEnv = {
   DB: D1Database;
@@ -59,7 +60,9 @@ function extractJsonBlock(text: string): any | null {
 
 /// نتیجهٔ تلاش برای ساخت کار خانگی — به کلاینت برمی‌گردد تا پیام درست نشان
 /// دهد (رفع اشکال: قبلاً void بود و صدازننده هیچ اطلاعی از نتیجه نداشت).
-export type HomeworkAssignOutcome = 'created' | 'exists' | 'failed' | 'not_configured';
+/// `rate_limited` = سهمیهٔ رایگان Gemini (Free Tier) موقتاً تمام شده —
+/// فلاتر آن را با SnackBar محترمانه نشان می‌دهد و شاگرد بعداً دوباره می‌زند.
+export type HomeworkAssignOutcome = 'created' | 'exists' | 'failed' | 'not_configured' | 'rate_limited';
 
 /**
  * یک کار خانگی متناسب با درسی که شاگرد اعلام کرده «یاد گرفتم» می‌سازد و در
@@ -87,15 +90,33 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
     // همان دلیلی که کار خانگی هرگز ساخته نمی‌شد. «gemini-3.5-flash» مدل پایدار
     // فعلی است (بدون تاریخ خاموشی اعلام‌شده، طبق ai.google.dev/gemini-api/docs/models).
     const model = env.GEMINI_VISION_MODEL ?? 'gemini-3.5-flash';
+    // ── «دیوار امنیتی بتنی» دور پرامپت (رفع قطعی کار خانگی بی‌ربط به درس) ──
+    // ۳ لایهٔ مهار: (۱) مرزبندی صریح متن درس با """ تا مدل بداند «کتاب» فقط
+    // همین است؛ (۲) قفل منفی (Negative Constraints) با مثال‌های صریحِ ممنوع؛
+    // (۳) خودآزمایی اجباری قبل از خروجی («اگر پاسخ در متن نیست، سوال را دور
+    // بریز»). راهنمای حل (💡) هم صریحاً به همین متن محدود می‌شود — همان
+    // نقطه‌ای که مدل قبلاً «به بخش شکل زمین و گودال ماریانا» ارجاع می‌داد.
+    const hasContent = p.lessonContentBody.trim().length > 0;
     const prompt =
-      `شما یک معلم مهربان و باتجربهٔ افغان هستید. شاگردی صنف ${p.classLevel} همین الان درس زیر را از مضمون ` +
-      `«${p.subjectNameFa}» مطالعه کرد:\n` +
-      `عنوان درس: ${p.lessonTitleFa}\n` +
-      `متن درس: ${p.lessonContentBody || '(متن کامل درس هنوز ثبت نشده — فقط بر اساس عنوان یک سؤال مناسب صنف بساز)'}\n\n` +
-      `بر اساس دقیقاً همین درس، یک «کار خانگی» طراحی کن که شاگرد آن را با قلم روی کاغذ حل کند (سؤال تشریحی/محاسبه‌ای/` +
-      `نوشتاری متناسب با موضوع درس — نه چهارگزینه‌ای). یک راهنمای کوتاه (یک جمله) هم برای شروع حل بنویس.\n\n` +
+      `تو یک ناظر آموزشی سخت‌گیر معارف افغانستان هستی. شاگرد صنف ${p.classLevel} همین حالا درس ` +
+      `«${p.lessonTitleFa}» را از مضمون «${p.subjectNameFa}» تمام کرده است.\n\n` +
+      (hasContent
+        ? `متن درس — تنها منبع مجاز تو؛ فرض کن بیرون از این متن هیچ کتاب و هیچ دانشی وجود ندارد:\n` +
+          `"""\n${p.lessonContentBody}\n"""\n\n`
+        : `(متن کامل درس هنوز ثبت نشده — فقط بر اساس عنوان درس یک سؤال سادهٔ مناسب صنف بساز و در راهنما فقط به عنوان درس اشاره کن.)\n\n`) +
+      `از روی دقیقاً همین متن، یک «کار خانگی» طرح کن که شاگرد آن را با قلم روی کاغذ حل کند ` +
+      `(سؤال تشریحی/محاسبه‌ای/نوشتاری — نه چهارگزینه‌ای) + یک راهنمای یک‌جمله‌ای برای شروع حل.\n\n` +
+      `⚠️ قوانین بسیار سخت‌گیرانه و حیاتی (تخطی = خروجی مردود):\n` +
+      `۱. سوال و راهنما باید ۱۰۰٪ و بدون استثنا فقط از اطلاعات صریحِ موجود بین """ بالا ساخته شوند.\n` +
+      `۲. حق نداری دربارهٔ هیچ موضوعی که در متن بالا نیامده سوال بسازی یا در راهنما به آن اشاره کنی — ` +
+      `حتی اگر در درس‌ها یا فصل‌های دیگر همین کتاب باشد، حتی اگر در دانش عمومی خودت باشد. ` +
+      `(مثال‌های ممنوع اگر در متن نیامده باشند: شکل زمین، قطر قطبی و استوایی، گودال ماریانا، هر عدد یا نام خاصی خارج از متن.)\n` +
+      `۳. خودآزمایی اجباری: قبل از خروجی، بررسی کن که پاسخ کامل سوال را بتوان مستقیماً از جملات متن بالا پیدا کرد؛ ` +
+      `اگر نمی‌شود، آن سوال را دور بریز و سوال ساده‌تری از همان متن بساز.\n` +
+      `۴. در راهنمای حل (hintText) فقط به بخش‌ها و جملات همین متن ارجاع بده.\n\n` +
       `فقط یک شیء JSON خام با دقیقاً همین کلیدها برگردان، بدون هیچ توضیح اضافه:\n` +
-      `{"questionText": "...", "hintText": "..."}`;
+      `{"questionText": "...", "hintText": "..."}` +
+      DARI_OUTPUT_RULES;
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
@@ -113,7 +134,8 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
           // تولید متن است، نه استدلال پیچیده — پس thinkingLevel را minimal
           // می‌کنیم و سقف را هم بالاتر می‌بریم تا با احتیاط بیشتر جا شود.
           generationConfig: {
-            temperature: 0.4,
+            // دمای پایین = پایبندی حداکثری به متن درس (خلاقیت خارج از متن ممنوع).
+            temperature: 0.2,
             maxOutputTokens: 1024,
             thinkingConfig: { thinkingLevel: 'minimal' },
           },
@@ -127,17 +149,21 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
       // (هنوز fail-safe کامل — این تابع همچنان چیزی throw نمی‌کند).
       const errBody = await res.text().catch(() => '');
       console.error(`[lessonHomework] Gemini HTTP ${res.status} — ${errBody.slice(0, 500)}`);
+      // مدیریت صریح Rate Limit سهمیهٔ رایگان (429 / RESOURCE_EXHAUSTED):
+      // سرور کرش نمی‌کند؛ نتیجهٔ خوانا به کلاینت برمی‌گردد تا SnackBar بومی
+      // «قفل موقت سیستم» نشان داده شود.
+      if (res.status === 429 || errBody.includes('RESOURCE_EXHAUSTED')) return 'rate_limited';
       return 'failed';
     }
     const data = (await res.json()) as any;
     const text = data?.candidates?.[0]?.content?.parts?.map((part: any) => part.text ?? '').join('') ?? '';
     const parsed = extractJsonBlock(text);
-    const questionText = String(parsed?.questionText ?? '').trim();
+    const questionText = sanitizeDariText(String(parsed?.questionText ?? ''));
     if (!questionText) {
       console.error(`[lessonHomework] پاسخ Gemini قابل‌تجزیه به questionText نبود — متن خام: ${text.slice(0, 500)}`);
       return 'failed';
     }
-    const hintText = String(parsed?.hintText ?? '').trim();
+    const hintText = sanitizeDariText(String(parsed?.hintText ?? ''));
 
     const id = `hw_${crypto.randomUUID()}`;
     await env.DB.prepare(

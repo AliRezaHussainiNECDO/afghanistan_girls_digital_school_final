@@ -557,6 +557,7 @@ class AiTeacherEngineDataSource {
       history: updatedHistory,
       studentMessage: _naturalInstructionFor(intent, text),
       difficultyHint: state.difficultyHint,
+      lessonId: lessonId, // 🔒 حالت «تمرکز مطلق بر درس» (Server-Authoritative)
     ));
 
     // ── پیشرفت خودکار + امتیاز فقط در پایان درس (طبق درخواست صریح کاربر) ──
@@ -595,6 +596,7 @@ class AiTeacherEngineDataSource {
             history: updatedHistory,
             studentMessage: _naturalInstructionFor(AiIntent.nextSection, AiCommands.next),
             difficultyHint: state.difficultyHint,
+            lessonId: lessonId, // 🔒 حفظ قفل محدودهٔ آموزشی در ادامهٔ درس
           ));
           response = AiEngineResponse(
             body: '${response.body}\n\n${nextResponse.body}',

@@ -62,11 +62,12 @@ class HomeworkCard extends StatelessWidget {
                           Text(hw.subjectNameFa,
                               style: const TextStyle(color: Colors.white70, fontSize: 11.5, fontWeight: FontWeight.w700)),
                           const SizedBox(height: 2),
+                          // (رفع اشکال) صورت سؤال هرگز بریده نمی‌شود — شاگرد
+                          // باید متن کامل را بخواند تا بتواند پاسخ بنویسد؛
+                          // کارت به اندازهٔ طول متن کش می‌آید.
                           Text(
                             hw.questionText,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14.5, height: 1.4),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14.5, height: 1.6),
                           ),
                         ],
                       ),
@@ -86,6 +87,43 @@ class HomeworkCard extends StatelessWidget {
                             style: const TextStyle(color: Colors.white60, fontSize: 12.5, height: 1.5)),
                       ),
                     ],
+                  ),
+                ],
+                // ── عکس ارسالی شاگرد — (رفع اشکال) قبلاً فقط مدیر عکس را
+                // می‌دید؛ حالا خود شاگرد هم بعد از ارسال، عکسش را همین‌جا
+                // می‌بیند تا مطمئن شود درست آپلود شده است.
+                if (hw.hasImage && !hw.studentImageUrl.startsWith('mock://')) ...[
+                  const SizedBox(height: 12),
+                  Text(context.tr('homework.yourSubmission'),
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                    child: Image.network(
+                      hw.studentImageUrl,
+                      width: double.infinity,
+                      height: 170,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, progress) => progress == null
+                          ? child
+                          : Container(
+                              height: 170,
+                              alignment: Alignment.center,
+                              color: Colors.white.withValues(alpha: 0.06),
+                              child: const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 56,
+                        alignment: Alignment.center,
+                        color: Colors.white.withValues(alpha: 0.06),
+                        child: Text(context.tr('homework.imageUnavailable'),
+                            style: const TextStyle(color: Colors.white38, fontSize: 11.5)),
+                      ),
+                    ),
                   ),
                 ],
                 const SizedBox(height: 14),
@@ -139,9 +177,9 @@ class HomeworkCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             hw.aiFeedback,
-                            maxLines: 1,
+                            maxLines: 3,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white60, fontSize: 12),
+                            style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.5),
                           ),
                         ),
                         const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Colors.white38),

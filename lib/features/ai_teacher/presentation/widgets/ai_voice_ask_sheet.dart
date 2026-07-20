@@ -57,12 +57,20 @@ class AiVoiceAskSheet extends ConsumerStatefulWidget {
   final String lessonId;
   final String lessonTitle;
   final String lessonContent;
+
+  /// حالت «کلاس تعاملی تمام‌صفحه» (طبق درخواست کاربر): وقتی true باشد، همین
+  /// ویجت مستقیماً بدنهٔ (body) صفحهٔ درس می‌شود — بدون دستگیرهٔ کشیدن شیت و
+  /// بدون سقف ارتفاع ۷۲٪؛ کل فضای صفحه را می‌گیرد تا شاگرد به‌محض ورود به
+  /// درس، یک‌راست وارد گفت‌وگو با معلم هوشمند شود.
+  final bool embedded;
+
   const AiVoiceAskSheet({
     super.key,
     required this.subjectId,
     required this.lessonId,
     required this.lessonTitle,
     required this.lessonContent,
+    this.embedded = false,
   });
 
   @override
@@ -95,6 +103,12 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     result.fold(
       (f) => _snack(context.tr('curriculum.homeworkAssignFailed')),
       (r) {
+        // اتمام موقت سهمیهٔ رایگان Gemini (429) — پیام محترمانهٔ «قفل موقت»؛
+        // شاگرد بعداً دوباره دکمه را می‌زند (سرور idempotent است).
+        if (r.rateLimited) {
+          _snack(context.tr('curriculum.aiRateLimited'));
+          return;
+        }
         setState(() => _learnedThisSession = true);
         if (r.assigned) {
           _snack(context.tr('curriculum.homeworkAssigned'));
@@ -218,10 +232,10 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     final progressAsync = ref.watch(aiLessonProgressProvider(_focus));
     final scheme = Theme.of(context).colorScheme;
 
-    return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.72,
-      child: Column(
+    final content = Column(
         children: [
+          // دستگیرهٔ کشیدن فقط در حالت شیت پایین‌رونده — در حالت تمام‌صفحه حذف.
+          if (!widget.embedded) ...[
           const SizedBox(height: 8),
           Container(
             width: 36,
@@ -231,6 +245,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Row(
@@ -491,7 +506,11 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
             ),
           ),
         ],
-      ),
-    );
+      );
+
+    // حالت تمام‌صفحه (کلاس تعاملی): کل بدنهٔ صفحه — حالت شیت: سقف ۷۲٪ ارتفاع.
+    return widget.embedded
+        ? content
+        : SizedBox(height: MediaQuery.of(context).size.height * 0.72, child: content);
   }
 }

@@ -199,6 +199,98 @@ export async function getChapterList(
   });
 }
 
+// ═══════════════ قفل زنجیره‌ای دروس (Prerequisite Locking System) ═══════════
+// 🔒 قانون قفل: هیچ شاگردی به درس بعدی دسترسی ندارد مگر درس قبلی ۱۰۰٪ تکمیل
+// شده باشد — یعنی «متن درس را یاد گرفتم» زده شده (که همان لحظه کار خانگی
+// ساخته می‌شود) و کار خانگی مربوطه با موفقیت ثبت (submitted/graded) شده باشد.
+//
+// نکتهٔ Fail-safe (مستند برای تیم): اگر برای درسی اصلاً رکورد کار خانگی وجود
+// نداشته باشد (مثلاً تولید Gemini در لحظهٔ «یاد گرفتم» به‌خاطر اتمام سهمیهٔ
+// رایگان ناموفق بود)، همان «دیده‌شدن درس» شرط تکمیل حساب می‌شود — شاگرد
+// هرگز به‌خاطر خطای سرویس بیرونی برای همیشه پشت قفل نمی‌ماند.
+//
+// 🚨 این بخش یک لایهٔ *جدید و جداگانه* است: هیچ تغییری در محاسبهٔ فیصدی
+// پیشرفت، امتیازدهی، یا منطق «یاد گرفتم ← کار خانگی» (بالا/پایین همین فایل)
+// نمی‌دهد — فقط از روی همان داده‌ها وضعیت باز/قفل را «می‌خواند».
+
+/** وضعیت قفل/تکمیل یک درس در زنجیره. */
+export type LessonLockInfo = {
+  id: string;
+  orderIndex: number;
+  viewed: boolean;
+  /** «یاد گرفتم» + کار خانگی ثبت‌شده (یا نبود کار خانگی — Fail-safe بالا). */
+  completed: boolean;
+  unlocked: boolean;
+};
+
+/**
+ * وضعیت قفل تمام درس‌های یک فصل برای یک شاگرد — منبع واحد حقیقت برای همهٔ
+ * داشبوردها (شاگرد/معلم/مدیر) تا آیکون قفل همه‌جا یکسان باشد.
+ *
+ * `chapterUnlocked` از [getChapterList] می‌آید: اگر خود فصل قفل باشد، همهٔ
+ * درس‌هایش قفل‌اند؛ در فصل باز، درس اول باز است و هر درس بعدی فقط بعد از
+ * تکمیل درس قبلی باز می‌شود.
+ */
+export async function getLessonLockList(
+  db: D1Database,
+  chapterId: string,
+  studentId: string | null,
+  chapterUnlocked: boolean,
+): Promise<LessonLockInfo[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT l.id, l.order_index,
+         CASE WHEN v.lesson_id IS NULL THEN 0 ELSE 1 END AS viewed,
+         (SELECT h.status FROM student_homeworks h
+            WHERE h.student_id = ? AND h.lesson_id = l.id
+            ORDER BY h.created_at DESC LIMIT 1) AS hw_status
+       FROM lessons l
+       LEFT JOIN student_lesson_views v ON v.lesson_id = l.id AND v.user_id = ?
+       WHERE l.chapter_id = ? AND l.status = 'published'
+       ORDER BY l.order_index`,
+    )
+    .bind(studentId ?? '', studentId ?? '', chapterId)
+    .all<{ id: string; order_index: number; viewed: number; hw_status: string | null }>();
+
+  let previousCompleted = true; // درس اولِ فصلِ باز، همیشه باز است
+  return results.map((r) => {
+    const viewed = r.viewed === 1;
+    const homeworkDone = r.hw_status === null || r.hw_status === 'submitted' || r.hw_status === 'graded';
+    const completed = viewed && homeworkDone;
+    const unlocked = chapterUnlocked && previousCompleted;
+    previousCompleted = completed;
+    return { id: r.id, orderIndex: r.order_index, viewed, completed, unlocked };
+  });
+}
+
+/**
+ * بررسی سرور-محورِ باز بودن یک درس مشخص برای یک شاگرد — نگهبان Endpointهای
+ * درس (GET /lessons/:id، POST view/learned). null یعنی درس یافت نشد.
+ */
+export async function isLessonUnlockedFor(
+  db: D1Database,
+  studentId: string,
+  lessonId: string,
+): Promise<{ found: boolean; unlocked: boolean }> {
+  const lesson = await db
+    .prepare(
+      `SELECT l.chapter_id, ch.subject_id, ch.grade_number
+         FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
+        WHERE l.id = ? AND l.status = 'published'`,
+    )
+    .bind(lessonId)
+    .first<{ chapter_id: string; subject_id: string; grade_number: number }>();
+  if (!lesson) return { found: false, unlocked: false };
+
+  const chapterList = await getChapterList(db, lesson.subject_id, lesson.grade_number, studentId);
+  const chapter = chapterList.find((ch) => ch.id === lesson.chapter_id);
+  const chapterUnlocked = chapter?.unlocked ?? true;
+
+  const locks = await getLessonLockList(db, lesson.chapter_id, studentId, chapterUnlocked);
+  const info = locks.find((l) => l.id === lessonId);
+  return { found: true, unlocked: info?.unlocked ?? false };
+}
+
 // ═══════════════════════ امتیازدهی بر اساس فعالیت (Gamification) ═══════════
 
 export const POINTS_PER_LESSON_VIEW = 10;

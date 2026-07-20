@@ -26,9 +26,13 @@ import {
   getPointsSummary,
   recordLessonView,
   getPromotionStatus,
+  getLessonLockList,
+  isLessonUnlockedFor,
 } from '../lib/progress';
 import { autoAssignLessonHomework } from '../lib/lessonHomework';
 import { logAudit, clientIp } from '../lib/audit';
+import { rateLimitFailBody } from '../lib/gemini';
+import { ensureLessonContent, isPendingAiContent } from '../lib/aiLessonContent';
 
 type Bindings = { DB: D1Database; JWT_SECRET: string; GEMINI_API_KEY?: string; GEMINI_VISION_MODEL?: string; };
 const c11m = new Hono<{ Bindings: Bindings }>();
@@ -39,6 +43,24 @@ function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
 async function userId(c: any): Promise<string | null> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   return (payload?.['sub'] as string | undefined) ?? null;
+}
+/** شناسه + نقش کاربر جاری — برای نگهبان قفل زنجیره‌ای (شاگردمحور). */
+async function userWithRole(c: any): Promise<{ uid: string | null; role: string }> {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  return {
+    uid: (payload?.['sub'] as string | undefined) ?? null,
+    role: (payload?.['role'] as string | undefined) ?? 'student',
+  };
+}
+/** بدنهٔ خطای استاندارد «درس قفل است» — واحد در تمام Endpointها. */
+function lessonLockedBody() {
+  return fail(
+    'LESSON_LOCKED',
+    'این درس هنوز قفل است. اول درس قبلی را کامل کن (متن را یاد بگیر و کار خانگی‌اش را بفرست). 🔒',
+    'This lesson is locked. Complete the previous lesson first.',
+    'دا درس لا تړلی دی. لومړی مخکینی درس بشپړ کړئ.',
+    "Cette leçon est verrouillée. Terminez d'abord la leçon précédente.",
+  );
 }
 async function isAdmin(c: any): Promise<boolean> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
@@ -113,32 +135,102 @@ c11m.get('/chapters/:chapterId/lessons', async (c) => {
      ORDER BY l.order_index`,
   )
     .bind(uid ?? '', chapterId)
-    .all();
-  return c.json({ lessons: results });
+    .all<any>();
+
+  // ── قفل زنجیره‌ای دروس (لایهٔ جدید — منبع واحد: lib/progress.ts) ──
+  // وضعیت باز/قفل هر درس محاسبه و به همان ردیف‌ها اضافه می‌شود تا داشبورد
+  // شاگرد (آیکون 🔒)، معلم و مدیر همگی از همین یک منبع همگام باشند.
+  const chapterRow = await c.env.DB.prepare('SELECT subject_id, grade_number FROM chapters WHERE id = ?')
+    .bind(chapterId)
+    .first<{ subject_id: string; grade_number: number }>();
+  let chapterUnlocked = true;
+  if (chapterRow) {
+    const chapterList = await getChapterList(c.env.DB, chapterRow.subject_id, chapterRow.grade_number, uid);
+    chapterUnlocked = chapterList.find((ch) => ch.id === chapterId)?.unlocked ?? true;
+  }
+  const locks = await getLessonLockList(c.env.DB, chapterId, uid, chapterUnlocked);
+  const lockById = new Map(locks.map((l) => [l.id, l]));
+
+  return c.json({
+    lessons: results.map((r: any) => {
+      const lock = lockById.get(r.id);
+      return {
+        ...r,
+        // متن درس‌های Lazy (تولید هوشمند) در «فهرست» ارسال نمی‌شود — متن
+        // کامل هنگام باز کردن خود درس (GET /lessons/:id) تولید/برگردانده می‌شود.
+        content_body: isPendingAiContent(r.content_body) ? '' : r.content_body,
+        unlocked: lock ? (lock.unlocked ? 1 : 0) : 1,
+        completed: lock ? (lock.completed ? 1 : 0) : 0,
+      };
+    }),
+  });
 });
 
 c11m.get('/lessons/:lessonId', async (c) => {
   const lessonId = c.req.param('lessonId');
-  const uid = await userId(c);
+  const { uid, role } = await userWithRole(c);
   const row = await c.env.DB.prepare(
     `SELECT l.id, l.chapter_id, l.title_fa, l.estimated_minutes, l.order_index, l.content_body,
-       CASE WHEN v.lesson_id IS NULL THEN 0 ELSE 1 END AS viewed
+       CASE WHEN v.lesson_id IS NULL THEN 0 ELSE 1 END AS viewed,
+       ch.title_fa AS chapter_title_fa, ch.grade_number, s.name_fa AS subject_name_fa
      FROM lessons l
      LEFT JOIN student_lesson_views v ON v.lesson_id = l.id AND v.user_id = ?
+     JOIN chapters ch ON ch.id = l.chapter_id
+     LEFT JOIN subjects s ON s.id = ch.subject_id
      WHERE l.id = ? AND l.status='published'`,
   )
     .bind(uid ?? '', lessonId)
-    .first();
+    .first<any>();
   if (!row) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
-  return c.json({ lesson: row });
+
+  // 🔒 نگهبان قفل زنجیره‌ای (فقط برای شاگرد — مدیر/والد برای نظارت آزادند):
+  // اگر شاگرد اندپوینت درسِ قفل‌شده را صدا بزند، سرور خطا برمی‌گرداند.
+  if (uid && role === 'student') {
+    const lock = await isLessonUnlockedFor(c.env.DB, uid, lessonId);
+    if (lock.found && !lock.unlocked) return c.json(lessonLockedBody(), 403);
+  }
+
+  // ── تولید Lazy متن کامل درس (Pure AI Generation — lib/aiLessonContent.ts):
+  // درس‌های ساخت «تولید هوشمند» متن‌شان اولین بار که کسی درس را باز کند با
+  // Gemini تولید و برای همیشه ذخیره می‌شود (سازگار با سهمیهٔ رایگان).
+  if (isPendingAiContent(row.content_body)) {
+    const origin = new URL(c.req.url).origin;
+    const gen = await ensureLessonContent(c.env, {
+      id: row.id,
+      titleFa: row.title_fa,
+      contentBody: row.content_body,
+      chapterTitleFa: row.chapter_title_fa ?? '',
+      subjectNameFa: row.subject_name_fa ?? '',
+      gradeNumber: Number(row.grade_number ?? 7),
+    }, origin);
+    if (gen.status === 'rate_limited') return c.json(rateLimitFailBody(), 429);
+    if (gen.status === 'failed') {
+      return c.json(
+        fail('AI_CONTENT_FAILED', 'آماده‌سازی متن این درس فعلاً ممکن نشد؛ لطفاً دوباره تلاش کنید', 'Lesson content generation failed', 'د درس متن چمتو نه شو؛ بیا هڅه وکړئ', 'La préparation du contenu a échoué'),
+        503,
+      );
+    }
+    row.content_body = gen.content;
+  }
+
+  const { chapter_title_fa, grade_number, subject_name_fa, ...lesson } = row;
+  return c.json({ lesson });
 });
 
 // ثبت بازدید درس — ورودی منطق C1 (بخش ۶.۲) + اهدای امتیاز فعالیت (Gamification)
 // + بررسی خودکار تکمیل فصل (پایهٔ قفل‌گشایی فصل بعدی). فقط دانش‌آموز واردشده.
 c11m.post('/lessons/:lessonId/view', async (c) => {
-  const uid = await userId(c);
+  const { uid, role } = await userWithRole(c);
   if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const lessonId = c.req.param('lessonId');
+
+  // 🔒 قفل زنجیره‌ای: بازدید درسِ قفل‌شده روی سرور رد می‌شود (شاگردمحور).
+  // منطق امتیاز/پیشرفت پایین‌تر کاملاً دست‌نخورده است.
+  if (role === 'student') {
+    const lock = await isLessonUnlockedFor(c.env.DB, uid, lessonId);
+    if (lock.found && !lock.unlocked) return c.json(lessonLockedBody(), 403);
+  }
+
   const result = await recordLessonView(c.env.DB, uid, lessonId);
   if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
 
@@ -163,9 +255,16 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
 // نمی‌شود (idempotent — بررسی داخل lib/lessonHomework.ts). فقط وقتی به
 // درس‌های بعدی/جدید پیش برود، برای آن درس‌های تازه کار خانگی جدید می‌گیرد.
 c11m.post('/lessons/:lessonId/learned', async (c) => {
-  const uid = await userId(c);
+  const { uid, role } = await userWithRole(c);
   if (!uid) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const lessonId = c.req.param('lessonId');
+
+  // 🔒 قفل زنجیره‌ای — درسِ قفل را نمی‌توان «یاد گرفتم» زد. زنجیرهٔ
+  // «یاد گرفتم ← ساخت کار خانگی» پایین‌تر کاملاً دست‌نخورده باقی می‌ماند.
+  if (role === 'student') {
+    const lock = await isLessonUnlockedFor(c.env.DB, uid, lessonId);
+    if (lock.found && !lock.unlocked) return c.json(lessonLockedBody(), 403);
+  }
 
   // «یاد گرفتم» یعنی درس دیده شده — اگر بازدید هنوز ثبت نشده بود (مثلاً
   // مستقیم از گفتگو)، همین‌جا ثبت می‌شود تا پیشرفت/امتیاز همه‌جا هماهنگ بماند.
@@ -173,7 +272,8 @@ c11m.post('/lessons/:lessonId/learned', async (c) => {
   if (!view.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
 
   const lessonRow = await c.env.DB.prepare(
-    `SELECT l.title_fa, l.content_body, ch.id AS chapter_id, ch.subject_id, ch.grade_number, s.name_fa AS subject_name_fa
+    `SELECT l.title_fa, l.content_body, ch.id AS chapter_id, ch.title_fa AS chapter_title_fa,
+            ch.subject_id, ch.grade_number, s.name_fa AS subject_name_fa
        FROM lessons l
        JOIN chapters ch ON ch.id = l.chapter_id
        LEFT JOIN subjects s ON s.id = ch.subject_id
@@ -184,11 +284,40 @@ c11m.post('/lessons/:lessonId/learned', async (c) => {
       title_fa: string;
       content_body: string;
       chapter_id: string;
+      chapter_title_fa: string;
       subject_id: string;
       grade_number: number;
       subject_name_fa: string | null;
     }>();
   if (!lessonRow) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  // (رفع اشکال «کار خانگی بی‌ربط به درس») اگر متن کامل درس هنوز Lazy تولید
+  // نشده (AI_PENDING — مثلاً شاگرد یک‌راست از کلاس گفت‌وگو «یاد گرفتم» زده)،
+  // اول همین‌جا متن کامل تولید و ذخیره می‌شود تا کار خانگی دقیقاً از روی
+  // متن واقعی همان درس ساخته شود — نه از خلاصهٔ یک‌خطی که مدل را به سمت
+  // دانش عمومی خودش (سوال‌های بی‌ربط به این درس) می‌برد.
+  let contentForHomework = lessonRow.content_body;
+  if (isPendingAiContent(lessonRow.content_body)) {
+    const gen = await ensureLessonContent(
+      c.env,
+      {
+        id: lessonId,
+        titleFa: lessonRow.title_fa,
+        contentBody: lessonRow.content_body,
+        chapterTitleFa: lessonRow.chapter_title_fa,
+        subjectNameFa: lessonRow.subject_name_fa ?? '',
+        gradeNumber: lessonRow.grade_number,
+      },
+      new URL(c.req.url).origin,
+    );
+    if (gen.status === 'ready') {
+      contentForHomework = gen.content;
+    } else {
+      // Fail-safe (سهمیه/خطا): فقط خلاصه به پرامپت می‌رود — نشانگر فنی هرگز
+      // وارد Prompt نمی‌شود؛ قفل محتوایی داخل پرامپت هم مدل را مهار می‌کند.
+      contentForHomework = lessonRow.content_body.replace(/^<!--AI_PENDING-->\s*/, '');
+    }
+  }
 
   // ساخت کار خانگی — این بار await می‌شود (نه waitUntil) تا کلاینت بداند
   // نتیجه چه شد و پیام درست («ساخته شد» یا «قبلاً داده شده») نشان دهد.
@@ -200,15 +329,17 @@ c11m.post('/lessons/:lessonId/learned', async (c) => {
     subjectNameFa: lessonRow.subject_name_fa ?? '',
     classLevel: lessonRow.grade_number,
     lessonTitleFa: lessonRow.title_fa,
-    lessonContentBody: lessonRow.content_body,
+    lessonContentBody: contentForHomework,
   });
 
   return c.json({
     success: true,
-    // 'created' | 'exists' | 'failed' | 'not_configured'
+    // 'created' | 'exists' | 'failed' | 'not_configured' | 'rate_limited'
     homework: outcome,
     assigned: outcome === 'created',
     alreadyAssigned: outcome === 'exists',
+    // سهمیهٔ رایگان Gemini موقتاً تمام شده — کلاینت SnackBar بومی نشان می‌دهد.
+    rateLimited: outcome === 'rate_limited',
   });
 });
 

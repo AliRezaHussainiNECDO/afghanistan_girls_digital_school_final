@@ -72,7 +72,7 @@ AZURE_TTS_VOICE = "fa-IR-DilaraNeural"
 #    android/app و ios/Runner اپ فلاتر قرار دهید، نه اینجا).
 # ۳) Project Settings → Service Accounts → «Generate new private key» → یک
 #    فایل JSON دانلود می‌شود؛ سه مقدار زیر از همان فایل می‌آیند:
-FCM_PROJECT_ID = "afghan-girls-digital-school"   # فیلد project_id (غیرمحرمانه)
+FCM_PROJECT_ID = "af-digital-girls-school"   # فیلد project_id پروژهٔ جدید Firebase (غیرمحرمانه)
 # کلیدهای محرمانه را با دستورهای زیر (نه در این فایل) تنظیم کنید:
 #   wrangler secret put FCM_CLIENT_EMAIL     (فیلد client_email از همان فایل)
 #   wrangler secret put FCM_PRIVATE_KEY      (فیلد private_key از همان فایل — کامل، با \n ها)

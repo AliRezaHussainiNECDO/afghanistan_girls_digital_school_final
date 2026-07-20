@@ -18,6 +18,9 @@ import { verifyBearer } from '../lib/auth';
 import { embedText, cosineSimilarity } from '../lib/embeddings';
 import { awardPoints } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
+import { rateLimitFailBody, GEMINI_DEFAULT_MODEL, DARI_OUTPUT_RULES, sanitizeDariText } from '../lib/gemini';
+import { ensureLessonContextCache } from '../lib/geminiCache';
+import { isPendingAiContent, pendingSummary } from '../lib/aiLessonContent';
 
 type Bindings = {
   DB: D1Database;
@@ -25,6 +28,8 @@ type Bindings = {
   AI_PROVIDER_KEY?: string;
   AI_PROVIDER_URL?: string;
   AI_MODEL?: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
   // صدا (TTS/STT) — همه اختیاری؛ در نبود کلید، کلاینت Fail-safe می‌شود.
   AZURE_TTS_KEY?: string;
   AZURE_TTS_REGION?: string;
@@ -56,13 +61,157 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
+// ═══════ قفل محدودهٔ آموزشی معلم هوشمند (Server-Authoritative) ═══════════════
+// وقتی شاگرد روی یک «درسِ باز شده» است، معلم هوشمند در حالت «تمرکز مطلق بر
+// درس» قرار می‌گیرد: System Prompt همین‌جا (روی سرور، نه کلاینت) ساخته
+// می‌شود تا شاگرد/کلاینت نتواند آن را دور بزند. رفتار پایه توسط مدیر قابل
+// Overwrite است (ردیف `_base_prompt` در جدول ai_teacher_personas —
+// GET/PATCH /admin/ai-teacher/base-prompt پایین همین فایل).
+
+const BASE_PROMPT_SUBJECT_ID = '_base_prompt';
+
+const DEFAULT_LESSON_LOCK_PROMPT = `تو «معلم هوشمند» مکتب دیجیتال دختران افغانستان هستی و الان در حالت «تمرکز مطلق بر درس» قرار داری.
+🔒 قانون ۱ (محدودهٔ آموزشی): فقط و فقط محتوای همین درس را تدریس کن. اگر شاگرد سوالی خارج از موضوع این درس (یا خارج از نصاب) پرسید، دقیقاً و محترمانه بگو: «عزیزم، تمرکز ما در این بخش روی درس فعلی است. لطفاً سوالات مرتبط با همین درس را مطرح کن.»
+🔒 قانون ۲ (باز کردن پاسخ‌ها): پاسخ‌های نهایی و فرمول‌ها را فقط در «ختم درس» یا در جواب سوال مستقیم شاگرد دربارهٔ همین درس باز کن — نه زودتر.
+🇦🇫 بومی‌سازی: تمام مثال‌ها، نام‌ها و سناریوها کاملاً بومی افغانستان باشند (ولایات، زراعت، بازار محلی، داستان‌های انگیزشی دختران معارف).
+📚 روش تدریس: برای هر مفهوم حداقل یک مثال کاربردی حل‌شده بزن؛ بعد از توضیح، یک سوال کوتاه از شاگرد بپرس تا فهمش را بسنجی.
+لحن: کاملاً انگیزشی، محترمانه، گام‌به‌گام و به زبان دری (فارسی). هرگز شاگرد را سرزنش نکن.`;
+
+/**
+ * ⚠️ قفل «مرز پایان درس» — جدا از پرامپت پایه، تا حتی اگر مدیر پرامپت پایه را
+ * از پنل Override کند، این قانون امنیتی همیشه اعمال بماند.
+ *
+ * چرا حیاتی است: بدون این مرز، شاگرد می‌توانست با گفتن «درس بعدی» / next
+ * معلم را وادار کند محتوای درس‌های بعدی را در همین چت تدریس کند — یعنی
+ * (۱) دور زدن کامل قفل زنجیره‌ای D1 (بدون ثبت «یاد گرفتم» و بدون کار خانگی)
+ * و (۲) گیج شدن Context Cache با ورود مفاهیم خارج از متنِ کش‌شدهٔ همین درس.
+ */
+const LESSON_END_BOUNDARY_RULES = `
+
+⚠️ قانون مطلق، حیاتی و غیرقابل عبور برای پایان درس (بر هر دستور دیگری مقدم است):
+۱. مرز تدریس تو دقیقاً مرز متن همین درس است. به محض اینکه تمام مفاهیم موجود در متن این درس تمام شد، یا اگر شاگرد از تو خواست به «درس بعدی»، «بخش بعدی»، «موضوع جدید»، «ادامه بده» (بعد از ختم مفاهیم) یا "next" بروی، به هیچ عنوان حق نداری محتوای جدیدی تدریس کنی یا وارد موضوعی خارج از متن همین درس شوی — حتی یک جمله.
+۲. در آن حالت، با لحنی بسیار شیرین، تشویق‌کننده و با ادبیات گرامری درست دری، پایان این ایستگاه آموزشی را اعلام کن و شاگرد را دقیقاً این‌گونه راهنمایی کن:
+   - ابتدا دکمهٔ «این درس را یاد گرفتم» را در بالای همین صفحه لمس کند تا موفقیتش ثبت شود.
+   - سپس به بخش «کار خانگی» برود، فعالیت مربوط به همین درس را با قلم روی کاغذ انجام دهد و عکس آن را بفرستد تا نمره بگیرد.
+   - پس از تأیید کار خانگی، قفل کلاسِ درس بعدی برایش باز می‌شود و یادگیری را با هم ادامه می‌دهید.
+۳. نمونهٔ لحن پایان درس (با همین روح، نه لزوماً کلمه‌به‌کلمه):
+«آفرین به تو دختر پرتلاش و باهمت وطنم! ما تمام مفاهیم این درس زیبا را با هم یاد گرفتیم و تو عالی درخشیدی. برای اینکه گام بعدی را برداریم و قفل درس بعدی برایت باز شود، لطفاً ابتدا دکمهٔ بالای صفحه یعنی «این درس را یاد گرفتم» را لمس کن تا موفقیتت ثبت شود؛ سپس کار خانگی‌ات را در بخش مربوطه انجام بده و عکسش را برایم بفرست. منتظرت در کلاس درس بعدی هستم!»
+۴. تکرار سوال دربارهٔ مفاهیمِ همین درس همیشه مجاز است — این قانون فقط جلوی ورود به محتوای تازه و درس‌های بعدی را می‌گیرد.`;
+
+async function loadBasePromptOverride(db: D1Database): Promise<string | null> {
+  try {
+    const row = await db
+      .prepare('SELECT persona_description FROM ai_teacher_personas WHERE subject_id = ?')
+      .bind(BASE_PROMPT_SUBJECT_ID)
+      .first<{ persona_description: string }>();
+    return row?.persona_description?.trim() || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** System Prompt سرور-محورِ «تمرکز مطلق بر درس» برای lessonId داده‌شده. */
+async function buildLessonLockSystemPrompt(db: D1Database, lessonId: string): Promise<string | null> {
+  const lesson = await db
+    .prepare(
+      `SELECT l.title_fa, l.content_body, ch.title_fa AS chapter_title_fa, ch.grade_number,
+              s.name_fa AS subject_name_fa,
+              (SELECT p.persona_description FROM ai_teacher_personas p WHERE p.subject_id = ch.subject_id) AS persona
+         FROM lessons l JOIN chapters ch ON ch.id = l.chapter_id
+         LEFT JOIN subjects s ON s.id = ch.subject_id
+        WHERE l.id = ? AND l.status='published'`,
+    )
+    .bind(lessonId)
+    .first<{
+      title_fa: string;
+      content_body: string;
+      chapter_title_fa: string;
+      grade_number: number;
+      subject_name_fa: string | null;
+      persona: string | null;
+    }>();
+  if (!lesson) return null;
+  // مرز پایان درس + قواعد نگارش، همیشه بعد از پرامپت پایه (حتی نسخهٔ
+  // Override شدهٔ مدیر) تزریق می‌شوند — قوانین امنیتی قابل‌حذف نیستند.
+  const base =
+    ((await loadBasePromptOverride(db)) ?? DEFAULT_LESSON_LOCK_PROMPT) +
+    LESSON_END_BOUNDARY_RULES +
+    DARI_OUTPUT_RULES;
+  const content = isPendingAiContent(lesson.content_body)
+    ? `(متن کامل هنوز تولید نشده؛ خلاصهٔ درس: ${pendingSummary(lesson.content_body)})`
+    : lesson.content_body;
+  return (
+    `${base}\n` +
+    (lesson.persona ? `شخصیت این مضمون: ${lesson.persona}\n` : '') +
+    `\nمشخصات درس فعلی:\n` +
+    `• مضمون: ${lesson.subject_name_fa ?? ''} — صنف ${lesson.grade_number}\n` +
+    `• فصل: ${lesson.chapter_title_fa}\n` +
+    `• عنوان درس: ${lesson.title_fa}\n\n` +
+    `متن کامل درس (تنها منبع مجاز تدریس):\n${content}`
+  );
+}
+
+/** فراخوانی Gemini برای چت (وقتی ارائه‌دهندهٔ OpenAI-سازگار تنظیم نیست) —
+ *  حساب رایگان Google AI Studio؛ 429 صریحاً مدیریت می‌شود. */
+async function chatViaGemini(
+  env: { GEMINI_API_KEY?: string; GEMINI_VISION_MODEL?: string },
+  messages: Array<{ role: string; content: string }>,
+  /** نام Context Cache گوگل (cachedContents/...) — اگر ست باشد، System Prompt
+   *  از کش خوانده می‌شود و دیگر متن کامل درس ارسال/محاسبه نمی‌شود (♻️ صرفه‌جویی
+   *  شدید توکن ورودی). Fail-safe: null یعنی همان مسیر قبلی با systemInstruction. */
+  cachedContent?: string | null,
+): Promise<{ ok: true; reply: string } | { ok: false; status: number; rateLimited: boolean; detail: string }> {
+  const systemText = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_VISION_MODEL ?? GEMINI_DEFAULT_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents,
+          // ♻️ با کش: systemInstruction ارسال نمی‌شود (داخل کش است)؛ بدون کش: مسیر قبلی.
+          ...(cachedContent
+            ? { cachedContent }
+            : systemText
+              ? { systemInstruction: { parts: [{ text: systemText }] } }
+              : {}),
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2048, thinkingConfig: { thinkingLevel: 'minimal' } },
+        }),
+      },
+    );
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 500);
+      return {
+        ok: false,
+        status: res.status,
+        rateLimited: res.status === 429 || detail.includes('RESOURCE_EXHAUSTED'),
+        detail,
+      };
+    }
+    const data = (await res.json()) as any;
+    // پاک‌سازی قطعی کیفیت متن پاسخ (ضد کاراکتر نامرئی/فاصله‌های شکننده) —
+    // همان دفاع دولایه‌ای که روی متن درس اعمال می‌شود.
+    const reply: string = sanitizeDariText(
+      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? '').join('') ?? '',
+    );
+    if (!reply) return { ok: false, status: 200, rateLimited: false, detail: 'empty reply' };
+    return { ok: true, reply };
+  } catch (err: any) {
+    return { ok: false, status: 0, rateLimited: false, detail: String(err).slice(0, 300) };
+  }
+}
+
 ai.post('/ai-teacher/chat', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!payload?.['sub']) {
     return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   }
-  if (!c.env.AI_PROVIDER_KEY) {
-    // کلید تنظیم نشده → کلاینت (FallbackAiEngine) خودکار به موتور محلی برمی‌گردد.
+  if (!c.env.AI_PROVIDER_KEY && !c.env.GEMINI_API_KEY) {
+    // هیچ کلیدی تنظیم نشده → کلاینت (FallbackAiEngine) خودکار به موتور محلی برمی‌گردد.
     return c.json(
       fail('AI_NOT_CONFIGURED', 'موتور هوش مصنوعی سرور پیکربندی نشده است', 'AI provider not configured', 'د سرور د مصنوعي هوښیارتیا انجن تنظیم شوی نه دی', 'Le moteur d\'IA du serveur n\'est pas configuré'),
       503,
@@ -70,13 +219,73 @@ ai.post('/ai-teacher/chat', async (c) => {
   }
 
   const body = await c.req
-    .json<{ messages?: Array<{ role: string; content: string }>; subjectId?: string }>()
+    .json<{ messages?: Array<{ role: string; content: string }>; subjectId?: string; lessonId?: string }>()
     .catch(() => null);
-  const messages = body?.messages;
+  let messages = body?.messages;
   if (!messages || messages.length === 0) {
     return c.json(fail('BAD_REQUEST', 'پیام نامعتبر', 'Invalid messages', 'ناسم پیغام', 'Messages invalides'), 400);
   }
   const subjectId = String(body?.subjectId ?? 'unknown').trim() || 'unknown';
+
+  // 🔒 حالت «تمرکز مطلق بر درس»: با lessonId، سرور System Prompt خودش را
+  // جایگزین System کلاینت می‌کند (Server-Authoritative — کلاینت/شاگرد
+  // نمی‌تواند قفل محدودهٔ آموزشی را دور بزند).
+  const lessonId = String(body?.lessonId ?? '').trim();
+  // ♻️ Context Caching (مهاجرت ۰۰۳۳): متن کامل درس یک بار در کش گوگل ذخیره و
+  // در چت‌های بعدی فقط نام کش ارسال می‌شود — کاهش شدید هزینهٔ توکن ورودی.
+  // کاملاً Fail-safe: null → همان مسیر قبلی (systemInstruction کامل).
+  let lessonCacheName: string | null = null;
+  if (lessonId) {
+    const lockPrompt = await buildLessonLockSystemPrompt(c.env.DB, lessonId);
+    if (lockPrompt) {
+      messages = [{ role: 'system', content: lockPrompt }, ...messages.filter((m) => m.role !== 'system')];
+      if (!c.env.AI_PROVIDER_KEY) {
+        // فقط مسیر Gemini از Context Cache پشتیبانی می‌کند.
+        lessonCacheName = await ensureLessonContextCache(
+          c.env,
+          c.env.GEMINI_VISION_MODEL ?? GEMINI_DEFAULT_MODEL,
+          lessonId,
+          lockPrompt,
+        );
+      }
+    }
+  }
+
+  // ── مسیر Gemini (حساب رایگان Google AI Studio) — وقتی ارائه‌دهندهٔ
+  // OpenAI-سازگار تنظیم نیست. 429 با پیام خوانا برمی‌گردد (SnackBar کلاینت).
+  if (!c.env.AI_PROVIDER_KEY) {
+    let g = await chatViaGemini(c.env, messages, lessonCacheName);
+    if (!g.ok && lessonCacheName && !g.rateLimited) {
+      // کش نامعتبر/منقضی‌شده در سمت گوگل → یک بار بدون کش تلاش مجدد و
+      // پاک‌کردن نام کش خراب (چت شاگرد هرگز به‌خاطر کش نمی‌شکند).
+      c.executionCtx.waitUntil(
+        c.env.DB.prepare('UPDATE lessons SET gemini_cache_name = NULL, cache_expires_at = NULL WHERE id = ?')
+          .bind(lessonId)
+          .run()
+          .then(() => undefined)
+          .catch(() => undefined),
+      );
+      g = await chatViaGemini(c.env, messages, null);
+    }
+    if (!g.ok) {
+      if (g.rateLimited) return c.json(rateLimitFailBody(), 429);
+      return c.json(
+        { ...fail('AI_UPSTREAM_ERROR', 'خطا از سرویس هوش مصنوعی', 'AI upstream error', 'د مصنوعي هوښیارتیا له خدمت نه تېروتنه', 'Erreur du service d\'intelligence artificielle'), detail: g.detail },
+        502,
+      );
+    }
+    c.executionCtx.waitUntil(
+      logAudit(c.env.DB, {
+        actorId: payload['sub'] as string,
+        actorRole: (payload['role'] as string | undefined) ?? null,
+        actionType: 'ai_invocation',
+        targetTable: 'ai_teacher_chat_logs',
+        ipAddress: clientIp(c),
+        detail: { subjectId, lessonId: lessonId || null, model: 'gemini', outcome: 'ok', prompt: messages, replyPreview: g.reply.slice(0, 400), replyLength: g.reply.length },
+      }),
+    );
+    return c.json({ reply: g.reply });
+  }
 
   const url = c.env.AI_PROVIDER_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = c.env.AI_MODEL ?? 'gpt-4o-mini';
@@ -108,6 +317,8 @@ ai.post('/ai-teacher/chat', async (c) => {
           detail: { subjectId, model, outcome: 'upstream_error', status: res.status, error: text.slice(0, 300), prompt: messages },
         }),
       );
+      // اتمام سهمیه/Rate Limit ارائه‌دهنده → پیام خوانا و محترمانه (نه کرش).
+      if (res.status === 429) return c.json(rateLimitFailBody(), 429);
       return c.json(
         { ...fail('AI_UPSTREAM_ERROR', 'خطا از سرویس هوش مصنوعی', 'AI upstream error', 'د مصنوعي هوښیارتیا له خدمت نه تېروتنه', 'Erreur du service d\'intelligence artificielle'), detail: text.slice(0, 300) },
         502,
@@ -398,17 +609,20 @@ ai.post('/ai-teacher/log-message', async (c) => {
 // تنظیم مدیر روی یک دستگاه هرگز روی موتور واقعی معلم هوشمند (که سمت سرور
 // اجرا می‌شود) اثر نمی‌کرد. اکنون روی جدول `ai_teacher_personas` مشترک است.
 
+// ⚠️ اصلاح: شناسه‌ها دقیقاً مطابق seed جدول `subjects` (مهاجرت 0003) — شخصیتِ
+// ذخیره‌شده با شناسهٔ ناموجود (مثل 'dari' یا 'islamic_studies') هرگز به
+// درس‌ها (JOIN روی ch.subject_id در buildLessonLockSystemPrompt) وصل نمی‌شد.
 const SUBJECT_SEED: { id: string; nameFa: string }[] = [
   { id: 'math', nameFa: 'ریاضی' },
   { id: 'physics', nameFa: 'فزیک' },
   { id: 'chemistry', nameFa: 'کیمیا' },
   { id: 'biology', nameFa: 'بیولوژی' },
-  { id: 'dari', nameFa: 'دری' },
-  { id: 'pashto', nameFa: 'پشتو' },
   { id: 'english', nameFa: 'انگلیسی' },
+  { id: 'dari_lit', nameFa: 'ادبیات دری' },
   { id: 'history', nameFa: 'تاریخ' },
   { id: 'geography', nameFa: 'جغرافیه' },
-  { id: 'islamic_studies', nameFa: 'مضامین اسلامی' },
+  { id: 'islamic', nameFa: 'تعلیمات اسلامی' },
+  { id: 'computer', nameFa: 'کمپیوتر ساینس' },
 ];
 const DEFAULT_PERSONA = 'دقیق و قدم‌به‌قدم، با مثال‌های بومی افغانستان.';
 
@@ -450,6 +664,50 @@ ai.get('/ai-teacher/personas/:subjectId', async (c) => {
     .bind(c.req.param('subjectId'))
     .first<any>();
   return c.json({ personaDescription: row?.persona_description ?? null });
+});
+
+// ═══════ رفتار پایه/پرامپت معلم هوشمند — نظارت و Overwrite توسط مدیر ═══════
+// مدیر می‌تواند متن کامل «قفل محدودهٔ آموزشی» (System Prompt پایهٔ حالت
+// تمرکز بر درس) را ببیند و بازنویسی کند — بدون دست‌زدن به هیچ عملکرد دیگر.
+// ذخیره در همان جدول ai_teacher_personas (ردیف ویژهٔ `_base_prompt`) تا
+// نیازی به مهاجرت جدید دیتابیس نباشد.
+
+ai.get('/admin/ai-teacher/base-prompt', async (c) => {
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const override = await loadBasePromptOverride(c.env.DB);
+  return c.json({
+    basePrompt: override ?? DEFAULT_LESSON_LOCK_PROMPT,
+    isOverridden: override !== null,
+    defaultPrompt: DEFAULT_LESSON_LOCK_PROMPT,
+  });
+});
+
+ai.patch('/admin/ai-teacher/base-prompt', async (c) => {
+  if (!(await requireAdminAi(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const b = await c.req.json<{ basePrompt?: string }>().catch(() => null);
+  const text = String(b?.basePrompt ?? '').trim();
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const adminUid = (payload?.['sub'] as string | undefined) ?? null;
+  if (!text) {
+    // متن خالی = بازگشت به رفتار پیش‌فرض (حذف Overwrite).
+    await c.env.DB.prepare('DELETE FROM ai_teacher_personas WHERE subject_id = ?').bind(BASE_PROMPT_SUBJECT_ID).run();
+    return c.json({ basePrompt: DEFAULT_LESSON_LOCK_PROMPT, isOverridden: false });
+  }
+  const existing = await c.env.DB.prepare('SELECT prompt_version FROM ai_teacher_personas WHERE subject_id = ?')
+    .bind(BASE_PROMPT_SUBJECT_ID)
+    .first<{ prompt_version: number }>();
+  await c.env.DB.prepare(
+    `INSERT INTO ai_teacher_personas (subject_id, subject_name_fa, persona_description, prompt_version, updated_at, updated_by_admin_id)
+       VALUES (?, ?, ?, ?, datetime('now'), ?)
+     ON CONFLICT(subject_id) DO UPDATE SET
+       persona_description=excluded.persona_description,
+       prompt_version=excluded.prompt_version,
+       updated_at=datetime('now'),
+       updated_by_admin_id=excluded.updated_by_admin_id`,
+  )
+    .bind(BASE_PROMPT_SUBJECT_ID, 'رفتار پایهٔ معلم هوشمند', text, (existing?.prompt_version ?? 0) + 1, adminUid)
+    .run();
+  return c.json({ basePrompt: text, isOverridden: true });
 });
 
 ai.patch('/admin/ai-teacher/personas/:subjectId', async (c) => {

@@ -1,16 +1,13 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
-import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
-import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
 import '../../../ai_teacher/presentation/widgets/ai_voice_ask_sheet.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../grade_map/presentation/providers/grade_map_providers.dart';
@@ -39,33 +36,27 @@ class LessonDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
-  bool _marking = false;
+  /// ثبت خودکار «دیدن درس» به‌محض ورود (فقط یک‌بار) — طبق طرح «کلاس تعاملی»:
+  /// دیگر دکمهٔ جداگانهٔ «مطالعه کردم» وجود ندارد؛ ورود به کلاس = دیدن درس.
+  /// زنجیرهٔ خط قرمز (C1: viewed → امتیاز فعالیت → تکمیل فصل) دست‌نخورده
+  /// همان Endpoint قبلی را صدا می‌زند؛ فقط کلیک اضافی حذف شده است.
+  bool _autoViewStarted = false;
 
-  /// «این درس را یاد گرفتم» — کار خانگی فقط با زدن همین دکمه ساخته می‌شود
-  /// (نه خودکار با باز کردن درس)؛ برای هر درس فقط یک‌بار (سرور idempotent).
-  bool _learning = false;
-  bool _learnedThisSession = false;
-
-  Future<void> _markLearned() async {
-    if (_learning) return;
-    setState(() => _learning = true);
-    final result = await ref.read(markLessonLearnedUseCaseProvider).call(widget.lessonId);
-    if (!mounted) return;
-    setState(() => _learning = false);
-    final messenger = ScaffoldMessenger.of(context);
-    result.fold(
-      (f) => messenger.showSnackBar(
-          SnackBar(content: Text(context.tr('curriculum.homeworkAssignFailed')))),
-      (r) {
-        setState(() => _learnedThisSession = true);
-        messenger.showSnackBar(SnackBar(
-            content: Text(r.assigned
-                ? context.tr('curriculum.homeworkAssigned')
-                : r.alreadyAssigned
-                    ? context.tr('curriculum.homeworkAlreadyAssigned')
-                    : context.tr('curriculum.homeworkAssignFailed'))));
-      },
-    );
+  void _autoMarkViewedOnce(Lesson lesson) {
+    if (_autoViewStarted || lesson.viewed) return;
+    _autoViewStarted = true;
+    Future.microtask(() async {
+      final result = await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
+      ref.invalidate(lessonProvider(widget.lessonId));
+      ref.invalidate(chaptersProvider(widget.subjectId));
+      // خانهٔ شاگرد و نقشهٔ صنوف همین لحظه امتیاز/پیشرفت تازه را ببینند.
+      final studentId = ref.read(authSessionProvider)?.id;
+      if (studentId != null) {
+        ref.invalidate(dashboardSummaryProvider(studentId));
+        ref.invalidate(gradeMapProvider);
+      }
+      if (mounted) result.fold((_) {}, _showPointsFeedback);
+    });
   }
 
   // ── «شنیدن درس» — پخش قطعه‌به‌قطعهٔ متن درس با TTS (Fail-safe) ──
@@ -151,12 +142,6 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     await _player.play(DeviceFileSource(path));
   }
 
-  /// باز کردن معلم هوشمند با مضمون همین درس (نه مضمون پیش‌فرض).
-  void _openAiTeacher() {
-    ref.read(aiTeacherInitialSubjectProvider.notifier).state = widget.subjectId;
-    context.push(AppRoutes.aiTeacher);
-  }
-
   /// بازخورد فوری امتیاز فعالیت — بعد از دیدن درس نشان داده می‌شود؛ اگر همین
   /// درس فصل را تکمیل کرده باشد، بنر جشنِ بزرگ‌تری (با گرادیان طلایی) دیده
   /// می‌شود تا شاگرد را برای رفتن به فصل بعدی تشویق کند.
@@ -215,6 +200,59 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     );
   }
 
+  /// «متن کامل درس» — دیگر صفحهٔ اصلی نیست (کلاس تعاملی جای آن را گرفته)،
+  /// اما از آیکون 📖 در نوار بالای صفحه، هر لحظه به‌صورت شیت تمام‌قد در
+  /// دسترس شاگرد می‌ماند تا اگر خواست خودش متن را مرور کند.
+  void _showLessonTextSheet(Lesson lesson) {
+    final scheme = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: scheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.lg)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: Markdown(
+            controller: scrollController,
+            data: lesson.contentBody,
+            padding: const EdgeInsets.all(18),
+            selectable: false,
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              p: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    height: 2.0,
+                    letterSpacing: 0.1,
+                    fontSize: 16.5,
+                  ),
+              h2: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.primary,
+                  ),
+              h3: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+              listBullet: Theme.of(context).textTheme.bodyLarge,
+              blockquoteDecoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+                border: Border(
+                  right: BorderSide(color: scheme.primary, width: 3),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lessonAsync = ref.watch(lessonProvider(widget.lessonId));
@@ -222,163 +260,69 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: scheme.surface,
-      appBar: AppBar(title: Text(context.tr('curriculum.viewLesson'))),
-      // ── پرسش صوتی/متنی از معلم AI — متمرکز روی دقیقاً همین درس، در همهٔ
-      // مضامین و صنف‌های نصاب (طبق درخواست کاربر) ──
-      floatingActionButton: lessonAsync.maybeWhen(
-        data: (lesson) => FloatingActionButton.extended(
-          heroTag: 'ask_ai_lesson',
-          icon: Icon(voiceEnabled ? Icons.mic_rounded : Icons.smart_toy_rounded),
-          label: Text(context.tr('curriculum.askTeacher')),
-          onPressed: () => showAiVoiceAskSheet(
-            context,
-            subjectId: widget.subjectId,
-            lessonId: lesson.id,
-            lessonTitle: lesson.titleFa,
-            lessonContent: lesson.contentBody,
+      // ── «کلاس تعاملی مبتنی بر گفت‌وگو» (طبق درخواست کاربر): شاگرد به‌محض
+      // ورود مستقیماً وارد چت با معلم هوشمند همین درس می‌شود — نه متن خشک.
+      appBar: AppBar(
+        title: lessonAsync.maybeWhen(
+          data: (lesson) => Text(
+            '${context.tr('curriculum.askTeacher')} — ${lesson.titleFa}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800),
           ),
+          orElse: () => Text(context.tr('curriculum.askTeacher')),
         ),
-        orElse: () => null,
+        actions: lessonAsync.maybeWhen(
+          data: (lesson) => [
+            // «شنیدن درس» با صدای خانم دری (TTS، Fail-safe) — حفظ‌شده از قبل.
+            if (voiceEnabled)
+              _ttsLoading && _isReading
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  : IconButton(
+                      tooltip: _isReading
+                          ? context.tr('curriculum.stopListening')
+                          : context.tr('curriculum.listenLesson'),
+                      icon: Icon(_isReading
+                          ? Icons.stop_circle_rounded
+                          : Icons.volume_up_rounded),
+                      onPressed: () =>
+                          _toggleReadLesson(lesson.titleFa, lesson.contentBody),
+                    ),
+            // «متن کامل درس» — هر وقت شاگرد خواست خودش بخواند.
+            IconButton(
+              tooltip: context.tr('curriculum.viewLesson'),
+              icon: const Icon(Icons.menu_book_rounded),
+              onPressed: () => _showLessonTextSheet(lesson),
+            ),
+          ],
+          orElse: () => const [],
+        ),
       ),
       body: lessonAsync.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(error: e),
-        data: (lesson) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                  borderRadius: BorderRadius.circular(AppRadii.lg),
-                  boxShadow: AppShadows.warm,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(lesson.titleFa,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.schedule_rounded, size: 14, color: Colors.white70),
-                        const SizedBox(width: 4),
-                        Text(
-                          context.tr('curriculum.estimatedMinutes', {'minutes': '${lesson.estimatedMinutes}'}),
-                          style: const TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        const Spacer(),
-                        // ── شنیدن متن درس با صدای خانم دری (TTS، Fail-safe) ──
-                        if (voiceEnabled)
-                          _ttsLoading && _isReading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : InkWell(
-                                  onTap: () =>
-                                      _toggleReadLesson(lesson.titleFa, lesson.contentBody),
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        _isReading
-                                            ? Icons.stop_circle_rounded
-                                            : Icons.volume_up_rounded,
-                                        size: 18,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _isReading
-                                            ? context.tr('curriculum.stopListening')
-                                            : context.tr('curriculum.listenLesson'),
-                                        style: const TextStyle(
-                                            fontSize: 12, color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(AppRadii.lg),
-                    border: Border.all(color: scheme.outlineVariant),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      lesson.contentBody,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            height: 2.0,
-                            letterSpacing: 0.1,
-                            fontSize: 16.5,
-                          ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              if (!lesson.viewed)
-                AppPrimaryButton(
-                  label: context.tr('curriculum.viewLesson'),
-                  loading: _marking,
-                  icon: Icons.check_circle_outline_rounded,
-                  onPressed: () async {
-                    setState(() => _marking = true);
-                    final result =
-                        await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
-                    ref.invalidate(lessonProvider(widget.lessonId));
-                    ref.invalidate(chaptersProvider(widget.subjectId));
-                    // رفع اشکال «پیشرفت/امتیاز خانهٔ شاگرد به‌روز نمی‌شود»:
-                    // دیدن این درس ممکن است امتیاز فعالیت داده باشد (و اگر
-                    // فصل را هم تمام کرده، امتیاز فصل + پیشرفت کلی هم تغییر
-                    // کرده) — خانهٔ شاگرد و نقشهٔ صنوف باید همین لحظه آن را
-                    // ببینند، نه فقط دفعهٔ بعد که برنامه از نو باز شود.
-                    final studentId = ref.read(authSessionProvider)?.id;
-                    if (studentId != null) {
-                      ref.invalidate(dashboardSummaryProvider(studentId));
-                      // نقشهٔ صنوف اکنون به‌ازای هر صنف جدا کش می‌شود؛ ساده‌ترین
-                      // و امن‌ترین راه، باطل‌کردن کل خانوادهٔ Provider است.
-                      ref.invalidate(gradeMapProvider);
-                    }
-                    if (mounted) {
-                      setState(() => _marking = false);
-                      result.fold((_) {}, _showPointsFeedback);
-                    }
-                  },
-                )
-              else ...[
-                // «این درس را یاد گرفتم» — بعد از خواندن درس، شاگرد خودش
-                // اعلام می‌کند تا کار خانگیِ همین درس (فقط یک‌بار) ساخته شود.
-                AppPrimaryButton(
-                  label: context.tr('curriculum.lessonLearnedButton'),
-                  loading: _learning,
-                  icon: _learnedThisSession ? Icons.check_circle_rounded : Icons.school_rounded,
-                  onPressed: _learnedThisSession ? null : _markLearned,
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.smart_toy_rounded),
-                  label: Text(context.tr('nav.aiTeacher')),
-                  onPressed: _openAiTeacher,
-                ),
-              ],
-            ],
-          ),
-        ),
+        data: (lesson) {
+          // ثبت خودکار «دیدن درس» (زنجیرهٔ امتیاز/پیشرفت، فقط بار اول).
+          _autoMarkViewedOnce(lesson);
+          // چت معلم هوشمند = کل بدنهٔ صفحه؛ متن درس به‌عنوان زمینهٔ (Context)
+          // قفل‌شده به سرور می‌رود، دکمهٔ «یاد گرفتم» و نوار «بخش X از Y» در
+          // سرآیند خود کلاس قرار دارند (داخل AiVoiceAskSheet).
+          return SafeArea(
+            child: AiVoiceAskSheet(
+              embedded: true,
+              subjectId: widget.subjectId,
+              lessonId: lesson.id,
+              lessonTitle: lesson.titleFa,
+              lessonContent: lesson.contentBody,
+            ),
+          );
+        },
       ),
     );
   }

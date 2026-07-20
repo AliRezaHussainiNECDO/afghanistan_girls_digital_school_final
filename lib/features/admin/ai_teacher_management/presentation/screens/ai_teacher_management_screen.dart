@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../../../../app/router/app_routes.dart';
 import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
@@ -9,13 +7,10 @@ import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
 import '../../../../ai_teacher/presentation/widgets/ai_engine_settings_card.dart';
-import '../../../../curriculum_library/presentation/widgets/book_upload_section.dart';
-import '../../../../curriculum_library/presentation/widgets/cleanup_orphaned_button.dart';
-import '../../../../curriculum_library/presentation/widgets/rtl_fix_all_button.dart';
-import '../../../../curriculum_library/presentation/widgets/wipe_all_curriculum_button.dart';
 import '../../domain/entities/ai_teacher_config.dart';
 import '../../domain/usecases/ai_teacher_management_usecases.dart';
 import '../providers/ai_teacher_management_providers.dart';
+import '../widgets/ai_curriculum_generate_panel.dart';
 import '../widgets/ai_teacher_stats_section.dart';
 
 class AiTeacherManagementScreen extends ConsumerWidget {
@@ -45,65 +40,20 @@ class AiTeacherManagementScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
                   const AiEngineSettingsCard(),
                   const SizedBox(height: 10),
-                  // ── ورود دسته‌ای کتاب‌های نصاب (صنف ۷ الی ۱۲ یک‌جا) ──
-                  Material(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(AppRadii.lg),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(AppRadii.lg),
-                      onTap: () => context.push(AppRoutes.adminBulkImport),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            Icon(Icons.library_add_rounded,
-                                color: scheme.onPrimaryContainer),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(context.tr('aiTeacherManagement.bulkImportTitle'),
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: scheme.onPrimaryContainer)),
-                                  Text(
-                                    context.tr('aiTeacherManagement.bulkImportSubtitle'),
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: scheme.onPrimaryContainer),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.chevron_left_rounded,
-                                color: scheme.onPrimaryContainer),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  // ═══ تولید هوشمند نصاب (Pure AI Generation — Gemini) ═══
+                  // جایگزین کامل سیستم قدیمی مبتنی بر PDF: تمام گزینه‌های
+                  // فایل‌محور (ورود دسته‌ای PDF، رفع متن‌های معکوس، پاک‌سازی
+                  // دروس یتیم، آپلود کتاب هر مضمون) از این رابط حذف شدند —
+                  // منبع مطلق محتوا خودِ Gemini است.
+                  const AiCurriculumGeneratePanel(),
                   const SizedBox(height: 10),
-                  // ── رفع اصلاحیِ متن‌های معکوس‌شدهٔ کتاب‌های قبلاً آپلودشده،
-                  // در همهٔ صنف‌ها و مضامین با یک کلیک ──
-                  const RtlFixAllButton(),
-                  const SizedBox(height: 10),
-                  // ── رفع اشکال «کتاب حذف شد اما هنوز نزد شاگردان است» ──
-                  const CleanupOrphanedButton(),
-                  const SizedBox(height: 10),
-                  // ── پاک‌سازی کامل و شروع از صفر (طبق درخواست صریح کاربر) ──
-                  const WipeAllCurriculumButton(),
+                  // ── نظارت/بازنویسی رفتار پایه و پرامپت معلم هوشمند ──
+                  const AiBasePromptCard(),
                 ],
               );
             }
             final c = configs[i - 1];
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildPersonaCard(context, ref, scheme, c),
-                BookUploadSection(subjectId: c.subjectId, subjectNameFa: c.subjectNameFa),
-              ],
-            );
+            return _buildPersonaCard(context, ref, scheme, c);
           },
         ),
       ),

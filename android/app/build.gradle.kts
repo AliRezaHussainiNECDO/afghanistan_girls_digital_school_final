@@ -33,7 +33,9 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.afghanistan_girls_digital_school"
+        // شناسهٔ رسمی و دائمی برنامه — باید دقیقاً با package_name در
+        // android/app/google-services.json (پروژهٔ Firebase جدید) یکی باشد.
+        applicationId = "af.digital.girls.school"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // jitsi_meet_flutter_sdk (ویدیوکنفرانس واقعی اتاق فال‌بک سمینار) حداقل

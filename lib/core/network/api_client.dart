@@ -87,6 +87,10 @@ enum ApiErrorType {
   /// 409 — تعارض (مثلاً ایمیل تکراری — بخش ۳.۱).
   conflict,
 
+  /// 429 — اتمام موقت سهمیهٔ رایگان هوش مصنوعی (Gemini Free Tier) یا
+  /// Rate Limit سرور — UI باید پیام محترمانهٔ «قفل موقت» نشان دهد.
+  rateLimited,
+
   /// 5xx — خطای داخلی سرور.
   server,
 
@@ -123,6 +127,7 @@ class ApiClient {
       'forbidden': 'شما اجازهٔ انجام این عملیات را ندارید.',
       'notFound': 'منبع درخواستی یافت نشد.',
       'conflict': 'این اطلاعات قبلاً ثبت شده است.',
+      'rateLimited': 'سهمیهٔ رایگان هوش مصنوعی موقتاً تمام شده است. لطفاً چند دقیقهٔ دیگر دوباره تلاش کنید.',
       'serverError': 'خطای داخلی سرور. لطفاً کمی بعد دوباره تلاش کنید.',
       'unknownServerError': 'خطای ناشناخته در ارتباط با سرور.',
       'invalidResponse': 'پاسخ نامعتبر از سرور دریافت شد.',
@@ -139,6 +144,7 @@ class ApiClient {
       'forbidden': 'You are not allowed to perform this action.',
       'notFound': 'The requested resource was not found.',
       'conflict': 'This information has already been registered.',
+      'rateLimited': 'The free AI quota is temporarily exhausted. Please try again in a few minutes.',
       'serverError': 'Internal server error. Please try again shortly.',
       'unknownServerError': 'An unknown error occurred while communicating with the server.',
       'invalidResponse': 'An invalid response was received from the server.',
@@ -155,6 +161,7 @@ class ApiClient {
       'forbidden': 'تاسو د دې کړنې د ترسره کولو اجازه نه لرئ.',
       'notFound': 'غوښتل شوی سرچینه ونه موندل شوه.',
       'conflict': 'دا معلومات دمخه ثبت شوي دي.',
+      'rateLimited': 'د مصنوعي هوښیارتیا وړیا ونډه د اوس لپاره پای ته ورسېده. څو دقیقې وروسته بیا هڅه وکړئ.',
       'serverError': 'د سرور داخلي تېروتنه. مهرباني وکړئ لږ وروسته بیا هڅه وکړئ.',
       'unknownServerError': 'له سرور سره په اړیکه کې ناڅرګنده تېروتنه.',
       'invalidResponse': 'له سرور نه ناسم ځواب ترلاسه شو.',
@@ -171,6 +178,7 @@ class ApiClient {
       'forbidden': 'Vous n\'êtes pas autorisé à effectuer cette action.',
       'notFound': 'La ressource demandée est introuvable.',
       'conflict': 'Ces informations sont déjà enregistrées.',
+      'rateLimited': "Le quota gratuit d'IA est temporairement épuisé. Veuillez réessayer dans quelques minutes.",
       'serverError': 'Erreur interne du serveur. Veuillez réessayer sous peu.',
       'unknownServerError': 'Erreur inconnue lors de la communication avec le serveur.',
       'invalidResponse': 'Une réponse invalide a été reçue du serveur.',
@@ -463,6 +471,13 @@ class ApiClient {
           message: serverMsg ?? _t('conflict'),
           type: ApiErrorType.conflict,
           statusCode: 409,
+          code: serverCode,
+        );
+      case 429:
+        return ApiException(
+          message: serverMsg ?? _t('rateLimited'),
+          type: ApiErrorType.rateLimited,
+          statusCode: 429,
           code: serverCode,
         );
       default:

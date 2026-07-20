@@ -22,6 +22,7 @@ import academyRouter from './routes/academy';
 import advisorRouter from './routes/advisor';
 import homeworkRouter from './routes/homework';
 import devicesRouter from './routes/devices';
+import aiCurriculumRouter from './routes/aiCurriculum';
 
 type Bindings = {
   DB: D1Database;
@@ -41,6 +42,7 @@ type Bindings = {
   AI_STT_MODEL?: string;
   GEMINI_API_KEY?: string;
   GEMINI_VISION_MODEL?: string;
+  GEMINI_IMAGE_MODEL?: string;
   // ── Push Notification واقعی (FCM HTTP v1) — lib/push.ts. همه اختیاری‌اند؛
   //    در نبودشان اعلان‌ها فقط داخل‌اپی (زنگ 🔔) می‌مانند، بدون کرش/تأخیر.
   FCM_PROJECT_ID?: string;
@@ -127,6 +129,9 @@ app.route('/api/v1/auth', authRouter);
 
 // ───────────────────────────── نصاب و پیشرفت ─────────────────────────────
 app.route('/api/v1', curriculumRouter);
+
+// ─────────── تولید هوشمند نصاب (Pure AI) + تصویرساز داخلی Gemini ───────────
+app.route('/api/v1', aiCurriculumRouter);
 
 // ─────────────────────── امتحانات، نمرات و گواهی‌نامه ───────────────────────
 app.route('/api/v1', examsRouter);

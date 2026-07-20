@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>API_KEY</key>
-	<string>AIzaSyA-Z529-flNcYJkV-YqpVq3bn9DPPwGpVc</string>
+	<string>AIzaSyD7dJe5oIKc5cjfKwptWRGtDA7u0Wk1qVQ</string>
 	<key>GCM_SENDER_ID</key>
-	<string>306928389292</string>
+	<string>528295489704</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.example.afghanistanGirlsDigitalSchool</string>
+	<string>af.digital.girls.school</string>
 	<key>PROJECT_ID</key>
-	<string>afghan-girls-digital-school</string>
+	<string>af-digital-girls-school</string>
 	<key>STORAGE_BUCKET</key>
-	<string>afghan-girls-digital-school.firebasestorage.app</string>
+	<string>af-digital-girls-school.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:306928389292:ios:0a01385441e07a54df6309</string>
+	<string>1:528295489704:ios:cc6638d81e793dd15bd29d</string>
 </dict>
 </plist>

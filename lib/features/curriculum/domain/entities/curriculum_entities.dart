@@ -39,6 +39,14 @@ class Lesson extends Equatable {
   final String titleFa;
   final int estimatedMinutes;
   final bool viewed; // طبق C1 بخش ۶.۲ — Backend صاحب حقیقت است
+
+  /// 🔒 قفل زنجیره‌ای دروس (Prerequisite Locking — سرور-محور،
+  /// `backend/src/lib/progress.ts::getLessonLockList`): درس بعدی فقط وقتی باز
+  /// می‌شود که درس قبلی ۱۰۰٪ تکمیل شده باشد («یاد گرفتم» + ثبت کار خانگی).
+  final bool unlocked;
+
+  /// تکمیل کامل زنجیره برای همین درس (یاد گرفتم + کار خانگی ثبت‌شده).
+  final bool completed;
   final String contentBody;
 
   const Lesson({
@@ -48,10 +56,12 @@ class Lesson extends Equatable {
     required this.estimatedMinutes,
     required this.viewed,
     required this.contentBody,
+    this.unlocked = true,
+    this.completed = false,
   });
 
   @override
-  List<Object?> get props => [id, viewed];
+  List<Object?> get props => [id, viewed, unlocked, completed];
 }
 
 /// نتیجهٔ ثبت بازدید یک درس — برای بازخورد فوری در UI (امتیاز/جشن تکمیل
@@ -63,10 +73,18 @@ class LessonLearnedResult extends Equatable {
   final bool assigned;
   final bool alreadyAssigned;
 
-  const LessonLearnedResult({required this.assigned, required this.alreadyAssigned});
+  /// سهمیهٔ رایگان Gemini موقتاً تمام شده (HTTP 429 سمت سرور) — UI باید
+  /// SnackBar محترمانهٔ «قفل موقت سیستم» نشان دهد، نه پیام خطای عمومی.
+  final bool rateLimited;
+
+  const LessonLearnedResult({
+    required this.assigned,
+    required this.alreadyAssigned,
+    this.rateLimited = false,
+  });
 
   @override
-  List<Object?> get props => [assigned, alreadyAssigned];
+  List<Object?> get props => [assigned, alreadyAssigned, rateLimited];
 }
 
 class LessonViewResult extends Equatable {

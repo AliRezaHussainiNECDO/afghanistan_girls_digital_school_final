@@ -60,6 +60,7 @@ class CurriculumRemoteDataSource implements CurriculumDataSource {
     return LessonLearnedResult(
       assigned: m['assigned'] == true,
       alreadyAssigned: m['alreadyAssigned'] == true,
+      rateLimited: m['rateLimited'] == true || m['homework'] == 'rate_limited',
     );
   }
 
@@ -67,6 +68,9 @@ class CurriculumRemoteDataSource implements CurriculumDataSource {
         id: e['id'] as String, chapterId: e['chapter_id'] as String, titleFa: e['title_fa'] as String,
         estimatedMinutes: (e['estimated_minutes'] as num?)?.toInt() ?? 15,
         viewed: (e['viewed'] as num?)?.toInt() == 1 || e['viewed'] == true,
+        // قفل زنجیره‌ای سرور-محور؛ نبود فیلد (پاسخ قدیمی) = باز (سازگاری API).
+        unlocked: e['unlocked'] == null || (e['unlocked'] as num?)?.toInt() == 1 || e['unlocked'] == true,
+        completed: (e['completed'] as num?)?.toInt() == 1 || e['completed'] == true,
         contentBody: (e['content_body'] as String?) ?? '',
       );
 }

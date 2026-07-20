@@ -22,6 +22,9 @@ dependencies:
   google_fonts: ^8.1.0
   image_picker: ^1.1.2
   flutter_animate: ^4.5.2
+  # رندر متن Markdown درس‌های تولید هوشمند (Pure AI) — راست‌به‌چپ کامل در
+  # student lesson view (lesson_detail_screen.dart).
+  flutter_markdown: ^0.7.4+3
   confetti: ^0.8.0
   file_picker: ^11.0.2
   syncfusion_flutter_pdf: ^33.2.15

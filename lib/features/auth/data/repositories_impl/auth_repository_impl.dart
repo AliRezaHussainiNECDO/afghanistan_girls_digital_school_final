@@ -217,12 +217,13 @@ class AuthRepositoryImpl implements AuthRepository {
       case ApiErrorType.badRequest:
         return ValidationFailure(e.message);
       case ApiErrorType.forbidden:
-        // مثلاً 403 INVALID_INVITE_CODE (بخش ۳ب.۲) یا نبود مجوز RBAC.
+      // مثلاً 403 INVALID_INVITE_CODE (بخش ۳ب.۲) یا نبود مجوز RBAC.
         return ServerFailure(e.message, code: e.code);
       case ApiErrorType.unauthorized:
       case ApiErrorType.conflict:
       case ApiErrorType.notFound:
       case ApiErrorType.server:
+      case ApiErrorType.rateLimited: // ✨ اضافه شدن خطای محدودیت توکن جیمینی به زنجیره سرور
       case ApiErrorType.unknown:
         return ServerFailure(e.message, code: e.code);
     }

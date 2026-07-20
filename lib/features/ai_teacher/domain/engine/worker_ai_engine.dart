@@ -89,8 +89,13 @@ $contextText
     ];
 
     try {
-      final data = await _api.post('/ai-teacher/chat',
-          data: {'messages': messages, 'subjectId': r.subjectId});
+      final data = await _api.post('/ai-teacher/chat', data: {
+        'messages': messages,
+        'subjectId': r.subjectId,
+        // 🔒 قفل محدودهٔ آموزشی سرور-محور: با lessonId، سرور System Prompt
+        // «تمرکز مطلق بر درس» خودش را جایگزین System کلاینت می‌کند.
+        if (r.lessonId != null && r.lessonId!.isNotEmpty) 'lessonId': r.lessonId,
+      });
       final rawReply = (data is Map ? data['reply'] as String? : null)?.trim();
       if (rawReply == null || rawReply.isEmpty) {
         throw WorkerAiUnavailableException('پاسخ خالی از سرور دریافت شد.');

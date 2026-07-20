@@ -36,6 +36,13 @@ class AiEngineRequest {
   /// روند عادی است و نیازی به تغییر سبک نیست.
   final String? difficultyHint;
 
+  /// 🔒 قفل محدودهٔ آموزشی: وقتی گفتگو از داخل یک «درسِ باز شده» است، شناسهٔ
+  /// همان درس اینجا می‌آید و موتور ابری آن را به سرور می‌فرستد تا System
+  /// Prompt «تمرکز مطلق بر درس» به‌صورت Server-Authoritative ساخته شود
+  /// (`backend/src/routes/ai.ts::buildLessonLockSystemPrompt`) — کلاینت
+  /// نمی‌تواند قفل را دور بزند.
+  final String? lessonId;
+
   const AiEngineRequest({
     required this.intent,
     required this.subjectId,
@@ -48,6 +55,7 @@ class AiEngineRequest {
     required this.studentMessage,
     this.openDomain = false,
     this.difficultyHint,
+    this.lessonId,
   });
 }
 
