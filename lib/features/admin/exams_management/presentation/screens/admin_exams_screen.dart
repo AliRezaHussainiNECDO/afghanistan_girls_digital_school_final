@@ -114,7 +114,10 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
           Expanded(
             child: examsAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(adminExamsProvider),
+                  ),
               data: (exams) {
                 final filtered =
                     _gradeFilter == null ? exams : exams.where((e) => e.gradeNumber == _gradeFilter).toList();

@@ -49,7 +49,10 @@ class AdminExamQuestionsScreen extends ConsumerWidget {
       ),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(adminExamQuestionsProvider(examId)),
+            ),
         data: (questions) {
           if (questions.isEmpty) {
             return Center(
