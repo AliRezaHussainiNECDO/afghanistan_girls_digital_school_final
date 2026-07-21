@@ -281,6 +281,7 @@ const Map<String, String> psStrings = {
 'certificates.downloadPdf': 'PDF ډاونلوډ کړئ',
 'certificates.saveImage': 'انځور وساتئ',
 'certificates.serialNumberLabel': 'د سیریال شمېره',
+'certificates.scanToVerify': 'د تصدیق لپاره سکن کړئ',
 'certificates.certifiesText': 'دا تصدیقنامه تصدیقوي چې',
 'certificates.completionTitle': 'د ټولګي بشپړولو تصدیقنامه',
 'certificates.achievementSentence': 'د {year} زده کړیز کال کې {grade} ټولګی د {average}٪ اوسط په بریالیتوب سره بشپړ کړی دی{honor}.',

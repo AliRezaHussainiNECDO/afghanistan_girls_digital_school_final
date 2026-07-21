@@ -272,6 +272,7 @@ const Map<String, String> faStrings = {
 'certificates.downloadPdf': 'دانلود PDF',
 'certificates.saveImage': 'ذخیرهٔ عکس',
 'certificates.serialNumberLabel': 'شماره سریال',
+'certificates.scanToVerify': 'برای تأیید اسکن کنید',
 'certificates.certifiesText': 'این گواهی‌نامه تأیید می‌کند که',
 'certificates.completionTitle': 'گواهی‌نامهٔ اتمام صنف',
 'certificates.achievementSentence': 'صنف {grade} را در سال تعلیمی {year} با میانگین نمرات ٪{average} با موفقیت به پایان رسانیده است{honor}.',

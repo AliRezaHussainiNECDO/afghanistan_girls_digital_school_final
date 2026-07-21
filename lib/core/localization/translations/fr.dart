@@ -281,6 +281,7 @@ const Map<String, String> frStrings = {
 'certificates.downloadPdf': 'Télécharger le PDF',
 'certificates.saveImage': "Enregistrer l'image",
 'certificates.serialNumberLabel': 'Numéro de série',
+'certificates.scanToVerify': 'Scannez pour vérifier',
 'certificates.certifiesText': 'Ce certificat atteste que',
 'certificates.completionTitle': 'Certificat de fin de classe',
 'certificates.achievementSentence': "a terminé avec succès la classe {grade} pour l'année scolaire {year} avec une moyenne de {average} %{honor}.",

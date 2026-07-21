@@ -281,6 +281,7 @@ const Map<String, String> enStrings = {
 'certificates.downloadPdf': 'Download PDF',
 'certificates.saveImage': 'Save Image',
 'certificates.serialNumberLabel': 'Serial Number',
+'certificates.scanToVerify': 'Scan to verify',
 'certificates.certifiesText': 'This certificate confirms that',
 'certificates.completionTitle': 'Certificate of Grade Completion',
 'certificates.achievementSentence': 'has successfully completed Grade {grade} in the {year} academic year with an average of {average}%{honor}.',
