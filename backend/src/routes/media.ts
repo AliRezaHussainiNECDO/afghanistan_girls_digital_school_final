@@ -46,6 +46,28 @@ async function isAdmin(c: any): Promise<boolean> {
   return u?.role === 'super_admin';
 }
 
+// رفع اشکال امنیتی/حریم‌خصوصی مهم: قبلاً چند Endpoint چت هیچ بررسی
+// نمی‌کردند که آیا کاربر درخواست‌دهنده واقعاً «عضو» همان گفتگو است یا نه —
+// یعنی هرکسی با دانستن (یا حدس زدن) شناسهٔ یک گفتگو می‌توانست پیام‌های
+// خصوصی دو نفر دیگر را بخواند یا حتی در آن پیام بفرستد. این تابع بررسی
+// می‌کند که userId واقعاً در فهرست participants همان گفتگو باشد.
+async function isConversationParticipant(c: any, conversationId: string, userId: string): Promise<boolean> {
+  const conv = await c.env.DB.prepare('SELECT participants FROM conversations WHERE id = ?')
+    .bind(conversationId)
+    .first<{ participants: string | null }>();
+  if (!conv) return false;
+  // گفتگوهای «کاربر ↔ مدیریت» با قرارداد شناسه‌ای admin_<userId> ساخته
+  // می‌شوند — این خودش یک تضمین اضافه است، حتی اگر participants به هر
+  // دلیلی (داده‌های قدیمی) کامل نباشد.
+  if (conversationId === `admin_${userId}`) return true;
+  try {
+    const parts = JSON.parse(conv.participants ?? '[]') as { id: string }[];
+    return parts.some((p) => p.id === userId);
+  } catch {
+    return false;
+  }
+}
+
 // ═══════════════════════════════ هم‌صنفی‌ها ═════════════════════════════════
 // هم‌صنفی = سایر دانش‌آموزان فعال هم‌صنف (بخش ۱۰.۱الف — فقط بین هم‌صنفی‌ها).
 
@@ -80,6 +102,12 @@ media.post('/conversations', async (c) => {
   const u = await me(c);
   if (!u) return c.json({ error: 'unauthorized' }, 401);
   const body = await c.req.json<{ type: 'dm' | 'admin'; classId: string; className: string; participants: Participant[] }>();
+  // رفع اشکال: قبلاً participants دو نفرهٔ یک «dm» کاملاً از سمت کلاینت
+  // می‌آمد، بدون اینکه بررسی شود خودِ کاربر احراز-هویت‌شده واقعاً یکی از
+  // آن دو نفر است — یعنی تئوریاً می‌شد بین دو کاربر دیگر یک گفتگو باز کرد.
+  if (body.type === 'dm' && !(body.participants ?? []).some((p) => p.id === u.sub)) {
+    return forbid(c);
+  }
   const id =
     body.type === 'admin'
       ? `admin_${u.sub}`
@@ -96,7 +124,13 @@ media.post('/conversations', async (c) => {
 });
 
 media.get('/users/:userId/conversations', async (c) => {
+  const u = await me(c);
+  if (!u) return c.json({ error: 'unauthorized' }, 401);
   const userId = c.req.param('userId');
+  // رفع اشکال حریم‌خصوصی: قبلاً هیچ احراز هویتی روی این Endpoint نبود —
+  // هرکسی با هر userId می‌توانست فهرست گفتگوها (و پیش‌نمایش آخرین پیام) هر
+  // کاربر دیگر را ببیند. حالا فقط خودِ کاربر (یا مدیر) اجازه دارد.
+  if (userId !== u.sub && u.role !== 'super_admin') return forbid(c);
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM conversations WHERE participants LIKE ? ORDER BY (type = 'admin') DESC, last_message_at DESC",
   )
@@ -106,8 +140,15 @@ media.get('/users/:userId/conversations', async (c) => {
 });
 
 media.get('/conversations/:id/messages', async (c) => {
+  const u = await me(c);
+  if (!u) return c.json({ error: 'unauthorized' }, 401);
   const id = c.req.param('id');
-  const viewerId = c.req.query('viewerId') ?? '';
+  // رفع اشکال امنیتی مهم: قبلاً این Endpoint اصلاً توکن را بررسی نمی‌کرد و
+  // «viewerId» را مستقیم از query می‌گرفت — یعنی هرکسی با دانستن شناسهٔ
+  // یک گفتگو (و جعل viewerId) می‌توانست پیام‌های خصوصی دو کاربر دیگر را
+  // بخواند. حالا هویت واقعی از JWT می‌آید و عضویت در گفتگو بررسی می‌شود.
+  if (u.role !== 'super_admin' && !(await isConversationParticipant(c, id, u.sub))) return forbid(c);
+  const viewerId = u.sub;
   const { results } = await c.env.DB.prepare(
     `SELECT * FROM messages WHERE conversation_id = ?
        AND (sender_id = ? OR NOT (flagged = 1 AND review_status IN ('pending','rejected')))
@@ -122,6 +163,9 @@ media.post('/conversations/:id/messages', async (c) => {
   const u = await me(c);
   if (!u) return c.json({ error: 'unauthorized' }, 401);
   const conversationId = c.req.param('id');
+  // رفع اشکال: قبلاً هر کاربر احراز-هویت‌شده می‌توانست در هر گفتگویی
+  // (حتی گفتگوی خصوصی دو نفر دیگر) پیام بفرستد، چون عضویت بررسی نمی‌شد.
+  if (!(await isConversationParticipant(c, conversationId, u.sub))) return forbid(c);
   const body = await c.req.json<{ senderName: string; senderClassName: string; text: string; replyToId?: string }>();
   const flagged = bannedWords.some((w) => body.text.includes(w));
   const id = uid();
@@ -175,6 +219,8 @@ media.post('/conversations/:id/messages/voice', async (c) => {
   const u = await me(c);
   if (!u) return c.json({ error: 'unauthorized' }, 401);
   const conversationId = c.req.param('id');
+  // همان بررسی عضویت — تا کسی نتواند پیام صوتی در گفتگوی دیگران بگذارد.
+  if (!(await isConversationParticipant(c, conversationId, u.sub))) return forbid(c);
   const senderName = decodeURIComponent(c.req.header('X-Sender-Name') ?? '');
   const senderClassName = decodeURIComponent(c.req.header('X-Sender-Class') ?? '');
   const durationMs = Number(c.req.header('X-Duration-Ms') ?? '0');
