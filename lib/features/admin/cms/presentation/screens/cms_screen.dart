@@ -151,7 +151,10 @@ class _BooksTabState extends ConsumerState<_BooksTab> {
       ),
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(cmsBooksListProvider),
+            ),
         data: (books) {
           final filtered = books
               .where((b) =>
@@ -362,7 +365,10 @@ class _LessonsTabState extends ConsumerState<_LessonsTab> {
       ),
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(cmsLessonsProvider),
+            ),
         data: (lessons) {
           final filtered = lessons
               .where((l) =>
@@ -482,7 +488,10 @@ class _QuestionsTabState extends ConsumerState<_QuestionsTab> {
       ),
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(cmsQuestionsListProvider),
+            ),
         data: (questions) {
           final filtered = questions
               .where((q) => _query.isEmpty || q.text.contains(_query) || q.subject.contains(_query))
@@ -670,7 +679,10 @@ class _InviteCodesTabState extends ConsumerState<_InviteCodesTab> {
       ),
       body: codesAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(cmsInviteCodesProvider('student')),
+            ),
         data: (codes) {
           final filtered = codes
               .where((c) => _query.isEmpty || c.code.contains(_query) || c.batchLabel.contains(_query))
