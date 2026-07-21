@@ -51,7 +51,10 @@ class AttendanceScreen extends ConsumerWidget {
       role: AppUserRole.student,
       body: summaryAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(attendanceSummaryProvider(studentId)),
+            ),
         data: (summary) => ListView(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
           children: [
