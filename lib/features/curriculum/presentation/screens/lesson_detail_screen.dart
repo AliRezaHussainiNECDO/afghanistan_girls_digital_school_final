@@ -306,7 +306,10 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       ),
       body: lessonAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(lessonProvider(widget.lessonId)),
+            ),
         data: (lesson) {
           // ثبت خودکار «دیدن درس» (زنجیرهٔ امتیاز/پیشرفت، فقط بار اول).
           _autoMarkViewedOnce(lesson);
