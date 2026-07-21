@@ -295,7 +295,10 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(messagesProvider(widget.conversationId)),
+                  ),
               data: (messages) {
                 // فقط با آمدن پیام تازه به انتها بپر — نه با هر تازه‌سازی زنده
                 // (تا وقتی کاربر مشغول خواندن پیام‌های قبلی است، مزاحم نشود).

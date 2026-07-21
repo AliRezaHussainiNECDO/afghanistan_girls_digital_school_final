@@ -89,7 +89,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onRefresh: () async => ref.invalidate(conversationsProvider),
         child: conversationsAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(error: e),
+          error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(conversationsProvider),
+              ),
           data: (conversations) {
             final filtered = _query.trim().isEmpty
                 ? conversations
@@ -398,7 +401,11 @@ class _ClassmatesSheet extends ConsumerWidget {
                 loading: () => const Padding(
                     padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
                 error: (e, st) => Padding(
-                    padding: const EdgeInsets.all(16), child: Text(e.toString())),
+                    padding: const EdgeInsets.all(16),
+                    child: ErrorView(
+                      error: e,
+                      onRetry: () => ref.invalidate(classmatesProvider),
+                    )),
                 data: (classmates) => classmates.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.all(24),
