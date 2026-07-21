@@ -450,36 +450,113 @@ ai.post('/ai-teacher/tts', async (c) => {
   return c.json(fail('TTS_NOT_CONFIGURED', 'سرویس صدا پیکربندی نشده است', 'TTS not configured', 'د غږ خدمت تنظیم شوی نه دی', 'Le service de synthèse vocale n\'est pas configuré'), 503);
 });
 
-// ═══════════════════════ STT — گفتار به متن (Whisper) ════════════════════════
+// ═══════════════════════ STT — گفتار به متن (Whisper / Gemini) ═══════════════
 // بدنه = بایت‌های صوتی خام (audio/m4a). خروجی: {text}. زبان: دری/فارسی.
+//
+// رفع اشکال «ثبت صدا در معلم هوشمند کار نمی‌کند»: قبلاً این Endpoint **فقط**
+// با کلید پولی OpenAI (`AI_PROVIDER_KEY`) کار می‌کرد و در نبود آن همیشه ۵۰۳
+// برمی‌گرداند — در حالی که گفتگوی متنی از مسیر رایگان Gemini
+// (`GEMINI_API_KEY`) کاملاً کار می‌کرد. یعنی شاگرد میکروفون را می‌زد، صدایش
+// ضبط می‌شد، ولی چون سرور نمی‌توانست آن را به متن تبدیل کند، هیچ‌وقت پیامی
+// ارسال نمی‌شد (بی‌صدا Fail-safe می‌شد). حالا در نبود کلید OpenAI، از همان
+// کلید رایگان Gemini (که برای چت هم استفاده می‌شود — بخش «آرکیتکچر ۱» بالا)
+// برای تبدیل گفتار به متن استفاده می‌شود؛ نیازی به کلید/هزینهٔ اضافه نیست.
+
+/** ArrayBuffer صوتی خام → رشتهٔ base64 (سازگار با محدودیت آرگومان‌های V8/Workers
+ *  — تبدیل تکه‌تکه به‌جای یک‌جا برای فایل‌های بزرگ). */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/** تبدیل گفتار به متن با Gemini (multimodal) — جایگزین رایگان Whisper وقتی
+ *  کلید OpenAI تنظیم نشده. `null` یعنی تشخیص ممکن نبود (Fail-safe). */
+async function transcribeViaGemini(
+  env: { GEMINI_API_KEY?: string; GEMINI_VISION_MODEL?: string },
+  audioBase64: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_VISION_MODEL ?? GEMINI_DEFAULT_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text:
+                    'این فایل صوتی گفتار یک شاگرد به زبان دری/فارسی است. دقیقاً همان چیزی را که گفته ' +
+                    'شده به متن تبدیل کن. فقط متنِ گفته‌شده را برگردان — بدون هیچ توضیح، مقدمه، یا ' +
+                    'علامت نقل‌قول اضافه. اگر هیچ گفتاری قابل‌تشخیص نبود، رشتهٔ خالی برگردان.',
+                },
+                { inlineData: { mimeType: 'audio/mp4', data: audioBase64 } },
+              ],
+            },
+          ],
+          generationConfig: { temperature: 0, maxOutputTokens: 512 },
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as any;
+    const text = sanitizeDariText(
+      data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? '').join('') ?? '',
+    ).trim();
+    return text || null;
+  } catch (_) {
+    return null; // Fail-safe
+  }
+}
 
 ai.post('/ai-teacher/stt', async (c) => {
   if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
-  if (!c.env.AI_PROVIDER_KEY) {
+  if (!c.env.AI_PROVIDER_KEY && !c.env.GEMINI_API_KEY) {
     return c.json(fail('STT_NOT_CONFIGURED', 'سرویس تبدیل گفتار پیکربندی نشده است', 'STT not configured', 'د خبرو بدلون خدمت تنظیم شوی نه دی', 'Le service de reconnaissance vocale n\'est pas configuré'), 503);
   }
   const bytes = await c.req.arrayBuffer();
   if (bytes.byteLength === 0) {
     return c.json(fail('BAD_REQUEST', 'فایل صوتی خالی است', 'Empty audio', 'غږیز فایل تش دی', 'Le fichier audio est vide'), 400);
   }
-  try {
-    const form = new FormData();
-    form.append('file', new File([bytes], 'audio.m4a', { type: 'audio/m4a' }));
-    form.append('model', c.env.AI_STT_MODEL ?? 'whisper-1');
-    form.append('language', 'fa'); // دری نزدیک به فارسی؛ Whisper پشتیبانی می‌کند.
-    const res = await fetch(c.env.AI_STT_URL ?? 'https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${c.env.AI_PROVIDER_KEY}` },
-      body: form,
-    });
-    if (!res.ok) {
-      return c.json(fail('STT_UPSTREAM', 'خطا از سرویس تبدیل گفتار', 'STT upstream error', 'د خبرو بدلون له خدمت نه تېروتنه', 'Erreur du service de reconnaissance vocale'), 502);
+
+  // ۱) OpenAI Whisper — بالاترین دقت، اگر کلید تنظیم شده باشد.
+  if (c.env.AI_PROVIDER_KEY) {
+    try {
+      const form = new FormData();
+      form.append('file', new File([bytes], 'audio.m4a', { type: 'audio/m4a' }));
+      form.append('model', c.env.AI_STT_MODEL ?? 'whisper-1');
+      form.append('language', 'fa'); // دری نزدیک به فارسی؛ Whisper پشتیبانی می‌کند.
+      const res = await fetch(c.env.AI_STT_URL ?? 'https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${c.env.AI_PROVIDER_KEY}` },
+        body: form,
+      });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        const text = (data?.text ?? '').trim();
+        if (text) return c.json({ text });
+      }
+      // خطا/متن خالی از OpenAI — اگر Gemini هم تنظیم شده، پایین امتحان می‌شود.
+    } catch (_) {
+      // به جایگزین پایین می‌رویم.
     }
-    const data = (await res.json()) as any;
-    return c.json({ text: (data?.text ?? '').trim() });
-  } catch (_) {
-    return c.json(fail('STT_NETWORK', 'اتصال به سرویس تبدیل گفتار ناموفق بود', 'STT network error', 'د خبرو بدلون له خدمت سره اړیکه ونشوه', 'Échec de la connexion au service de reconnaissance vocale'), 502);
   }
+
+  // ۲) جایگزین رایگان — همان کلید Gemini چت (بدون هزینه/کلید اضافه).
+  if (c.env.GEMINI_API_KEY) {
+    const base64 = arrayBufferToBase64(bytes);
+    const text = await transcribeViaGemini(c.env, base64);
+    if (text) return c.json({ text });
+  }
+
+  return c.json(fail('STT_UPSTREAM', 'خطا از سرویس تبدیل گفتار', 'STT upstream error', 'د خبرو بدلون له خدمت نه تېروتنه', 'Erreur du service de reconnaissance vocale'), 502);
 });
 
 // ═══════════════════ بازیابی معنایی (RAG) — معماری ۱ ═══════════════════════
