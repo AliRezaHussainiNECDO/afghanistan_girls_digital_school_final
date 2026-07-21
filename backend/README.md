@@ -74,8 +74,14 @@ npm run dev
 
 ## نکات امنیتی قبل از انتشار عمومی
 
-- تابع `isAdmin()` در `src/index.ts` فعلاً همیشه `true` برمی‌گرداند (برای
-  سادگی فاز ۱). قبل از انتشار واقعی، باید احراز هویت واقعی (JWT کاربر
-  مدیر) اضافه شود.
-- `ALLOWED_ORIGIN` در `wrangler.toml` را از `*` به آدرس دقیق اپ وب خودتان
-  محدود کنید.
+- ~~تابع `isAdmin()` همیشه `true` برمی‌گرداند~~ — این یادداشت قدیمی بود.
+  اکنون همهٔ نسخه‌های `isAdmin()`/`requireAdmin()` (در `routes/admin.ts`,
+  `routes/cms.ts`, `routes/curriculum.ts`, `routes/media.ts`,
+  `routes/advisor.ts`) واقعاً توکن JWT را تأیید و نقش کاربر (`role ===
+  'super_admin'`) را چک می‌کنند — رمزها هم با PBKDF2 هش می‌شوند، نه متن ساده.
+  چیزی برای اصلاح باقی نمانده؛ فقط مطمئن شوید رمز `JWT_SECRET` یک مقدار
+  تصادفی و طولانی است (`wrangler secret put JWT_SECRET`).
+- ✅ `ALLOWED_ORIGIN` در `wrangler.toml` دیگر `*` نیست — به دامنهٔ
+  `afghanistangirlsdigitalschool.org` (نسخهٔ http/https و با/بدون www)
+  محدود شده است. اگر دامنهٔ دیگری هم اضافه کردید (مثلاً زیردامنهٔ admin
+  جداگانه)، آن را هم با کاما به همان مقدار اضافه کنید.
