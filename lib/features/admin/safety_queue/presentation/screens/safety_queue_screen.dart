@@ -80,7 +80,10 @@ class SafetyQueueScreen extends ConsumerWidget {
       role: AppUserRole.superAdmin,
       body: queueAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(safetyQueueProvider),
+            ),
         data: (items) {
           final open = items.where((i) => i.status == SafetyItemStatus.open).length;
           return Column(
