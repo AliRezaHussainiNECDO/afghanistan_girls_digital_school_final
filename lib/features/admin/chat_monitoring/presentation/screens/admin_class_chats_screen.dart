@@ -33,7 +33,10 @@ class AdminClassChatsScreen extends ConsumerWidget {
         onRefresh: () async => ref.invalidate(classConversationsProvider(classId)),
         child: conversationsAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(error: e),
+          error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(classConversationsProvider(classId)),
+              ),
           data: (conversations) => conversations.isEmpty
               ? ListView(
                   children: [
