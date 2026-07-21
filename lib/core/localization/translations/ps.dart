@@ -113,6 +113,16 @@ const Map<String, String> psStrings = {
 'dashboard.homeworkCardSubtitle': 'د خپل کور د حل انځور واستوئ او سملاسي نمره ترلاسه کړئ',
 'dashboard.certificatesIssuedCount': '{count} تصدیقنامې صادر شوي — کتل او ډاونلوډ',
 'dashboard.noCertificatesYet': 'تر اوسه هېڅ تصدیقنامه نه ده صادر شوې — د ټولګي په بشپړولو سره صادریږي',
+'dashboard.mainSections': 'اصلي برخې',
+'parent.homework': 'د ماشومانو کورنۍ دنده',
+'parent.homeworkIntro': 'وګورئ چې ستاسو ماشوم خپلې کورنۍ دندې لېږلې دي که نه',
+'parent.homeworkEmpty': 'تر اوسه دې ماشوم ته هېڅ کورنۍ دنده نه ده سپارل شوې.',
+'parent.homeworkNotSubmitted': 'تر اوسه نه ده لېږل شوې',
+'parent.homeworkSubmittedAt': 'ولېږل شوه: {date}',
+'parent.homeworkTotal': 'ټولې دندې',
+'parent.homeworkSubmittedCount': 'لېږل شوې',
+'parent.homeworkPendingCount': 'نه لېږل شوې',
+'parent.homeworkSummarySubtitle': 'له {total} څخه {submitted} لېږل شوې — {pending} د لېږلو په تمه',
 
 // grade map
 'gradeMap.title': 'د ټولګیو نقشه',
@@ -630,6 +640,7 @@ const Map<String, String> psStrings = {
 'admin.totalStudents': 'ټول زده‌کوونکي',
 'admin.activeToday': 'نن فعال',
 'admin.atRisk': 'په خطر کې زده‌کوونکي',
+'admin.gradeDistribution': 'زده‌کوونکي د ټولګي له مخې',
 'admin.seminars': 'د سیمینارونو مدیریت',
 'admin.editSeminar': 'سیمینار سمول',
 'admin.deleteSeminar': 'سیمینار ړنګول',
@@ -698,6 +709,10 @@ const Map<String, String> psStrings = {
 
 // instructor
 'instructor.mySeminars': 'زما سیمینارونه',
+'instructor.totalSeminars': 'ټول سیمینارونه',
+'instructor.nextSeminar': 'ستاسو راتلونکی سیمینار',
+'instructor.allSeminars': 'زما ټول سیمینارونه',
+'instructor.overviewTitle': 'ستاسو د سیمینارونو احصایې',
 'instructor.createSeminar': 'نوی سیمینار جوړول',
 'instructor.registrations': 'نوم لیکنې',
 'instructor.titleLabel': 'د سیمینار سرلیک',

@@ -113,6 +113,16 @@ const Map<String, String> frStrings = {
 'dashboard.homeworkCardSubtitle': 'Envoyez une photo de votre devoir et recevez une note instantanée',
 'dashboard.certificatesIssuedCount': '{count} certificats délivrés — voir et télécharger',
 'dashboard.noCertificatesYet': "Aucun certificat délivré pour l'instant — délivré à la fin de la classe",
+'dashboard.mainSections': 'Sections principales',
+'parent.homework': 'Devoirs des enfants',
+'parent.homeworkIntro': 'Vérifiez si votre enfant a envoyé ses devoirs',
+'parent.homeworkEmpty': 'Aucun devoir n’a encore été assigné à cet enfant.',
+'parent.homeworkNotSubmitted': 'Pas encore envoyé',
+'parent.homeworkSubmittedAt': 'Envoyé : {date}',
+'parent.homeworkTotal': 'Total',
+'parent.homeworkSubmittedCount': 'Envoyés',
+'parent.homeworkPendingCount': 'Non envoyés',
+'parent.homeworkSummarySubtitle': '{submitted} sur {total} envoyés — {pending} en attente d’envoi',
 
 // grade map
 'gradeMap.title': 'Carte des classes',
@@ -630,6 +640,7 @@ const Map<String, String> frStrings = {
 'admin.totalStudents': 'Total des élèves',
 'admin.activeToday': "Actives aujourd'hui",
 'admin.atRisk': 'Élèves à risque',
+'admin.gradeDistribution': 'Élèves par classe',
 'admin.seminars': 'Gestion des séminaires',
 'admin.editSeminar': 'Modifier le séminaire',
 'admin.deleteSeminar': 'Supprimer le séminaire',
@@ -698,6 +709,10 @@ const Map<String, String> frStrings = {
 
 // instructor
 'instructor.mySeminars': 'Mes séminaires',
+'instructor.totalSeminars': 'Total des séminaires',
+'instructor.nextSeminar': 'Votre prochain séminaire',
+'instructor.allSeminars': 'Tous mes séminaires',
+'instructor.overviewTitle': 'Vos statistiques de séminaires',
 'instructor.createSeminar': 'Créer un nouveau séminaire',
 'instructor.registrations': 'Inscriptions',
 'instructor.titleLabel': 'Titre du séminaire',

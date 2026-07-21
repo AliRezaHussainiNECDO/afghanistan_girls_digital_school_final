@@ -113,6 +113,7 @@ const Map<String, String> faStrings = {
 'dashboard.homeworkCardSubtitle': 'عکس حل مشق‌تان را بفرستید و فوری نمره بگیرید',
 'dashboard.certificatesIssuedCount': '{count} گواهی‌نامه صادرشده — مشاهده و دانلود',
 'dashboard.noCertificatesYet': 'هنوز گواهی‌نامه‌ای صادر نشده — با تکمیل صنف صادر می‌شود',
+'dashboard.mainSections': 'بخش‌های اصلی',
 
 // grade map
 'gradeMap.title': 'نقشهٔ صنوف',
@@ -630,6 +631,7 @@ const Map<String, String> faStrings = {
 'admin.totalStudents': 'مجموع دانش‌آموزان',
 'admin.activeToday': 'فعال امروز',
 'admin.atRisk': 'دانش‌آموزان در معرض خطر',
+'admin.gradeDistribution': 'توزیع دانش‌آموزان بر اساس صنف',
 'admin.seminars': 'مدیریت سمینارها',
 'admin.editSeminar': 'ویرایش سمینار',
 'admin.deleteSeminar': 'حذف سمینار',
@@ -698,6 +700,10 @@ const Map<String, String> faStrings = {
 
 // instructor
 'instructor.mySeminars': 'سمینارهای من',
+'instructor.totalSeminars': 'مجموع سمینارها',
+'instructor.nextSeminar': 'سمینار بعدی شما',
+'instructor.allSeminars': 'همهٔ سمینارهای من',
+'instructor.overviewTitle': 'آمار سمینارهای شما',
 'instructor.createSeminar': 'ساخت سمینار جدید',
 'instructor.registrations': 'ثبت‌نام‌ها',
 'instructor.titleLabel': 'عنوان سمینار',
@@ -816,6 +822,15 @@ const Map<String, String> faStrings = {
     'فرزند شما این کد ۶ رقمی را از «پروفایل ← ساخت کد دعوت برای والدین» می‌سازد',
 'parent.noAchievementsYet': 'هنوز دستاوردی ثبت نشده است — با اولین امتحان، اولین نشان ظاهر می‌شود',
 'parent.noCertificatesYetHint': 'گواهی‌نامه پس از ختم موفقانهٔ صنف توسط مدیریت صادر می‌شود',
+'parent.homework': 'کارخانگی فرزندان',
+'parent.homeworkIntro': 'کنترول کنید که فرزندتان کارخانگی‌هایش را ارسال کرده است یا خیر',
+'parent.homeworkEmpty': 'هنوز کارخانگی‌ای برای این فرزند ثبت نشده است.',
+'parent.homeworkNotSubmitted': 'هنوز ارسال نشده',
+'parent.homeworkSubmittedAt': 'ارسال شد: {date}',
+'parent.homeworkTotal': 'کل مشق‌ها',
+'parent.homeworkSubmittedCount': 'ارسال‌شده',
+'parent.homeworkPendingCount': 'ارسال‌نشده',
+'parent.homeworkSummarySubtitle': '{submitted} از {total} ارسال شده — {pending} در انتظار ارسال',
 'profile.guardianInviteExplain':
     'این کد را به پدر یا مادر خود بدهید. آن‌ها پس از ورود به حساب والد، در «داشبورد والدین» این کد را وارد می‌کنند تا به پیشرفت و نمرات شما دسترسی فقط‌خواندنی پیدا کنند.',
 'profile.inviteCodeValidity': 'اعتبار: {hours} ساعت (۷۲ ساعت از زمان ساخت)',

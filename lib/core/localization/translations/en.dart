@@ -113,6 +113,16 @@ const Map<String, String> enStrings = {
 'dashboard.homeworkCardSubtitle': 'Send a photo of your homework and get graded instantly',
 'dashboard.certificatesIssuedCount': '{count} certificates issued — view and download',
 'dashboard.noCertificatesYet': 'No certificates issued yet — issued upon completing the grade',
+'dashboard.mainSections': 'Main Sections',
+'parent.homework': "Children's Homework",
+'parent.homeworkIntro': 'Check whether your child has submitted their homework',
+'parent.homeworkEmpty': 'No homework has been assigned to this child yet.',
+'parent.homeworkNotSubmitted': 'Not submitted yet',
+'parent.homeworkSubmittedAt': 'Submitted: {date}',
+'parent.homeworkTotal': 'Total',
+'parent.homeworkSubmittedCount': 'Submitted',
+'parent.homeworkPendingCount': 'Not submitted',
+'parent.homeworkSummarySubtitle': '{submitted} of {total} submitted — {pending} awaiting submission',
 
 // grade map
 'gradeMap.title': 'Grade Map',
@@ -630,6 +640,7 @@ const Map<String, String> enStrings = {
 'admin.totalStudents': 'Total students',
 'admin.activeToday': 'Active today',
 'admin.atRisk': 'At-risk students',
+'admin.gradeDistribution': 'Students by grade',
 'admin.seminars': 'Seminar management',
 'admin.editSeminar': 'Edit seminar',
 'admin.deleteSeminar': 'Delete seminar',
@@ -698,6 +709,10 @@ const Map<String, String> enStrings = {
 
 // instructor
 'instructor.mySeminars': 'My seminars',
+'instructor.totalSeminars': 'Total seminars',
+'instructor.nextSeminar': 'Your next seminar',
+'instructor.allSeminars': 'All my seminars',
+'instructor.overviewTitle': 'Your seminar stats',
 'instructor.createSeminar': 'Create new seminar',
 'instructor.registrations': 'Registrations',
 'instructor.titleLabel': 'Seminar title',
