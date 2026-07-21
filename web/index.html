@@ -20,6 +20,12 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="مکتب دیجیتال دختران افغانستان — Afghanistan Girls Digital School">
 
+  <!-- viewport صریح — بدون این، خود موتور فلاتر یک viewport با
+       user-scalable=no تزریق می‌کند که Lighthouse/Accessibility را رد
+       می‌کند (کاربران کم‌بینا نمی‌توانند زوم کنند). با gestureهای داخلی
+       اپ تداخلی ندارد چون فلاتر خودش double-tap را مدیریت می‌کند. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -41,6 +47,19 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <!-- رندرر HTML به‌جای CanvasKit — دلیل: PageSpeed/Lighthouse گزارش
+       "NO_LCP" (هیچ Largest Contentful Paint شناسایی نشد) می‌داد، چون
+       CanvasKit همه‌چیز را روی یک <canvas> واحد می‌کشد و هیچ عنصر
+       متن/تصویر معنایی در DOM نمی‌ماند تا Lighthouse به‌عنوان LCP
+       بشناسدش. رندرر HTML از عناصر واقعی DOM استفاده می‌کند (سریع‌تر در
+       لود اولیه، به‌خصوص با اینترنت کند/موبایل، و LCP قابل‌اندازه‌گیری
+       دارد). اگر بعد از دیپلوی مشکل ظاهری/گرافیکی دیدید، این خط را
+       حذف کنید تا به CanvasKit پیش‌فرض برگردد. -->
+  <script>
+    window.flutterConfiguration = {
+      renderer: "html"
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
