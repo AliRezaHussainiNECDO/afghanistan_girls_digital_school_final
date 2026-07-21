@@ -32,7 +32,10 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
       role: AppUserRole.superAdmin,
       body: async.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(allSubmissionsProvider),
+            ),
         data: (all) {
           if (all.isEmpty) {
             return Center(

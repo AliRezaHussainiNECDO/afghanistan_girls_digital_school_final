@@ -37,7 +37,10 @@ class ChildExamScoresScreen extends ConsumerWidget {
       role: AppUserRole.parent,
       body: subsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(submissionsByStudentProvider(studentId)),
+            ),
         data: (subs) {
           if (subs.isEmpty) {
             return Center(
