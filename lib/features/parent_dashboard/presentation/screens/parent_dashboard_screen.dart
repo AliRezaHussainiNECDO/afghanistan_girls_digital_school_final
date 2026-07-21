@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/student/guardian_link_store.dart';
@@ -15,6 +18,7 @@ import '../../../curriculum/presentation/widgets/points_badge.dart';
 import '../../../curriculum/presentation/widgets/subject_progress_bar.dart';
 import '../../domain/entities/parent_entities.dart';
 import '../../domain/repositories/parent_repository.dart';
+import '../providers/parent_homework_providers.dart';
 import '../providers/parent_providers.dart';
 
 /// ارسال کد دعوت به‌نام والدِ واردشده + بازخورد واضح (بخش ۱۳ب.۲).
@@ -108,6 +112,16 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final childrenAsync = ref.watch(linkedChildrenProvider);
+    final parentUser = ref.watch(authSessionProvider);
+    final scheme = Theme.of(context).colorScheme;
+
+    // نام واقعی والدِ واردشده برای سربرگ خوش‌آمدگویی — هماهنگ با همان الگوی
+    // داشبورد شاگرد/مدیر/استاد (نه یک متن ثابت).
+    final parentName = (parentUser?.firstName.trim().isNotEmpty ?? false)
+        ? parentUser!.firstName.trim()
+        : ((parentUser?.displayName.trim().isNotEmpty ?? false)
+            ? parentUser!.displayName.trim()
+            : '');
 
     return AppScaffold(
       title: context.tr('nav.parentDashboard'),
@@ -116,6 +130,37 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
         children: [
           // بنر تأیید ایمیل — تا زمانی که والد ایمیلش را تأیید نکرده.
           const EmailVerificationBanner(),
+          // ── خوش‌آمدگویی + دسترسی سریع — همیشه نمایش داده می‌شود (چه فرزندی
+          // لینک شده باشد چه نه)، هماهنگ با گرید مشابه در داشبورد شاگرد/مدیر/
+          // استاد — تا والد بدون باز کردن منو مستقیماً به هر بخش برسد.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (parentName.isNotEmpty) ...[
+                  Text(
+                    context.tr('dashboard.welcomeBack', {'name': parentName}),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                Row(
+                  children: [
+                    Icon(Icons.apps_rounded, size: 18, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Text(context.tr('dashboard.mainSections'),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const _ParentQuickSectionsGrid()
+                    .animate()
+                    .fadeIn(delay: 60.ms, duration: 400.ms)
+                    .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+              ],
+            ),
+          ),
           Expanded(child: _buildBody(childrenAsync)),
         ],
       ),
@@ -125,7 +170,10 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   Widget _buildBody(AsyncValue<List<LinkedChild>> childrenAsync) {
     return childrenAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(linkedChildrenProvider),
+            ),
         data: (children) {
           // درخواست‌های در انتظار تأیید فرزند (اصلاح ۲.۴ — بخش ۱۳ب.۲):
           // watch روی Store باعث بازسازی خودکار پس از تأیید/رد شاگرد می‌شود.
@@ -407,7 +455,10 @@ class _ChildSummaryView extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     return summaryAsync.when(
       loading: () => const LoadingView(),
-      error: (e, st) => ErrorView(error: e),
+      error: (e, st) => ErrorView(
+        error: e,
+        onRetry: () => ref.invalidate(childSummaryProvider(studentId)),
+      ),
       data: (s) => ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -463,7 +514,23 @@ class _ChildSummaryView extends ConsumerWidget {
                 ),
               ],
             ),
-          ),
+          )
+              .animate()
+              .fadeIn(duration: 420.ms)
+              .slideY(begin: 0.12, end: 0, duration: 420.ms, curve: Curves.easeOutCubic),
+          const SizedBox(height: 14),
+          // ── کنترول کارخانگی فرزند — هماهنگ با بخش «کار خانگی» شاگرد ──
+          // آمار زنده: چند مشق ارسال شده و چند هنوز ارسال نشده؛ لمس →
+          // صفحهٔ کامل «کارخانگی فرزندان».
+          _HomeworkSummaryCard(studentId: studentId)
+              .animate()
+              .fadeIn(delay: 80.ms, duration: 380.ms)
+              .slideY(
+                  begin: 0.12,
+                  end: 0,
+                  delay: 80.ms,
+                  duration: 380.ms,
+                  curve: Curves.easeOutCubic),
           const SizedBox(height: 20),
           _SectionLabel(text: context.tr('parent.grades')),
           Container(
@@ -604,6 +671,103 @@ class _SubjectRow extends StatelessWidget {
   }
 }
 
+/// کارت خلاصهٔ کارخانگی فرزند در داشبورد والد — آمار زنده از همان منبع بخش
+/// «کار خانگی» شاگرد (`parentChildHomeworkStatsProvider`)؛ لمس → صفحهٔ کامل
+/// «کارخانگی فرزندان» (کنترول ارسال‌شده/ارسال‌نشده).
+class _HomeworkSummaryCard extends ConsumerWidget {
+  final String studentId;
+  const _HomeworkSummaryCard({required this.studentId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final statsAsync = ref.watch(parentChildHomeworkStatsProvider(studentId));
+
+    return Material(
+      color: scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: () => context.push(AppRoutes.parentHomework),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.orange500.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.assignment_turned_in_rounded,
+                    color: AppColors.orange500, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(context.tr('parent.homework'),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    statsAsync.when(
+                      loading: () => Text('…',
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                      error: (_, __) => Text(context.tr('parent.homeworkIntro'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+                      data: (stats) => Text(
+                        stats.total == 0
+                            ? context.tr('parent.homeworkEmpty')
+                            : context.tr('parent.homeworkSummarySubtitle', {
+                                'submitted': '${stats.submitted}',
+                                'total': '${stats.total}',
+                                'pending': '${stats.notSubmitted}',
+                              }),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // نشانگر تعداد ارسال‌نشده — سیگنال سریع برای والد.
+              statsAsync.maybeWhen(
+                data: (stats) => stats.notSubmitted > 0
+                    ? Container(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppColors.orange500.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('${stats.notSubmitted}',
+                            style: const TextStyle(
+                                color: AppColors.orange600,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800)),
+                      )
+                    : const Icon(Icons.check_circle_rounded,
+                        color: AppColors.green500, size: 20),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// پیام ملایم برای بخش‌های خالی (دستاورد/گواهی‌نامهٔ هنوز صادرنشده).
 class _EmptyHint extends StatelessWidget {
   final String text;
@@ -634,6 +798,84 @@ class _SectionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 4),
       child: Text(text, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// یک بخش در گرید «دسترسی سریع» داشبورد والد — آیکن، کلید ترجمه، مسیر و
+/// رنگ. منبع حقیقت همان `_parentItems` در `app_drawer.dart` است (منهای خودِ
+/// «داشبورد» چون همین صفحه است)، هماهنگ با همین گرید در داشبورد شاگرد/مدیر/استاد.
+class _ParentSectionItem {
+  final IconData icon;
+  final String labelKey;
+  final String route;
+  final Color color;
+  const _ParentSectionItem(this.icon, this.labelKey, this.route, this.color);
+}
+
+class _ParentQuickSectionsGrid extends StatelessWidget {
+  const _ParentQuickSectionsGrid();
+
+  static const _sections = [
+    _ParentSectionItem(Icons.grade_rounded, 'parent.scores', AppRoutes.parentScores, AppColors.orange600),
+    _ParentSectionItem(Icons.assignment_turned_in_rounded, 'parent.homework', AppRoutes.parentHomework, AppColors.orange500),
+    _ParentSectionItem(Icons.groups_rounded, 'parent.seminars', AppRoutes.parentSeminars, AppColors.info),
+    _ParentSectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
+    _ParentSectionItem(Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.parentContactAdmin, AppColors.gold600),
+    _ParentSectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.parentNotifications, AppColors.gold500),
+    _ParentSectionItem(Icons.person_rounded, 'nav.profile', AppRoutes.parentProfile, AppColors.green700),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 0.86,
+      children: [
+        for (final s in _sections)
+          Material(
+            color: scheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              onTap: () => context.push(s.route),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: s.color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(s.icon, color: s.color, size: 21),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr(s.labelKey),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
