@@ -28,7 +28,10 @@ class ParentSeminarsScreen extends ConsumerWidget {
       role: AppUserRole.parent,
       body: seminarsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(parentSeminarsProvider),
+            ),
         data: (seminars) {
           if (seminars.isEmpty) {
             return EmptyView(
