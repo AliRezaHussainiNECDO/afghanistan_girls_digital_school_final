@@ -50,6 +50,9 @@ dependencies:
   # pdf_picker_web.dart و pdf_saver_web.dart. قبلاً فقط به‌صورت transitive
   # (از طریق بسته‌های دیگر) در دسترس بود؛ حالا صریح اعلام شده.
   web: ^1.1.0
+  # کد QR روی سرتیفیکت — لینک به صفحهٔ تأیید عمومی آنلاین اصالت سند (بدون
+  # نیاز به ورود)، برای اعتبار بین‌المللی گواهی‌نامه‌ها (مثل Coursera/edX).
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
