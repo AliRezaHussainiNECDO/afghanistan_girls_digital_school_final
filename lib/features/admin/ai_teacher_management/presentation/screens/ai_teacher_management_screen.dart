@@ -26,7 +26,10 @@ class AiTeacherManagementScreen extends ConsumerWidget {
       role: AppUserRole.superAdmin,
       body: configsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(aiTeacherConfigsProvider),
+            ),
         data: (configs) => ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: configs.length + 1,
