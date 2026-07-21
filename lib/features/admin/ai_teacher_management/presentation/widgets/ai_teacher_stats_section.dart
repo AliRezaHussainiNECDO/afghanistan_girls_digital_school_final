@@ -26,7 +26,10 @@ class AiTeacherStatsSection extends ConsumerWidget {
         padding: EdgeInsets.symmetric(vertical: 18),
         child: Center(child: CircularProgressIndicator()),
       ),
-      error: (e, st) => ErrorView(error: e),
+      error: (e, st) => ErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(aiTeacherStatsProvider),
+          ),
       data: (stats) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
