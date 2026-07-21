@@ -149,7 +149,10 @@ class _HomeworkChatThreadViewState extends ConsumerState<HomeworkChatThreadView>
               loading: () => const Center(
                 child: CircularProgressIndicator(color: AppColors.gold500, strokeWidth: 2.5),
               ),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(homeworkRepliesProvider(widget.homework.id)),
+                  ),
               data: (replies) {
                 // اولین پیام همیشه بازخورد اصلی نمره است — حتی قبل از هر
                 // سؤال شاگرد، تا گفتگو خالی/گنگ شروع نشود.
