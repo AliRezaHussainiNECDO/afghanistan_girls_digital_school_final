@@ -219,7 +219,10 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
       ),
       error: (e, st) => Scaffold(
         appBar: AppBar(),
-        body: ErrorView(error: e),
+        body: ErrorView(
+          error: e,
+          onRetry: () => ref.invalidate(seminarByIdProvider(widget.seminarId)),
+        ),
       ),
       data: (seminar) {
         if (user == null) return const SizedBox.shrink();

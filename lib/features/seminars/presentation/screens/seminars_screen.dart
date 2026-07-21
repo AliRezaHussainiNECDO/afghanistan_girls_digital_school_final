@@ -24,7 +24,10 @@ class SeminarsScreen extends ConsumerWidget {
       role: AppUserRole.student,
       body: seminarsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(upcomingSeminarsProvider),
+            ),
         data: (seminars) {
           if (seminars.isEmpty) {
             return EmptyView(
