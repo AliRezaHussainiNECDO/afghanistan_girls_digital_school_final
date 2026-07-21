@@ -104,7 +104,10 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
       appBar: AppBar(title: Text(context.tr('exams.start'))),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(examQuestionsProvider(widget.examId)),
+            ),
         data: (questions) {
           if (_result != null) {
             return _ResultView(result: _result!);

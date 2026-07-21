@@ -75,7 +75,10 @@ class ExamsScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             practiceAsync.when(
               loading: () => const _SectionLoading(),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(studentExamsProvider),
+                  ),
               data: (exams) => _PracticeExamsSection(exams: exams),
             ),
           ],
