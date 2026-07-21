@@ -11,6 +11,7 @@ import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
 import '../../../system_health/presentation/widgets/system_health_section.dart';
 import '../../domain/entities/admin_stats.dart';
@@ -52,6 +53,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   Widget build(BuildContext context) {
     final liveAsync = ref.watch(adminLiveStatsProvider);
     final statsAsync = ref.watch(adminStatsProvider);
+    final admin = ref.watch(authSessionProvider);
+    final scheme = Theme.of(context).colorScheme;
+
+    // نام واقعی مدیرِ واردشده برای سربرگ خوش‌آمدگویی — هماهنگ با همان
+    // الگوی داشبورد شاگرد/والد (نه یک متن ثابت).
+    final adminName = (admin?.firstName.trim().isNotEmpty ?? false)
+        ? admin!.firstName.trim()
+        : ((admin?.displayName.trim().isNotEmpty ?? false) ? admin!.displayName.trim() : '');
 
     return AppScaffold(
       title: context.tr('admin.dashboard'),
@@ -69,12 +78,33 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: LoadingView(),
               ),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(adminLiveStatsProvider),
+              ),
               data: (live) => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _LivePulseHeader(live: live),
-                  const SizedBox(height: 16),
+                  _LivePulseHeader(live: live, adminName: adminName),
+                  const SizedBox(height: 18),
+                  // ── دسترسی سریع — دقیقاً همان بخش‌های مینوی کشویی مدیر
+                  // (`_adminItems` در `app_drawer.dart`)، هماهنگ با الگوی
+                  // همین گرید در داشبورد شاگرد — تا مدیر بدون باز کردن منو
+                  // مستقیماً از خانه به هر بخش دسترسی داشته باشد.
+                  Row(
+                    children: [
+                      Icon(Icons.apps_rounded, size: 18, color: scheme.primary),
+                      const SizedBox(width: 8),
+                      Text(context.tr('dashboard.mainSections'),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const _AdminQuickSectionsGrid()
+                      .animate()
+                      .fadeIn(delay: 60.ms, duration: 400.ms)
+                      .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+                  const SizedBox(height: 18),
                   _RoleCountsRow(live: live),
                   const SizedBox(height: 16),
                   _TodayActivityStrip(live: live),
@@ -90,40 +120,55 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 10),
             statsAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (e, st) => ErrorView(error: e),
-              data: (stats) => GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 1.25,
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: LoadingView(),
+              ),
+              error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(adminStatsProvider),
+              ),
+              data: (stats) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _KpiCard(
-                    icon: Icons.today_rounded,
-                    label: context.tr('admin.activeToday'),
-                    value: '${stats.activeToday}',
-                    gradient: AppColors.successGradient,
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 14,
+                    crossAxisSpacing: 14,
+                    childAspectRatio: 1.25,
+                    children: [
+                      _KpiCard(
+                        icon: Icons.today_rounded,
+                        label: context.tr('admin.activeToday'),
+                        value: '${stats.activeToday}',
+                        gradient: AppColors.successGradient,
+                      ),
+                      _KpiCard(
+                        icon: Icons.warning_amber_rounded,
+                        label: context.tr('admin.atRisk'),
+                        value: '${stats.atRiskCount}',
+                        gradient: const LinearGradient(colors: [AppColors.danger, Color(0xFFB4232A)]),
+                      ),
+                      _KpiCard(
+                        icon: Icons.grade_rounded,
+                        label: context.tr('dashboard.overallProgress'),
+                        value: '${stats.avgScorePercent.toStringAsFixed(1)}%',
+                        gradient: AppColors.heroGradientWarm,
+                      ),
+                      _KpiCard(
+                        icon: Icons.groups_rounded,
+                        label: context.tr('admin.totalStudents'),
+                        value: '${stats.totalStudents}',
+                        gradient: AppColors.heroGradient,
+                      ),
+                    ],
                   ),
-                  _KpiCard(
-                    icon: Icons.warning_amber_rounded,
-                    label: context.tr('admin.atRisk'),
-                    value: '${stats.atRiskCount}',
-                    gradient: const LinearGradient(colors: [AppColors.danger, Color(0xFFB4232A)]),
-                  ),
-                  _KpiCard(
-                    icon: Icons.grade_rounded,
-                    label: context.tr('dashboard.overallProgress'),
-                    value: '${stats.avgScorePercent.toStringAsFixed(1)}%',
-                    gradient: AppColors.heroGradientWarm,
-                  ),
-                  _KpiCard(
-                    icon: Icons.groups_rounded,
-                    label: context.tr('admin.totalStudents'),
-                    value: '${stats.totalStudents}',
-                    gradient: AppColors.heroGradient,
-                  ),
+                  if (stats.gradeDistribution.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _GradeDistributionCard(distribution: stats.gradeDistribution),
+                  ],
                 ],
               ),
             ),
@@ -180,7 +225,8 @@ class _PulsingDot extends StatelessWidget {
 /// هدر «نبض زندهٔ مکتب» — گرادیان قهرمان + شمار آنلاین همین حالا.
 class _LivePulseHeader extends StatelessWidget {
   final AdminLiveStats live;
-  const _LivePulseHeader({required this.live});
+  final String adminName;
+  const _LivePulseHeader({required this.live, this.adminName = ''});
 
   @override
   Widget build(BuildContext context) {
@@ -194,6 +240,13 @@ class _LivePulseHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (adminName.isNotEmpty) ...[
+            Text(
+              context.tr('dashboard.welcomeBack', {'name': adminName}),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               const _PulsingDot(),
@@ -587,10 +640,26 @@ class _OnlineNowSection extends StatelessWidget {
               Text(context.tr('adminLive.onlineListTitle'),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
               const Spacer(),
-              Text(
-                context.tr('adminLive.onlineChip', {'count': '${live.onlineTotal}'}),
-                style: const TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.green700),
+              // لمس → فهرست کامل کاربران (مدیریت کاربران) — قبلاً این شمارنده
+              // فقط نمایشی بود و هیچ راهی برای دیدن فهرست کامل نداشت.
+              InkWell(
+                borderRadius: BorderRadius.circular(AppRadii.pill),
+                onTap: () => context.push(AppRoutes.adminUsers),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        context.tr('adminLive.onlineChip', {'count': '${live.onlineTotal}'}),
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.green700),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.chevron_left_rounded, size: 14, color: AppColors.green700),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -695,6 +764,182 @@ class _KpiCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
         ],
       ),
+    );
+  }
+}
+
+/// یک بخش مدیریتی در گرید «دسترسی سریع» داشبورد مدیر — آیکن، کلید ترجمه،
+/// مسیر، و رنگ. منبع حقیقت همان `_adminItems` در `app_drawer.dart` است؛
+/// اگر بخشی به منوی مدیر اضافه/کم شد، این فهرست هم باید به‌روز شود.
+class _AdminSectionItem {
+  final IconData icon;
+  final String labelKey;
+  final String route;
+  final Color color;
+  const _AdminSectionItem(this.icon, this.labelKey, this.route, this.color);
+}
+
+/// گرید «دسترسی سریع» مدیر — دقیقاً همان بخش‌های مینوی کشویی مدیر (منهای
+/// خودِ «داشبورد» چون همین صفحه است)، تا مدیر بدون باز کردن منو مستقیماً
+/// از خانه به هر بخش دسترسی داشته باشد؛ هماهنگ با الگوی همین گرید در
+/// داشبورد شاگرد (`_MainSectionsGrid`).
+class _AdminQuickSectionsGrid extends StatelessWidget {
+  const _AdminQuickSectionsGrid();
+
+  static const _sections = [
+    _AdminSectionItem(Icons.people_rounded, 'admin.users', AppRoutes.adminUsers, AppColors.orange600),
+    _AdminSectionItem(Icons.edit_note_rounded, 'admin.cms', AppRoutes.adminCms, AppColors.gold600),
+    _AdminSectionItem(Icons.quiz_rounded, 'admin.examsManagement', AppRoutes.adminExamsManagement, AppColors.green600),
+    _AdminSectionItem(Icons.smart_toy_rounded, 'admin.aiTeacherManagement', AppRoutes.adminAiTeacher, AppColors.info),
+    _AdminSectionItem(Icons.forum_rounded, 'admin.chatMonitoring', AppRoutes.adminChats, AppColors.orange500),
+    _AdminSectionItem(Icons.shield_rounded, 'admin.safetyQueue', AppRoutes.adminSafetyQueue, AppColors.danger),
+    _AdminSectionItem(Icons.radar_rounded, 'admin.auditLogs', AppRoutes.adminAuditLogs, AppColors.ink500),
+    _AdminSectionItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions, AppColors.green500),
+    _AdminSectionItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars, AppColors.gold500),
+    _AdminSectionItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports, AppColors.orange700),
+    _AdminSectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
+    _AdminSectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications, AppColors.green700),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 0.86,
+      children: [
+        for (final s in _sections)
+          Material(
+            color: scheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              onTap: () => context.push(s.route),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: s.color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(s.icon, color: s.color, size: 21),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr(s.labelKey),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// کارت «توزیع دانش‌آموزان بر اساس صنف» — از دادهٔ `gradeDistribution` که
+/// قبلاً از سرور گرفته می‌شد ولی هیچ‌جای داشبورد نمایش داده نمی‌شد؛ نواری
+/// افقی متناسب با بزرگ‌ترین صنف، به‌ترتیب شمارهٔ صنف.
+class _GradeDistributionCard extends StatelessWidget {
+  final Map<int, int> distribution;
+  const _GradeDistributionCard({required this.distribution});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final grades = distribution.keys.toList()..sort();
+    final maxCount = distribution.values.fold<int>(0, (a, b) => a > b ? a : b);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(context.tr('admin.gradeDistribution'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < grades.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _GradeBarRow(
+              grade: grades[i],
+              count: distribution[grades[i]] ?? 0,
+              maxCount: maxCount,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GradeBarRow extends StatelessWidget {
+  final int grade;
+  final int count;
+  final int maxCount;
+  const _GradeBarRow({required this.grade, required this.count, required this.maxCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fraction = maxCount > 0 ? count / maxCount : 0.0;
+    return Row(
+      children: [
+        SizedBox(
+          width: 54,
+          child: Text(
+            context.tr('bulkImport.gradeOption', {'grade': '$grade'}),
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant),
+          ),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 10,
+              backgroundColor: scheme.surfaceContainerHigh,
+              valueColor: const AlwaysStoppedAnimation(AppColors.orange500),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 36,
+          child: Text(
+            '$count',
+            textAlign: TextAlign.end,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
     );
   }
 }
