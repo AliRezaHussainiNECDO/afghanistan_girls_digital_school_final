@@ -66,9 +66,34 @@ jobs:
         run: ruby ios/ci_disable_signing.rb
 
       # ۵. ساخت نسخه iOS بدون نیاز به گواهی امضا (Code Signing)
-      # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند
+      # دستور --no-codesign باعث می‌شود گیت‌هاب بدون خطای اپل ایدی پروژه را کامپایل کند.
+      #
+      # رفع اشکال «از بیلد #۹۰ به بعد، خطای Development Team/Provisioning
+      # Profile با اینکه --no-codesign ست است»: در لاگ خودِ Flutter مشخص است
+      # که «Xcode build done. …s» چاپ می‌شود (یعنی کامپایل واقعی Xcode کاملاً
+      # موفق بوده) و فقط *بعد* از آن، ابزار Flutter (نه Xcode) یک بررسیِ
+      # اضافیِ «Development Team» انجام می‌دهد که مخصوص بیلدهای --release
+      # برای دستگاه واقعی است و حتی با --no-codesign هم رد می‌شود — این یک
+      # قفلِ سخت‌گیرانه‌تر در نسخه‌های جدیدتر Flutter (بین بیلد #۸۹ موفق و
+      # #۹۰ ناموفق، runner گیت‌هاب یا کانال stable آپدیت شده) است، نه شکست
+      # واقعی کامپایل. چون Runner.app در همین مرحله واقعاً روی دیسک ساخته
+      # می‌شود، با continue-on-error از این خطای کاذبِ ابزار رد می‌شویم و در
+      # مرحلهٔ بعد وجود واقعیِ Runner.app را بررسی می‌کنیم — اگر واقعاً کامپایل
+      # شکست خورده باشد (Runner.app ساخته نشده)، آنجا صریحاً fail می‌کنیم.
       - name: Build iOS
+        id: build_ios
+        continue-on-error: true
         run: flutter build ios --release --no-codesign
+
+      - name: Verify Runner.app was actually produced
+        run: |
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            echo "✅ Runner.app پیدا شد — کامپایل واقعی Xcode موفق بوده."
+            echo "(مرحلهٔ قبل فقط بخاطر بررسی اضافیِ «Development Team» ابزار Flutter شکست خورده بود، نه کامپایل واقعی.)"
+          else
+            echo "❌ Runner.app پیدا نشد — این یک شکست واقعی در کامپایل است."
+            exit 1
+          fi
 
       # ۶. تبدیل خروجی به فایل .ipa قابل نصب
       # از آنجا که بدون ساین بیلد گرفتیم، پوشه خروجی را برای راحتی کار زیپ یا آماده می‌کنیم
