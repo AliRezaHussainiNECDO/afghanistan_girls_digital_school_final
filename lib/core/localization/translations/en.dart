@@ -794,6 +794,9 @@ const Map<String, String> enStrings = {
 'liveStream.priorCrashMessage': 'The last time you started in-app broadcasting from this device, the app closed unexpectedly — this is usually a camera/streaming incompatibility with this specific device, not a problem with your seminar. To be safe, we recommend broadcasting with external software (OBS), or you can try again.',
 'liveStream.tryInAppAnyway': 'Try again',
 'liveStream.useExternalInstead': 'Broadcast with OBS instead',
+'liveStream.streamUnavailableTitle': 'Live streaming unavailable',
+"liveStream.useVideoRoomInstead": "Would you like to start a live video-call room instead (doesn't require Cloudflare Stream) for this seminar?",
+'liveStream.startVideoRoom': 'Start video room',
 
 // homework — AI paper-based homework & smart grading
 'homework.title': 'Homework',

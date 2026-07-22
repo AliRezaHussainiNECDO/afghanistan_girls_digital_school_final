@@ -71,16 +71,52 @@ Future<void> startSeminarLive(
     }
   } on LiveStreamException catch (e) {
     if (context.mounted) Navigator.of(context).pop();
-    if (e.isNotConfigured) {
-      if (context.mounted) context.push(AppRoutes.seminarRoom(seminar.id));
-    } else {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    // رفع اشکال «آمادگی برای دستگاه واقعی»: قبلاً فقط حالت STREAM_NOT_CONFIGURED
+    // (کلیدهای Cloudflare Stream اصلاً تنظیم نشده) به اتاق داخلی Jitsi برمی‌گشت؛
+    // هر خطای دیگر (مثلاً توکن نامعتبر یا اشتراک Stream غیرفعال/منقضی — طبق
+    // یادداشت سند As-Built دربارهٔ وضعیت نامشخص اشتراک Stream) فقط یک Snackbar
+    // نشان می‌داد و استاد را بدون هیچ راه ادامه‌دادن رها می‌کرد. حالا در هر دو
+    // حالت همان مسیر فال‌بک واقعی (اتاق ویدیوکنفرانس Jitsi) پیشنهاد می‌شود —
+    // پخش زنده هرگز نباید کلاس را کاملاً متوقف کند.
+    if (context.mounted) {
+      await _offerJitsiFallback(context, seminar, e.message);
     }
   } catch (e) {
     if (context.mounted) Navigator.of(context).pop();
     if (context.mounted) {
-      messenger.showSnackBar(SnackBar(content: Text(context.tr('liveStream.startError', {'error': '$e'}))));
+      await _offerJitsiFallback(
+          context, seminar, context.tr('liveStream.startError', {'error': '$e'}));
     }
+  }
+}
+
+/// وقتی پخش زندهٔ Cloudflare Stream به هر دلیلی ممکن نیست (تنظیم‌نشده، توکن
+/// نامعتبر، یا اشتراک غیرفعال)، به‌جای رها کردن استاد با یک پیام خطای بی‌فایده،
+/// مستقیماً پیشنهاد می‌شود کلاس را با اتاق ویدیوکنفرانس داخلی (Jitsi، بدون
+/// نیاز به Cloudflare Stream) شروع کند.
+Future<void> _offerJitsiFallback(BuildContext context, Seminar seminar, String reason) async {
+  final useFallback = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: AlertDialog(
+        title: Text(context.tr('liveStream.streamUnavailableTitle')),
+        content: Text('$reason\n\n${context.tr('liveStream.useVideoRoomInstead')}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.tr('common.cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(context.tr('liveStream.startVideoRoom')),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (useFallback == true && context.mounted) {
+    context.push(AppRoutes.seminarRoom(seminar.id));
   }
 }
 

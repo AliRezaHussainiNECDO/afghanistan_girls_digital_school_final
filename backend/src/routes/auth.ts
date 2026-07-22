@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import { hashPassword, verifyPassword, signJwt, verifyJwt, verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
 import {
   sendEmail,
   verificationEmailHtml,
@@ -165,6 +166,14 @@ async function issueTokens(db: D1Database, secret: string, u: UserRow) {
 // ─────────────────────────────── Register ─────────────────────────────────
 
 auth.post('/register', async (c) => {
+  // همان رفع اشکال Rate Limiting بالا — اینجا مهم‌تر است چون این Endpoint
+  // مسیر حدسِ خودکار «کد دعوت» (`inviteCode`) هم هست؛ حداکثر ۸ تلاش در هر
+  // ساعت به‌ازای هر IP (بازهٔ طولانی‌تر و سقف پایین‌تر از login چون ثبت‌نام
+  // واقعی به‌ندرت بیش از یکی-دو بار در ساعت از یک آدرس اتفاق می‌افتد).
+  const registerIp = clientIp(c) ?? 'unknown';
+  const registerRl = await hitRateLimit(c.env.DB, `register:${registerIp}`, 60 * 60, 8);
+  if (registerRl.limited) return c.json(rateLimitFail(), 429);
+
   if (!c.env.JWT_SECRET) {
     return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing', 'د سرور امنیتي کیلي تنظیم شوې نه ده', 'La clé de sécurité du serveur n\'est pas configurée'), 500);
   }
@@ -428,6 +437,12 @@ auth.post('/resend-verification', async (c) => {
 
 /** درخواست بازیابی پسورد — کد ۶ رقمی به ایمیل کاربر فرستاده می‌شود. */
 auth.post('/forgot-password', async (c) => {
+  // Rate limit — جلوگیری از هرزنامهٔ ایمیل (Email bombing) با فراخوانی مکرر
+  // این Endpoint برای یک یا چند ایمیل از یک آدرس.
+  const forgotIp = clientIp(c) ?? 'unknown';
+  const forgotRl = await hitRateLimit(c.env.DB, `forgot:${forgotIp}`, 60 * 60, 5);
+  if (forgotRl.limited) return c.json(rateLimitFail(), 429);
+
   const body = await c.req.json<{ email?: string }>().catch(() => null);
   const email = String(body?.email ?? '').trim().toLowerCase();
   // پاسخ همیشه یکسان (ضد Enumeration — بخش ۳.۴ سند).
@@ -472,6 +487,16 @@ auth.post('/reset-password', async (c) => {
   const email = String(body?.email ?? '').trim().toLowerCase();
   const code = String(body?.code ?? '').trim();
   const newPassword = String(body?.newPassword ?? '');
+
+  // Rate limit — کد بازیابی فقط ۶ رقمی است (۱ میلیون حالت)؛ بدون این محدودیت
+  // یک مهاجم که ایمیل قربانی را می‌داند می‌توانست با حدس خودکار کد را پیدا
+  // کند. هم به‌ازای IP و هم به‌ازای همان ایمیل هدف محدود می‌شود.
+  const resetIp = clientIp(c) ?? 'unknown';
+  const resetIpRl = await hitRateLimit(c.env.DB, `reset-ip:${resetIp}`, 15 * 60, 10);
+  const resetEmailRl = email
+    ? await hitRateLimit(c.env.DB, `reset-email:${email}`, 15 * 60, 8)
+    : { limited: false };
+  if (resetIpRl.limited || resetEmailRl.limited) return c.json(rateLimitFail(), 429);
 
   if (!email || !/^\d{6}$/.test(code)) {
     return c.json(fail('INVALID_CODE', 'کد بازیابی نامعتبر است', 'Invalid reset code', 'د بیارغونې کوډ نامعتبر دی', 'Code de réinitialisation invalide'), 400);
@@ -522,6 +547,14 @@ auth.post('/reset-password', async (c) => {
 // ──────────────────────────────── Login ───────────────────────────────────
 
 auth.post('/login', async (c) => {
+  // رفع اشکال امنیتی «آمادگی انتشار»: قبلاً هیچ Rate Limiting روی ورود نبود
+  // — تلاش‌های ناموفق فقط در audit_logs لاگ می‌شدند ولی هیچ قفل موقتی اعمال
+  // نمی‌شد، یعنی حدس رمز به‌صورت خودکار (Brute-force) محدودیتی نداشت. حالا
+  // حداکثر ۱۲ تلاش (موفق یا ناموفق) در هر ۱۵ دقیقه به‌ازای هر IP مجاز است.
+  const loginIp = clientIp(c) ?? 'unknown';
+  const loginRl = await hitRateLimit(c.env.DB, `login:${loginIp}`, 15 * 60, 12);
+  if (loginRl.limited) return c.json(rateLimitFail(), 429);
+
   if (!c.env.JWT_SECRET) {
     return c.json(fail('SERVER_MISCONFIG', 'کلید امنیتی سرور تنظیم نشده', 'JWT secret missing', 'د سرور امنیتي کیلي تنظیم شوې نه ده', 'La clé de sécurité du serveur n\'est pas configurée'), 500);
   }

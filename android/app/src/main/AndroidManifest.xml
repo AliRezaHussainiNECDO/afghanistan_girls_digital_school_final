@@ -13,10 +13,16 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
 
-    <!-- دوربین و میکروفون سخت‌افزار اجباری نیستند تا اپ روی همهٔ دستگاه‌ها نصب شود. -->
-    <uses-feature android:name="android.hardware.camera" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
-    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+    <!-- دوربین و میکروفون سخت‌افزار اجباری نیستند تا اپ روی همهٔ دستگاه‌ها نصب شود.
+         رفع اشکال «آمادگی دستگاه واقعی»: کتابخانهٔ jitsi-meet-sdk/WebRTC خودش یک
+         <uses-feature android.hardware.camera required="true"/> در Manifest داخلی‌اش
+         دارد که در Merge نهایی روی این خط override می‌شد (تأییدشده با بررسی
+         AndroidManifest.xml نهایی در build/app) — یعنی بدون tools:replace زیر،
+         هر دستگاهی که دوربین ندارد (مثلاً بعضی تبلت‌ها/Chromebookها) از نصب
+         روی Google Play کاملاً فیلتر می‌شد، برخلاف قصد اصلی همین کامنت. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" tools:replace="android:required"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" tools:replace="android:required"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false" tools:replace="android:required"/>
 
     <application
         tools:replace="android:label"

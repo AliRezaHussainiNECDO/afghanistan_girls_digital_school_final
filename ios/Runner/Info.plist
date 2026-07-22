@@ -13,6 +13,15 @@
 	<string>برای انتخاب عکس پروفایل و بارگذاری فایل‌ها به گالری دسترسی لازم است.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>برای ذخیرهٔ گواهی‌نامه‌ها و کتاب‌های دانلودشده در گالری دسترسی لازم است.</string>
+	<!-- رفع اشکال «آمادگی دستگاه واقعی»: بدون این کلید، صدای کلاس زندهٔ Jitsi
+	     به‌محض قفل‌شدن صفحه یا رفتن به پس‌زمینه (مثلاً پاسخ به یک اعلان) قطع
+	     می‌شد چون iOS اپ را معلق می‌کند. فقط «audio» اضافه شده (نه «voip») تا
+	     نیازی به پیاده‌سازی PushKit/CallKit واقعی برای عبور از بازبینی
+	     App Store نباشد؛ صدا در پس‌زمینه ادامه پیدا می‌کند. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

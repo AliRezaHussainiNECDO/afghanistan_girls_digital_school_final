@@ -794,6 +794,9 @@ const Map<String, String> psStrings = {
 'liveStream.priorCrashMessage': 'تیره ورځ چې تاسو د دې وسیلې څخه د اپ دننه مستقیم خپرونه پیل کړه، اپلیکیشن ناڅاپه بند شو — دا معمولاً د همدې وسیلې د کیمرا/خپرونې ناسمون دی، ستاسو د سیمینار ستونزه نه ده. د باور لپاره، موږ د بهرني نرم افزار (OBS) سره خپرونه وړاندیز کوو، یا تاسو کولی شئ بیا هڅه وکړئ.',
 'liveStream.tryInAppAnyway': 'بیا هڅه وکړئ',
 'liveStream.useExternalInstead': 'د دې پر ځای د OBS سره خپرونه',
+'liveStream.streamUnavailableTitle': 'ژوندۍ خپرونه شتون نلري',
+'liveStream.useVideoRoomInstead': 'ایا غواړئ د دې پر ځای د همدې سیمینار لپاره یو ژوندی ویډیو کنفرانس خونه (چې Cloudflare Stream ته اړتیا نلري) پیل کړئ؟',
+'liveStream.startVideoRoom': 'د ویډیو خونې پیل',
 
 // homework — کاغذي کور + هوښیار ارزونه
 'homework.title': 'کورنۍ دنده',

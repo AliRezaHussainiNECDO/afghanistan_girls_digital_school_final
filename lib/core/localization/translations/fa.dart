@@ -785,6 +785,9 @@ const Map<String, String> faStrings = {
 'liveStream.priorCrashMessage': 'آخرین باری که از همین دستگاه پخش مستقیم داخل اپ را شروع کردید، برنامه ناگهان بسته شد — این معمولاً از ناسازگاری دوربین/پخش با همین دستگاه است، نه مشکلی از سمینار شما. برای اطمینان، پخش با نرم‌افزار بیرونی (OBS) را پیشنهاد می‌کنیم، یا می‌توانید دوباره امتحان کنید.',
 'liveStream.tryInAppAnyway': 'دوباره امتحان کن',
 'liveStream.useExternalInstead': 'پخش با OBS به‌جایش',
+'liveStream.streamUnavailableTitle': 'پخش زنده در دسترس نیست',
+'liveStream.useVideoRoomInstead': 'می‌خواهید به‌جای آن یک اتاق ویدیوکنفرانس زنده (بدون نیاز به Cloudflare Stream) برای همین سمینار باز کنید؟',
+'liveStream.startVideoRoom': 'شروع اتاق ویدیویی',
 
 // homework — مشق کاغذی + نمره‌دهی هوشمند
 'homework.title': 'کار خانگی',

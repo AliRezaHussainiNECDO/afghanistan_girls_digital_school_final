@@ -797,6 +797,9 @@ const Map<String, String> frStrings = {
 'liveStream.priorCrashMessage': 'La dernière fois que vous avez démarré la diffusion depuis l\'application sur cet appareil, celle-ci s\'est fermée brusquement — il s\'agit généralement d\'une incompatibilité caméra/diffusion propre à cet appareil, pas d\'un problème avec votre séminaire. Par précaution, nous recommandons de diffuser avec un logiciel externe (OBS), ou vous pouvez réessayer.',
 'liveStream.tryInAppAnyway': 'Réessayer',
 'liveStream.useExternalInstead': 'Diffuser avec OBS à la place',
+'liveStream.streamUnavailableTitle': 'Diffusion en direct indisponible',
+"liveStream.useVideoRoomInstead": "Voulez-vous plutôt démarrer une salle de vidéoconférence en direct (ne nécessite pas Cloudflare Stream) pour ce séminaire ?",
+'liveStream.startVideoRoom': 'Démarrer la salle vidéo',
 
 // homework — devoirs papier + correction intelligente par IA
 'homework.title': 'Devoirs',
