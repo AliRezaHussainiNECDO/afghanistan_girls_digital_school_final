@@ -68,7 +68,24 @@ class _ExamTakingScreenState extends ConsumerState<ExamTakingScreen> {
       _submitting = false;
       _result = result.fold((f) => null, (r) => r);
     });
-    if (_result != null && _result!.scorePercent >= 50) {
+    // رفع اشکال «شکست بی‌صدا»: قبلاً اگر ارسال شکست می‌خورد (مثلاً همین
+    // امتحان قبلاً یک‌بار داده شده بود — کد ۴۰۹ سرور)، شاگرد فقط روی همان
+    // فرم می‌ماند بدون هیچ توضیحی. حالا پیام خطا نشان داده می‌شود.
+    if (_result == null) {
+      result.fold(
+        (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(f.message))),
+        (_) {},
+      );
+      return;
+    }
+    // رفع اشکال «نمایش کهنه»: قبلاً این دو Provider بعد از تحویل امتحان
+    // باطل نمی‌شدند — شاگرد با برگشتن به فهرست، همان امتحان را باز هم
+    // «قابل‌شروع» می‌دید و نتیجهٔ تازه در «نتایج امتحانات» ظاهر نمی‌شد، مگر
+    // با ری‌فرش دستی یا ری‌استارت برنامه.
+    ref.invalidate(availableExamsProvider);
+    ref.invalidate(myExamResultsProvider(null));
+
+    if (_result!.passed) {
       CelebrationOverlay.of(context)?.burst();
     }
 
@@ -253,7 +270,9 @@ class _ResultView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final passed = result.scorePercent >= 50;
+    // منبع واحد حقیقت همان `passed`ی است که سرور با آستانهٔ [kExamPassPercent]
+    // فرستاده — هماهنگ با فهرست نتایج و داشبورد والدین (رفع اشکال ناهماهنگی).
+    final passed = result.passed;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -286,6 +305,17 @@ class _ResultView extends StatelessWidget {
               style: TextStyle(color: scheme.onSurfaceVariant),
             ).animate().fadeIn(delay: 220.ms, duration: 300.ms),
             const SizedBox(height: 28),
+            if (result.attemptId != null) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(AppRoutes.examResultReview(result.attemptId!)),
+                  icon: const Icon(Icons.fact_check_rounded, size: 18),
+                  label: Text(context.tr('exams.reviewAnswersButton')),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             AppPrimaryButton(
               label: context.tr('common.back'),
               onPressed: () => context.go(AppRoutes.exams),

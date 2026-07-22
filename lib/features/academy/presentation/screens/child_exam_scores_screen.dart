@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../exams/domain/entities/exam_entities.dart';
+import '../../../exams/presentation/providers/exams_providers.dart';
 import '../../domain/academy_entities.dart';
 import '../academy_providers.dart';
 import '../widgets/academy_shared.dart';
@@ -30,6 +34,7 @@ class ChildExamScoresScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subsAsync = ref.watch(submissionsByStudentProvider(studentId));
+    final officialResultsAsync = ref.watch(myExamResultsProvider(studentId));
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
@@ -42,22 +47,6 @@ class ChildExamScoresScreen extends ConsumerWidget {
               onRetry: () => ref.invalidate(submissionsByStudentProvider(studentId)),
             ),
         data: (subs) {
-          if (subs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.assignment_outlined,
-                      size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
-                  const SizedBox(height: 12),
-                  Text(context.tr('academy.childNoExamsYet', {'name': displayName}),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: scheme.onSurfaceVariant)),
-                ]),
-              ),
-            );
-          }
-
           // صنف ← مضمون ← نوبت‌ها (جدیدترین نوبت اول).
           final byGrade = <int, Map<String, List<Submission>>>{};
           for (final s in subs) {
@@ -73,25 +62,157 @@ class ChildExamScoresScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
             children: [
-              _OverallHeader(displayName: displayName, subs: subs)
-                  .animate()
-                  .fadeIn(duration: 300.ms)
-                  .slideY(begin: 0.06, curve: Curves.easeOutCubic),
-              const SizedBox(height: 18),
-              for (final g in grades) ...[
-                _GradeHeader(gradeId: g, isCurrent: g == grades.first)
+              if (subs.isNotEmpty) ...[
+                _OverallHeader(displayName: displayName, subs: subs)
                     .animate()
-                    .fadeIn(delay: (60 * delay++).ms, duration: 260.ms),
-                for (final subject in (byGrade[g]!.keys.toList()..sort()))
-                  _SubjectCard(subject: subject, attempts: byGrade[g]![subject]!)
-                      .animate()
-                      .fadeIn(delay: (60 * delay++).ms, duration: 260.ms)
-                      .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+                const SizedBox(height: 18),
+              ],
+              // ── امتحانات رسمی (کوییز/کارخانگی/ماهانه/نهایی) — همان دادهٔ
+              // دقیقِ داشبورد خودِ شاگرد (`/exams/my-results`)، نه یک محاسبهٔ
+              // جداگانه؛ طبق درخواست کاربر برای هماهنگی کامل بین داشبوردها.
+              officialResultsAsync.maybeWhen(
+                data: (results) => results.isEmpty
+                    ? const SizedBox.shrink()
+                    : Padding(
+                        padding: const EdgeInsets.only(bottom: 18),
+                        child: _OfficialResultsForChild(results: results),
+                      ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              if (subs.isEmpty && grades.isEmpty)
+                officialResultsAsync.maybeWhen(
+                  data: (results) => results.isNotEmpty
+                      ? const SizedBox.shrink()
+                      : Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(Icons.assignment_outlined,
+                                  size: 56, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                              const SizedBox(height: 12),
+                              Text(context.tr('academy.childNoExamsYet', {'name': displayName}),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: scheme.onSurfaceVariant)),
+                            ]),
+                          ),
+                        ),
+                  orElse: () => const SizedBox.shrink(),
+                ),
+              if (grades.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Icon(Icons.fitness_center_rounded, size: 16, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Text(context.tr('exams.subjectPractice'),
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: scheme.onSurface)),
+                  ],
+                ),
                 const SizedBox(height: 10),
+                for (final g in grades) ...[
+                  _GradeHeader(gradeId: g, isCurrent: g == grades.first)
+                      .animate()
+                      .fadeIn(delay: (60 * delay++).ms, duration: 260.ms),
+                  for (final subject in (byGrade[g]!.keys.toList()..sort()))
+                    _SubjectCard(subject: subject, attempts: byGrade[g]![subject]!)
+                        .animate()
+                        .fadeIn(delay: (60 * delay++).ms, duration: 260.ms)
+                        .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+                  const SizedBox(height: 10),
+                ],
               ],
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// «امتحانات رسمی» فرزند — همان کارت‌های نتیجهٔ صفحهٔ شاگرد، فقط با اجازهٔ
+/// مشاهده (نه ویرایش) برای والد؛ کلیک روی هرکدام همان صفحهٔ مرور پاسخ‌ها را
+/// باز می‌کند تا والد هم دقیقاً ببیند فرزندش به کدام سؤال چه پاسخی داده.
+class _OfficialResultsForChild extends StatelessWidget {
+  final List<ExamResultSummary> results;
+  const _OfficialResultsForChild({required this.results});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.workspace_premium_rounded, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(context.tr('exams.officialResultsTitle'),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: scheme.onSurface)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (var i = 0; i < results.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _ChildResultCard(result: results[i])
+                .animate()
+                .fadeIn(delay: (40 * i).ms, duration: 220.ms)
+                .slideY(begin: 0.05, curve: Curves.easeOutCubic),
+          ),
+      ],
+    );
+  }
+}
+
+class _ChildResultCard extends StatelessWidget {
+  final ExamResultSummary result;
+  const _ChildResultCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = result.passed ? AppColors.green600 : AppColors.orange600;
+    return Material(
+      color: scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: () => context.push(AppRoutes.examResultReview(result.attemptId)),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.14), shape: BoxShape.circle),
+                alignment: Alignment.center,
+                child: Text('${result.scorePercent.toStringAsFixed(0)}٪',
+                    style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 11.5)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${result.subjectNameFa} · ${gradeLabel(context, result.gradeNumber)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(formatDate(result.submittedAt),
+                        style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }

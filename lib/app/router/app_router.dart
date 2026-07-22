@@ -47,6 +47,7 @@ import '../../features/curriculum/presentation/screens/curriculum_screen.dart';
 import '../../features/curriculum/presentation/screens/lesson_detail_screen.dart';
 import '../../features/curriculum/presentation/screens/lessons_screen.dart';
 import '../../features/exams/presentation/screens/exam_taking_screen.dart';
+import '../../features/exams/presentation/screens/exam_result_review_screen.dart';
 import '../../features/exams/presentation/screens/exams_screen.dart';
 import '../../features/grade_map/presentation/screens/grade_map_screen.dart';
 import '../../features/instructor/presentation/screens/instructor_home_screen.dart';
@@ -257,6 +258,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/seminar-live/:seminarId',
         pageBuilder: (c, s) =>
             fadePage(s, SeminarLivePlayerScreen(seminarId: s.pathParameters['seminarId']!)),
+      ),
+
+      // مرور پاسخ‌های یک تلاش امتحان (همهٔ نقش‌ها؛ کنترل دسترسی واقعی سمت
+      // سرور — GET /exams/attempts/:attemptId — نه اینجا).
+      GoRoute(
+        path: '/exam-result/:attemptId',
+        pageBuilder: (c, s) =>
+            fadeSlidePage(s, ExamResultReviewScreen(attemptId: s.pathParameters['attemptId']!)),
       ),
 
       // Instructor

@@ -17,6 +17,7 @@ import '../../../chat_monitoring/presentation/screens/admin_chat_thread_screen.d
 import '../../domain/entities/student_entities.dart';
 import '../providers/student_management_providers.dart';
 import '../widgets/admin_actions_sheet.dart';
+import '../widgets/admin_student_exams_tab.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/student_homework_tab.dart';
 
@@ -31,7 +32,7 @@ class StudentDetailScreen extends ConsumerWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: DefaultTabController(
-        length: 7,
+        length: 8,
         child: Scaffold(
           backgroundColor: AppPalette.surface,
           body: detail.when(
@@ -64,6 +65,7 @@ class StudentDetailScreen extends ConsumerWidget {
                 _AdvisorTab(studentId: studentId),
                 _AdminChatTab(userId: studentId, userName: d.summary.fullName),
                 StudentHomeworkTab(studentId: studentId),
+                AdminStudentExamsTab(studentId: studentId),
               ]),
             ),
           ),
@@ -108,6 +110,7 @@ class _Header extends ConsumerWidget {
           Tab(text: context.tr('studentDetail.tabAdvisor')),
           Tab(text: context.tr('studentDetail.tabAdminChat')),
           Tab(text: context.tr('studentDetail.tabHomework')),
+          Tab(text: context.tr('studentDetail.tabExams')),
         ],
       ),
       flexibleSpace: FlexibleSpaceBar(

@@ -11,4 +11,11 @@ abstract class ExamsRepository {
   /// [textAnswers]: پاسخ متنی سؤالات تشریحی (نمره‌دهی AI سمت سرور).
   Future<Either<Failure, ExamResult>> submitAnswers(
       String examId, Map<String, int> answers, Map<String, String> textAnswers);
+
+  /// نتایج امتحانات رسمی — خودِ کاربر (بدون [studentId]) یا فرزندِ والد
+  /// (با [studentId]، هماهنگ با داشبورد شاگرد).
+  Future<Either<Failure, List<ExamResultSummary>>> getMyResults({String? studentId});
+
+  /// مرور سؤال‌به‌سؤالِ یک تلاش — پاسخ داده‌شده و درست/غلط.
+  Future<Either<Failure, ExamAttemptReview>> getAttemptReview(String attemptId);
 }

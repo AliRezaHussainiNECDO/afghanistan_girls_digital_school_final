@@ -37,3 +37,18 @@ class SubmitAnswersUseCase implements UseCase<ExamResult, SubmitAnswersParams> {
   Future<Either<Failure, ExamResult>> call(SubmitAnswersParams params) =>
       repository.submitAnswers(params.examId, params.answers, params.textAnswers);
 }
+
+class GetMyExamResultsUseCase implements UseCase<List<ExamResultSummary>, String?> {
+  final ExamsRepository repository;
+  GetMyExamResultsUseCase(this.repository);
+  @override
+  Future<Either<Failure, List<ExamResultSummary>>> call(String? studentId) =>
+      repository.getMyResults(studentId: studentId);
+}
+
+class GetExamAttemptReviewUseCase implements UseCase<ExamAttemptReview, String> {
+  final ExamsRepository repository;
+  GetExamAttemptReviewUseCase(this.repository);
+  @override
+  Future<Either<Failure, ExamAttemptReview>> call(String attemptId) => repository.getAttemptReview(attemptId);
+}

@@ -54,6 +54,15 @@ class AppRoutes {
   // پخش زندهٔ سمینار (Cloudflare Stream) — تماشای شاگرد.
   static String seminarLive(String seminarId) => '/seminar-live/$seminarId';
 
+  // مرور پاسخ‌های یک تلاش امتحان — مشترک بین همهٔ نقش‌ها (خارج از پیشوند
+  // نقش‌ها)، چون هم شاگرد خودش، هم والدِ لینک‌شده (از /parent/scores)، و هم
+  // مدیر (از پروندهٔ شاگرد در /admin/students/:id) باید بتوانند این صفحه را
+  // باز کنند. رفع اشکال واقعی: قبلاً این مسیر زیر «/student/...» بود، پس
+  // نگهبان RBAC (پایین همین فایل) هر کاربر غیر-شاگرد را همان لحظه به
+  // داشبورد خودش برمی‌گرداند — یعنی والد/مدیر هرگز نمی‌توانست این صفحه را
+  // واقعاً باز کند، حتی با اینکه سرور دسترسی را مجاز می‌دانست.
+  static String examResultReview(String attemptId) => '/exam-result/$attemptId';
+
   // Instructor
   static const instructorHome = '/instructor';
   static const instructorContactAdmin = '/instructor/contact-admin';

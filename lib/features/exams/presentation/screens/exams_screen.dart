@@ -33,6 +33,7 @@ class ExamsScreen extends ConsumerWidget {
     final officialAsync = ref.watch(availableExamsProvider);
     final practiceAsync = ref.watch(studentExamsProvider);
     final mine = ref.watch(mySubmissionsProvider);
+    final officialResultsAsync = ref.watch(myExamResultsProvider(null));
 
     return AppScaffold(
       title: context.tr('exams.available'),
@@ -41,6 +42,7 @@ class ExamsScreen extends ConsumerWidget {
         onRefresh: () async {
           ref.invalidate(availableExamsProvider);
           ref.invalidate(studentExamsProvider);
+          ref.invalidate(myExamResultsProvider(null));
         },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -52,6 +54,15 @@ class ExamsScreen extends ConsumerWidget {
                 onRetry: () => ref.invalidate(availableExamsProvider),
               ),
               data: (exams) => _OfficialExamsSection(exams: exams),
+            ),
+            const SizedBox(height: 22),
+            // ── نتایج امتحانات رسمی — طبق درخواست کاربر: بعد از دادن هر
+            // امتحان، دیگر در فهرست بالا دیده نمی‌شود؛ اینجا با نمره، مضمون،
+            // صنف و تاریخ ظاهر می‌شود و با کلیک، مرور سؤال‌به‌سؤال باز می‌شود.
+            officialResultsAsync.maybeWhen(
+              data: (results) =>
+                  results.isEmpty ? const SizedBox.shrink() : _OfficialResultsSection(results: results),
+              orElse: () => const SizedBox.shrink(),
             ),
             const SizedBox(height: 22),
             mine.maybeWhen(
@@ -129,6 +140,126 @@ class ExamsScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// «نتایج امتحانات رسمی» — کارت‌های رنگی و تعاملی؛ هر کارت نمره، مضمون،
+/// صنف و تاریخ را نشان می‌دهد و با کلیک، صفحهٔ مرور سؤال‌به‌سؤال باز می‌شود.
+class _OfficialResultsSection extends StatelessWidget {
+  final List<ExamResultSummary> results;
+  const _OfficialResultsSection({required this.results});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.workspace_premium_rounded, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(context.tr('exams.officialResultsTitle'),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: scheme.onSurface)),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          context.tr('exams.officialResultsNote'),
+          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 10),
+        for (var i = 0; i < results.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ExamResultCard(result: results[i])
+                .animate()
+                .fadeIn(delay: (40 * i).ms, duration: 240.ms)
+                .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+          ),
+      ],
+    );
+  }
+}
+
+class _ExamResultCard extends StatelessWidget {
+  final ExamResultSummary result;
+  const _ExamResultCard({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = result.passed ? AppColors.green600 : AppColors.orange600;
+    return Material(
+      color: scheme.surfaceContainerLowest,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: () => context.push(AppRoutes.examResultReview(result.attemptId)),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            border: Border.all(color: scheme.outlineVariant),
+            boxShadow: AppShadows.soft,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [color.withValues(alpha: 0.85), color],
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text('${result.scorePercent.toStringAsFixed(0)}٪',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12.5)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${result.subjectNameFa} · ${gradeLabel(context, result.gradeNumber)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(
+                      context.tr('exams.resultDateAndCount', {
+                        'date': formatDate(result.submittedAt),
+                        'correct': '${result.correctCount}',
+                        'total': '${result.totalCount}',
+                      }),
+                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+                child: Text(
+                  result.passed ? context.tr('academy.passedShort') : context.tr('academy.failedShort'),
+                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: color),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant, size: 20),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -268,44 +399,38 @@ class _FinalExamHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          if (exam.attempted) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(AppRadii.md),
-              ),
-              child: Row(
-                children: [
-                  Icon(passed ? Icons.check_circle_rounded : Icons.info_outline_rounded, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      passed
-                          ? context.tr('exams.passedBestScore',
-                              {'score': exam.bestScorePercent!.toStringAsFixed(0)})
-                          : context.tr('exams.failedBestScore', {
-                              'score': exam.bestScorePercent!.toStringAsFixed(0),
-                              'passMark': '80',
-                            }),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12.5),
-                    ),
-                  ),
-                ],
-              ),
+          // یادآوری: هر امتحان فقط یک‌بار قابل دادن است — نتیجه بعد از
+          // ثبت، در «نتایج امتحانات رسمی» با امکان مرور پاسخ‌ها دیده می‌شود.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(AppRadii.md),
             ),
-            const SizedBox(height: 12),
-          ],
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    context.tr('exams.oneAttemptOnlyNote'),
+                    style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: passed ? AppColors.green700 : AppColors.orange700,
+                foregroundColor: AppColors.orange700,
               ),
               onPressed: () => context.push(AppRoutes.examTaking(exam.id)),
-              icon: Icon(passed ? Icons.replay_rounded : Icons.play_arrow_rounded),
-              label: Text(passed ? context.tr('exams.retryForBetterScore') : context.tr('exams.startFinalExam')),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(context.tr('exams.startFinalExam')),
             ),
           ),
         ],
@@ -348,13 +473,8 @@ class _OfficialExamCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 const SizedBox(height: 2),
                 Text(
-                  exam.attempted
-                      ? context.tr('exams.bestScoreQuestions', {
-                          'score': exam.bestScorePercent!.toStringAsFixed(0),
-                          'count': '${exam.questionCount}',
-                        })
-                      : context.tr('exams.questionsAndDuration',
-                          {'count': '${exam.questionCount}', 'duration': '${exam.durationMinutes}'}),
+                  context.tr('exams.questionsAndDuration',
+                      {'count': '${exam.questionCount}', 'duration': '${exam.durationMinutes}'}),
                   style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
                 ),
               ],
@@ -363,7 +483,7 @@ class _OfficialExamCard extends StatelessWidget {
           const SizedBox(width: 8),
           FilledButton.tonal(
             onPressed: () => context.push(AppRoutes.examTaking(exam.id)),
-            child: Text(exam.attempted ? context.tr('exams.retry') : context.tr('exams.start')),
+            child: Text(context.tr('exams.start')),
           ),
         ],
       ),

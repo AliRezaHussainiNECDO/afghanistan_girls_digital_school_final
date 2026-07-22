@@ -147,27 +147,29 @@ exams.get('/exams/available', async (c) => {
       .first<{ current_grade: number | null }>();
     grade = u?.current_grade ?? 0;
   }
-  // رفع اشکال: قبلاً این فهرست هیچ اطلاعی از تلاش‌های قبلیِ همین شاگرد
-  // نمی‌داد، پس رابط کاربری همیشه فقط دکمهٔ «شروع» نشان می‌داد — حتی برای
-  // امتحانی که شاگرد قبلاً با نمرهٔ خوب کامیاب شده بود. اکنون بهترین نمرهٔ
-  // قبلیِ همین کاربر هم همراه هر امتحان برگردانده می‌شود (پارامتری — نه
-  // درج مستقیم در متن SQL — تا از تزریق SQL جلوگیری شود).
+  // رفع اشکال «آمادگی امتحانات»: طبق تصمیم صریح صاحب پروژه، هر امتحان فقط
+  // یک‌بار قابل دادن است — بدون تلاش دوباره، حتی برای امتحان «نهایی».
+  // پس هر امتحانی که شاگرد قبلاً یک تلاش برایش ثبت کرده، دیگر اصلاً در این
+  // فهرست برنمی‌گردد (نه فقط با یک پرچم «تکمیل‌شده» نشان داده شود) — نتیجهٔ
+  // آن به‌جایش در `/exams/my-results` و صفحهٔ «نتایج امتحانات» دیده می‌شود.
   const userIdParam = me?.sub ?? '';
-  const bestScoreSql = me
-    ? `, (SELECT MAX(a.score_percent) FROM exam_attempts a WHERE a.exam_id = e.id AND a.user_id = ?) AS best_score`
+  const notAttemptedSql = me
+    ? `AND NOT EXISTS (SELECT 1 FROM exam_attempts a WHERE a.exam_id = e.id AND a.user_id = ?)`
     : '';
   const query = grade
     ? c.env.DB.prepare(
         `SELECT e.id, e.type, e.duration_minutes, e.grade_number, s.name_fa AS subject_name_fa,
-           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count${bestScoreSql}
+           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
          FROM exams e JOIN subjects s ON s.id = e.subject_id
-         WHERE e.status='published' AND e.grade_number = ? ORDER BY e.created_at DESC`,
-      ).bind(...(me ? [userIdParam] : []), grade)
+         WHERE e.status='published' AND e.grade_number = ? ${notAttemptedSql}
+         ORDER BY e.created_at DESC`,
+      ).bind(grade, ...(me ? [userIdParam] : []))
     : c.env.DB.prepare(
         `SELECT e.id, e.type, e.duration_minutes, e.grade_number, s.name_fa AS subject_name_fa,
-           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count${bestScoreSql}
+           (SELECT COUNT(*) FROM questions q WHERE q.exam_id = e.id) AS question_count
          FROM exams e JOIN subjects s ON s.id = e.subject_id
-         WHERE e.status='published' ORDER BY e.created_at DESC`,
+         WHERE e.status='published' ${notAttemptedSql}
+         ORDER BY e.created_at DESC`,
       ).bind(...(me ? [userIdParam] : []));
   const { results } = await query.all<any>();
   const list = results.map((e) => ({
@@ -177,10 +179,163 @@ exams.get('/exams/available', async (c) => {
     durationMinutes: e.duration_minutes,
     questionCount: e.question_count,
     gradeNumber: e.grade_number,
-    bestScorePercent: e.best_score ?? null,
-    passed: (e.best_score ?? 0) >= PROMOTION_EXAM_PASS_PERCENT,
+    // دیگر امتحان تلاش‌شده اصلاً در این فهرست نیست، پس همیشه false/null است —
+    // فیلدها فقط برای سازگاری با کلاینت‌های قدیمی‌تر نگه داشته شده‌اند.
+    bestScorePercent: null,
+    passed: false,
   }));
   return c.json({ exams: list });
+});
+
+// ───────────── نتایج امتحانات رسمیِ شاگرد (بعد از دادن هر امتحان) ───────────
+// طبق درخواست کاربر: بعد از دادن هر امتحان، دیگر در فهرست بالا دیده نمی‌شود
+// و به‌جایش اینجا با نمره/مضمون/صنف/تاریخ برمی‌گردد — قابل استفاده هم برای
+// شاگرد خودش (بدون studentId) و هم برای والدِ لینک‌شدهٔ تأییدشده/مدیر
+// (با studentId، همان الگوی `/students/:studentId/certificates`) تا داشبورد
+// والدین هم دقیقاً همین داده را ببیند — نه یک سیستم جدا.
+exams.get('/exams/my-results', async (c) => {
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const requestedId = c.req.query('studentId')?.trim();
+  let target = me.sub;
+  if (requestedId && requestedId !== me.sub) {
+    if (me.role === 'super_admin') {
+      target = requestedId;
+    } else if (me.role === 'parent') {
+      const link = await c.env.DB.prepare(
+        "SELECT 1 FROM parent_student_links WHERE parent_user_id=? AND student_user_id=? AND status='approved'",
+      )
+        .bind(me.sub, requestedId)
+        .first();
+      if (!link) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+      target = requestedId;
+    } else {
+      return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+    }
+  }
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT a.id AS attempt_id, a.exam_id, a.score_percent, a.correct_count, a.total_count, a.submitted_at,
+            e.type, e.title, e.grade_number, s.name_fa AS subject_name_fa
+       FROM exam_attempts a
+       JOIN exams e ON e.id = a.exam_id
+       JOIN subjects s ON s.id = e.subject_id
+      WHERE a.user_id = ?
+      ORDER BY a.submitted_at DESC`,
+  )
+    .bind(target)
+    .all<any>();
+
+  const list = results.map((r) => ({
+    attemptId: r.attempt_id,
+    examId: r.exam_id,
+    examTitle: r.title,
+    subjectNameFa: r.subject_name_fa,
+    gradeNumber: r.grade_number,
+    type: TYPE_MAP[r.type as string] ?? 'dailyQuiz',
+    scorePercent: r.score_percent,
+    correctCount: r.correct_count,
+    totalCount: r.total_count,
+    passed: (r.score_percent ?? 0) >= PROMOTION_EXAM_PASS_PERCENT,
+    submittedAt: r.submitted_at,
+  }));
+  return c.json({ results: list });
+});
+
+// ───────────── مرور سؤال‌به‌سؤالِ یک تلاش (پاسخ درست/غلط) ───────────────────
+// طبق درخواست کاربر: با کلیک روی یک نتیجه، شاگرد (یا والد/مدیر) باید بتواند
+// دقیقاً همان سؤالاتی که جواب داده را ببیند، همراه با اینکه درست بوده یا
+// غلط. `correctIndex` اینجا عمداً برگردانده می‌شود (برخلاف
+// `/exams/:examId/questions` حین دادن امتحان) چون امتحان قبلاً تمام و ثبت
+// شده — دیگر خطر تقلب معنا ندارد.
+exams.get('/exams/attempts/:attemptId', async (c) => {
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const attemptId = c.req.param('attemptId');
+  const attempt = await c.env.DB.prepare(
+    `SELECT a.*, e.title, e.type, e.grade_number, e.subject_id, s.name_fa AS subject_name_fa
+       FROM exam_attempts a
+       JOIN exams e ON e.id = a.exam_id
+       JOIN subjects s ON s.id = e.subject_id
+      WHERE a.id = ?`,
+  )
+    .bind(attemptId)
+    .first<any>();
+  if (!attempt) return c.json(fail('NOT_FOUND', 'تلاش یافت نشد', 'Attempt not found', 'هڅه ونه موندل شوه', 'Tentative introuvable'), 404);
+
+  let allowed = me.role === 'super_admin' || attempt.user_id === me.sub;
+  if (!allowed && me.role === 'parent') {
+    const link = await c.env.DB.prepare(
+      "SELECT 1 FROM parent_student_links WHERE parent_user_id=? AND student_user_id=? AND status='approved'",
+    )
+      .bind(me.sub, attempt.user_id)
+      .first();
+    allowed = !!link;
+  }
+  if (!allowed) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+
+  const { results: questions } = await c.env.DB.prepare(
+    'SELECT id, text, options, correct_index, q_type, answer_text, order_index FROM questions WHERE exam_id = ? ORDER BY order_index',
+  )
+    .bind(attempt.exam_id)
+    .all<any>();
+
+  const answers: Record<string, number> = attempt.answers_json ? JSON.parse(attempt.answers_json) : {};
+  const essayRecords: Array<{ questionId: string; answer: string; score: number | null; feedback: string }> =
+    attempt.essay_answers ? JSON.parse(attempt.essay_answers) : [];
+  const essayByQ = new Map(essayRecords.map((r) => [r.questionId, r] as const));
+
+  const reviewQuestions = questions.map((q: any) => {
+    const qType = QUESTION_TYPES.has(q.q_type) ? q.q_type : 'mcq';
+    if (qType === 'essay') {
+      const rec = essayByQ.get(q.id);
+      return {
+        id: q.id,
+        text: q.text,
+        qType,
+        options: [] as string[],
+        correctIndex: -1,
+        studentAnswerIndex: -1,
+        studentAnswerText: rec?.answer ?? '',
+        modelAnswerText: q.answer_text ?? '',
+        isCorrect: rec?.score != null ? rec.score >= 0.5 : null,
+        essayScore: rec?.score ?? null,
+        essayFeedback: rec?.feedback ?? '',
+      };
+    }
+    const options = qType === 'true_false' ? [...TRUE_FALSE_OPTIONS] : JSON.parse(q.options || '[]');
+    const studentIdx = answers[q.id] ?? -1;
+    return {
+      id: q.id,
+      text: q.text,
+      qType,
+      options,
+      correctIndex: q.correct_index,
+      studentAnswerIndex: studentIdx,
+      studentAnswerText: '',
+      modelAnswerText: '',
+      isCorrect: studentIdx === q.correct_index,
+      essayScore: null,
+      essayFeedback: '',
+    };
+  });
+
+  return c.json({
+    attemptId: attempt.id,
+    examId: attempt.exam_id,
+    examTitle: attempt.title,
+    type: TYPE_MAP[attempt.type as string] ?? 'dailyQuiz',
+    subjectNameFa: attempt.subject_name_fa,
+    gradeNumber: attempt.grade_number,
+    scorePercent: attempt.score_percent,
+    correctCount: attempt.correct_count,
+    totalCount: attempt.total_count,
+    // همان آستانهٔ واحد PROMOTION_EXAM_PASS_PERCENT — هماهنگ با
+    // /exams/my-results و صفحهٔ نتیجهٔ بلافاصله بعد از تحویل.
+    passed: (attempt.score_percent ?? 0) >= PROMOTION_EXAM_PASS_PERCENT,
+    submittedAt: attempt.submitted_at,
+    questions: reviewQuestions,
+  });
 });
 
 // ─────────────────────────── سؤالات (بدون پاسخ) ─────────────────────────────
@@ -214,6 +369,26 @@ exams.post('/exams/:examId/submit', async (c) => {
     .catch(() => null);
   const answers = body?.answers ?? {};
   const textAnswers = body?.textAnswers ?? {};
+
+  // رفع اشکال «آمادگی امتحانات»: هر امتحان فقط یک‌بار قابل دادن است (تصمیم
+  // صریح صاحب پروژه — بدون تلاش دوباره، حتی برای امتحان نهایی). این بررسی
+  // سمت سرور، مستقل از رابط کاربری، از ثبت دوبارهٔ یک امتحان جلوگیری می‌کند
+  // (مثلاً اگر کلاینت کهنه باشد یا درخواست مستقیم بفرستد).
+  const already = await c.env.DB.prepare('SELECT id FROM exam_attempts WHERE exam_id = ? AND user_id = ?')
+    .bind(examId, me.sub)
+    .first();
+  if (already) {
+    return c.json(
+      fail(
+        'ALREADY_ATTEMPTED',
+        'شما قبلاً در این امتحان شرکت کرده‌اید — هر امتحان فقط یک‌بار قابل دادن است.',
+        'You have already taken this exam — each exam can only be taken once.',
+        'تاسو دمخه پدې ازموینه کې برخه اخیستې ده — هره ازموینه یوازې یو ځل ورکول کیدی شي.',
+        'Vous avez déjà passé cet examen — chaque examen ne peut être passé qu\'une seule fois.',
+      ),
+      409,
+    );
+  }
 
   const { results } = await c.env.DB.prepare(
     'SELECT id, text, correct_index, q_type, answer_text FROM questions WHERE exam_id = ?',
@@ -266,20 +441,58 @@ exams.post('/exams/:examId/submit', async (c) => {
   const examRow = await c.env.DB.prepare('SELECT title, type, grade_number FROM exams WHERE id = ?')
     .bind(examId)
     .first<{ title: string; type: string; grade_number: number }>();
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      'INSERT INTO exam_attempts (id, exam_id, user_id, score_percent, correct_count, total_count, essay_answers) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).bind(uid(), examId, me.sub, score, correct, total, essayRecords.length > 0 ? JSON.stringify(essayRecords) : null),
-    c.env.DB.prepare(
-      "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'exam', ?)",
-    ).bind(
-      uid(),
-      me.sub,
-      'نتیجهٔ امتحان',
-      `نمرهٔ شما در «${examRow?.title ?? 'امتحان'}»: ${roundedScore}٪ (${correct} از ${total})`,
-      examId,
-    ),
-  ]);
+  const attemptId = uid();
+  // پاسخ‌های خام سؤالات بسته (mcq/true_false) — برای صفحهٔ «مرور پاسخ‌ها»
+  // بعداً لازم است (بخش جدید: GET /exams/attempts/:attemptId).
+  const closedAnswersToStore: Record<string, number> = {};
+  for (const q of closed) {
+    if (answers[q.id] !== undefined) closedAnswersToStore[q.id] = answers[q.id];
+  }
+  // رفع اشکال «شرط رقابتی» (race condition): بررسی بالا فقط یک SELECT ساده
+  // بود — دو درخواست هم‌زمان (مثلاً دو تپ سریع یا تلاش مجدد شبکه) می‌توانستند
+  // هر دو از آن عبور کنند و دو تلاش برای یک امتحان ثبت شود. اکنون یک ایندکس
+  // یکتا روی (exam_id, user_id) در دیتابیس (migration 0037) این را در سطح
+  // خودِ دیتابیس تضمین می‌کند؛ اینجا فقط خطای احتمالی را می‌گیریم و همان پیام
+  // «قبلاً داده‌اید» را برمی‌گردانیم به‌جای خطای عمومی ۵۰۰.
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        'INSERT INTO exam_attempts (id, exam_id, user_id, score_percent, correct_count, total_count, essay_answers, answers_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).bind(
+        attemptId,
+        examId,
+        me.sub,
+        score,
+        correct,
+        total,
+        essayRecords.length > 0 ? JSON.stringify(essayRecords) : null,
+        JSON.stringify(closedAnswersToStore),
+      ),
+      c.env.DB.prepare(
+        "INSERT INTO notifications (id, user_id, title_fa, body_fa, priority, kind, related_id) VALUES (?, ?, ?, ?, 'medium', 'exam', ?)",
+      ).bind(
+        uid(),
+        me.sub,
+        'نتیجهٔ امتحان',
+        `نمرهٔ شما در «${examRow?.title ?? 'امتحان'}»: ${roundedScore}٪ (${correct} از ${total})`,
+        examId,
+      ),
+    ]);
+  } catch (err) {
+    if (String(err).includes('UNIQUE constraint failed')) {
+      return c.json(
+        fail(
+          'ALREADY_ATTEMPTED',
+          'شما قبلاً در این امتحان شرکت کرده‌اید — هر امتحان فقط یک‌بار قابل دادن است.',
+          'You have already taken this exam — each exam can only be taken once.',
+          'تاسو دمخه پدې ازموینه کې برخه اخیستې ده — هره ازموینه یوازې یو ځل ورکول کیدی شي.',
+          'Vous avez déjà passé cet examen — chaque examen ne peut être passé qu\'une seule fois.',
+        ),
+        409,
+      );
+    }
+    throw err;
+  }
   c.executionCtx.waitUntil(
     sendPushToUser(c.env, me.sub, 'نتیجهٔ امتحان', `نمرهٔ شما در «${examRow?.title ?? 'امتحان'}»: ${roundedScore}٪ (${correct} از ${total})`),
   );
@@ -293,9 +506,16 @@ exams.post('/exams/:examId/submit', async (c) => {
   }
 
   return c.json({
+    attemptId,
     scorePercent: Math.round(score * 10) / 10,
     correctCount: correct,
     totalCount: total,
+    // رفع اشکال ناهماهنگی: قبلاً کلاینت خودش با آستانهٔ ۵۰٪ ثابت (هاردکد)
+    // تشخیص می‌داد «قبول» شده یا نه، در حالی‌که منبع واحد حقیقت همین
+    // PROMOTION_EXAM_PASS_PERCENT (۸۰٪) سرور بود که در فهرست نتایج/داشبورد
+    // والدین استفاده می‌شد — یعنی همان امتحان می‌توانست بلافاصله بعد از
+    // تحویل «قبول» نشان داده شود ولی چند ثانیه بعد در فهرست نتایج «ناکام».
+    passed: score >= PROMOTION_EXAM_PASS_PERCENT,
     promoted: promotion.promoted,
     newGrade: promotion.newGrade,
   });

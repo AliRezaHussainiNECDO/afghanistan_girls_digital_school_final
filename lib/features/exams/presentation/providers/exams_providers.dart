@@ -25,6 +25,10 @@ final getQuestionsUseCaseProvider =
     Provider((ref) => GetQuestionsUseCase(ref.watch(examsRepositoryProvider)));
 final submitAnswersUseCaseProvider =
     Provider((ref) => SubmitAnswersUseCase(ref.watch(examsRepositoryProvider)));
+final getMyExamResultsUseCaseProvider =
+    Provider((ref) => GetMyExamResultsUseCase(ref.watch(examsRepositoryProvider)));
+final getExamAttemptReviewUseCaseProvider =
+    Provider((ref) => GetExamAttemptReviewUseCase(ref.watch(examsRepositoryProvider)));
 
 final availableExamsProvider = FutureProvider<List<ExamSummary>>((ref) async {
   final result = await ref.read(getAvailableExamsUseCaseProvider).call(const NoParams());
@@ -33,5 +37,18 @@ final availableExamsProvider = FutureProvider<List<ExamSummary>>((ref) async {
 
 final examQuestionsProvider = FutureProvider.family<List<ExamQuestion>, String>((ref, examId) async {
   final result = await ref.read(getQuestionsUseCaseProvider).call(examId);
+  return result.fold((f) => throw f, (v) => v);
+});
+
+/// نتایج امتحانات رسمی — `null` یعنی خودِ کاربر واردشده (شاگرد)؛ مقدار
+/// غیر-null یعنی شناسهٔ فرزند (استفادهٔ داشبورد والدین — همان داده،
+/// هماهنگ با صفحهٔ شاگرد).
+final myExamResultsProvider = FutureProvider.family<List<ExamResultSummary>, String?>((ref, studentId) async {
+  final result = await ref.read(getMyExamResultsUseCaseProvider).call(studentId);
+  return result.fold((f) => throw f, (v) => v);
+});
+
+final examAttemptReviewProvider = FutureProvider.family<ExamAttemptReview, String>((ref, attemptId) async {
+  final result = await ref.read(getExamAttemptReviewUseCaseProvider).call(attemptId);
   return result.fold((f) => throw f, (v) => v);
 });
