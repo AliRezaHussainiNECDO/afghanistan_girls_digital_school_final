@@ -37,7 +37,10 @@ class ParentScoresScreen extends ConsumerWidget {
       role: AppUserRole.parent,
       body: childrenAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(linkedChildrenProvider),
+            ),
         data: (children) {
           if (children.isEmpty) {
             return Center(

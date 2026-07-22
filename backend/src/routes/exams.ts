@@ -8,6 +8,8 @@
  *   GET  /students/:studentId/certificates
  *   POST /admin/certificates              صدور گواهی‌نامه (مدیر)
  *   DELETE /admin/certificates/:id        ابطال گواهی‌نامه (مدیر)
+ *   GET  /certificates/verify/:serial     صفحهٔ عمومی تأیید اصالت (بدون نیاز به ورود —
+ *                                          پشت QR روی خودِ سرتیفیکت؛ برای اعتبار بین‌المللی)
  *
  *   -- مدیریت امتحانات/سؤالات (فقط مدیر — رفع اشکال: قبلاً هیچ راهی برای
  *      ساخت امتحان/سؤال از داخل برنامه وجود نداشت، پس امتحان «نهایی» برای
@@ -406,6 +408,62 @@ exams.delete('/admin/certificates/:id', async (c) => {
     }),
   );
   return c.json({ success: true });
+});
+
+// ───────────────────── تأیید عمومی اصالت گواهی‌نامه (QR) ─────────────────────
+// طبق درخواست کاربر برای اعتبار بین‌المللی: روی هر سرتیفیکت یک QR چاپ می‌شود
+// که به همین صفحه لینک می‌شود — هر دانشگاه/کارفرما بدون نیاز به حساب کاربری
+// می‌تواند اصالت سند را آنلاین بررسی کند (همان الگوی Coursera/edX). صفحه
+// عمداً حداقلی است: فقط اطلاعاتی که خودِ سرتیفیکت چاپی هم نشان می‌دهد (نه
+// اطلاعات حساس اضافه‌ای مثل ایمیل/تلفن).
+function escapeHtml(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function certificateVerifyPage(found: boolean, cert?: any): string {
+  const brand = 'مکتب دیجیتال دختران افغانستان';
+  if (!found) {
+    return `<!doctype html>
+<html dir="rtl" lang="fa"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تأیید سرتیفیکت — ${brand}</title></head>
+<body style="margin:0;background:#f4f6f8;font-family:Tahoma,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+<div style="background:#fff;border:1px solid #e3e8ee;border-radius:12px;padding:40px 32px;max-width:440px;text-align:center;">
+<div style="font-size:48px;">❌</div>
+<h2 style="color:#b3261e;margin:16px 0 8px;">این سرتیفیکت یافت نشد یا نامعتبر/باطل‌شده است</h2>
+<p style="color:#7b8794;font-size:13px;">شمارهٔ سریال واردشده در سامانهٔ ${brand} ثبت نیست.</p>
+</div></body></html>`;
+  }
+  const c = cert;
+  const issuedAt = c.issued_at ? String(c.issued_at).slice(0, 10) : '';
+  const honorLine = c.honor ? `<div style="margin-top:6px;color:#b8860b;font-weight:700;">${escapeHtml(c.honor)}</div>` : '';
+  return `<!doctype html>
+<html dir="rtl" lang="fa"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تأیید سرتیفیکت — ${brand}</title></head>
+<body style="margin:0;background:#f4f6f8;font-family:Tahoma,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;">
+<div style="background:#fff;border:1px solid #e3e8ee;border-radius:14px;padding:36px 32px;max-width:460px;width:100%;text-align:center;">
+<div style="font-size:48px;">✅</div>
+<h2 style="color:#1b6e4b;margin:14px 0 4px;">این سرتیفیکت اصیل و معتبر است</h2>
+<p style="color:#7b8794;font-size:12.5px;margin-bottom:20px;">صادرشده توسط ${brand}</p>
+<div style="text-align:right;background:#f9fafb;border:1px solid #e3e8ee;border-radius:10px;padding:16px 18px;font-size:14px;line-height:2;">
+<div><b>نام شاگرد:</b> ${escapeHtml(c.student_name)}</div>
+<div><b>صنف تکمیل‌شده:</b> ${escapeHtml(String(c.grade))}</div>
+<div><b>سال تعلیمی:</b> ${escapeHtml(c.year_label)}</div>
+<div><b>میانگین نمرات:</b> ${escapeHtml(String(c.average))}</div>
+<div><b>تاریخ صدور:</b> ${escapeHtml(issuedAt)}</div>
+<div><b>شمارهٔ سریال:</b> ${escapeHtml(c.serial)}</div>
+${honorLine}
+</div>
+</div></body></html>`;
+}
+
+exams.get('/certificates/verify/:serial', async (c) => {
+  const serial = c.req.param('serial');
+  const row = await c.env.DB.prepare('SELECT * FROM certificates WHERE serial = ?').bind(serial).first<any>();
+  return c.html(certificateVerifyPage(!!row, row));
 });
 
 function certJson(r: any) {

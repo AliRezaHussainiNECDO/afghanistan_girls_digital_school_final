@@ -34,7 +34,10 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
         },
         child: summariesAsync.when(
           loading: () => const LoadingView(),
-          error: (e, st) => ErrorView(error: e),
+          error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(classChatSummariesProvider),
+              ),
           data: (summaries) {
             final totalFlagged =
                 summaries.fold<int>(0, (a, s) => a + s.flaggedPendingCount);

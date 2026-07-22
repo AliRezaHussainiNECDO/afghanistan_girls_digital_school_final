@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/email_verification_banner.dart';
 import '../../../../core/widgets/empty_view.dart';
@@ -16,20 +21,59 @@ import '../../../seminars/presentation/widgets/seminar_editor_dialog.dart';
 import '../../domain/usecases/instructor_usecases.dart';
 import '../providers/instructor_providers.dart';
 
-/// پنل استاد سمینار: ساخت/ویرایش/حذف سمینار + شروع و برگزاری ویدیو کنفرانس.
-/// طبق بخش ۱۲ و ۱۹.۸ سند.
-class InstructorHomeScreen extends ConsumerWidget {
+/// پنل استاد سمینار — «داشبورد استاد»:
+///   • هدر قهرمان با نام استاد + شمار زندهٔ سمینارهایش (یا پیام «همین حالا
+///     زنده!» وقتی یکی از سمینارهایش در حال پخش است)
+///   • نوار آمار (مجموع/پیش‌رو/زنده/ثبت‌نام‌ها/پایان‌یافته)
+///   • کارت درخشان «سمینار بعدی شما» با دکمهٔ مستقیم شروع/پیوستن
+///   • دسترسی سریع به بخش‌های دیگر (حافظهٔ جمعی، تماس با مدیر، اعلان‌ها، پروفایل)
+///   • فهرست کامل سمینارها با ساخت/ویرایش/حذف/شروع پخش زنده
+/// هر ۳۰ ثانیه بی‌صدا بازسازی می‌شود (بدون فراخوانی سرور) تا شمارش معکوس و
+/// وضعیت «زنده‌شدن» خودکار سمینارها همیشه به‌روز بمانند — طبق درخواست کاربر:
+/// داشبورد باید «خیلی پویا» باشد.
+class InstructorHomeScreen extends ConsumerStatefulWidget {
   const InstructorHomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InstructorHomeScreen> createState() => _InstructorHomeScreenState();
+}
+
+class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
+  Timer? _tickTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _tickTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tickTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final seminarsAsync = ref.watch(myInstructorSeminarsProvider);
+    final instructor = ref.watch(authSessionProvider);
+    final scheme = Theme.of(context).colorScheme;
+
+    // نام واقعی استادِ واردشده برای سربرگ خوش‌آمدگویی — هماهنگ با همان
+    // الگوی داشبورد شاگرد/والد/مدیر (نه یک متن ثابت).
+    final instructorName = (instructor?.firstName.trim().isNotEmpty ?? false)
+        ? instructor!.firstName.trim()
+        : ((instructor?.displayName.trim().isNotEmpty ?? false)
+            ? instructor!.displayName.trim()
+            : '');
 
     return AppScaffold(
       title: context.tr('instructor.mySeminars'),
       role: AppUserRole.seminarInstructor,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _createSeminar(context, ref),
+        onPressed: () => _createSeminar(context),
         icon: const Icon(Icons.add),
         label: Text(context.tr('instructor.createSeminar')),
       ),
@@ -40,22 +84,70 @@ class InstructorHomeScreen extends ConsumerWidget {
           Expanded(
             child: seminarsAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                error: e,
+                onRetry: () => ref.invalidate(myInstructorSeminarsProvider),
+              ),
               data: (seminars) {
-                if (seminars.isEmpty) {
-                  return EmptyView(
-                    message: context.tr('instructor.noSeminars'),
-                    icon: Icons.groups_outlined,
-                  );
-                }
+                final stats = _InstructorStats.from(seminars);
+                final spotlight = _pickSpotlightSeminar(seminars);
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(myInstructorSeminarsProvider),
-                  child: ListView.separated(
+                  child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                    itemCount: seminars.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 14),
-                    itemBuilder: (context, i) =>
-                        _InstructorSeminarCard(seminar: seminars[i], index: i),
+                    children: [
+                      _InstructorHeroHeader(name: instructorName, stats: stats),
+                      const SizedBox(height: 18),
+                      _InstructorStatsStrip(stats: stats),
+                      const SizedBox(height: 16),
+                      if (spotlight != null) ...[
+                        _NextSeminarSpotlight(
+                          seminar: spotlight,
+                          onStart: () => _startLive(context, spotlight),
+                        ).animate().fadeIn(duration: 320.ms).slideY(
+                            begin: 0.08, end: 0, duration: 320.ms, curve: Curves.easeOutCubic),
+                        const SizedBox(height: 18),
+                      ],
+                      Row(
+                        children: [
+                          Icon(Icons.apps_rounded, size: 18, color: scheme.primary),
+                          const SizedBox(width: 8),
+                          Text(context.tr('dashboard.mainSections'),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const _InstructorQuickSectionsGrid()
+                          .animate()
+                          .fadeIn(delay: 60.ms, duration: 400.ms)
+                          .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+                      const SizedBox(height: 20),
+                      Text(context.tr('instructor.allSeminars'),
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      const SizedBox(height: 10),
+                      if (seminars.isEmpty) ...[
+                        const SizedBox(height: 8),
+                        EmptyView(
+                          message: context.tr('instructor.noSeminars'),
+                          icon: Icons.groups_outlined,
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: SizedBox(
+                            width: 240,
+                            child: AppPrimaryButton(
+                              label: context.tr('instructor.createSeminar'),
+                              icon: Icons.add_rounded,
+                              onPressed: () => _createSeminar(context),
+                            ),
+                          ),
+                        ),
+                      ] else
+                        for (var i = 0; i < seminars.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 14),
+                          _InstructorSeminarCard(seminar: seminars[i], index: i),
+                        ],
+                    ],
                   ),
                 );
               },
@@ -66,7 +158,7 @@ class InstructorHomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _createSeminar(BuildContext context, WidgetRef ref) async {
+  Future<void> _createSeminar(BuildContext context) async {
     final user = ref.read(authSessionProvider);
     if (user == null) return;
     final result = await showSeminarEditorDialog(context);
@@ -95,6 +187,80 @@ class InstructorHomeScreen extends ConsumerWidget {
       },
     );
   }
+
+  /// شروع/میزبانی پخش زنده از کارت درخشان «سمینار بعدی شما».
+  Future<void> _startLive(BuildContext context, Seminar seminar) {
+    return startSeminarLive(context, ref, seminar,
+        onWentLive: () => ref.invalidate(myInstructorSeminarsProvider));
+  }
+}
+
+/// آمار خلاصهٔ محاسبه‌شده از فهرست سمینارهای استاد — سرور آمار جداگانه‌ای
+/// برای این پنل ندارد، پس همه چیز از همان دادهٔ سمینارها که در دست است
+/// محاسبه می‌شود (بدون فراخوانی اضافی به سرور).
+class _InstructorStats {
+  final int total;
+  final int upcoming;
+  final int live;
+  final int ended;
+  final int totalRegistrations;
+
+  const _InstructorStats({
+    required this.total,
+    required this.upcoming,
+    required this.live,
+    required this.ended,
+    required this.totalRegistrations,
+  });
+
+  factory _InstructorStats.from(List<Seminar> seminars) {
+    var upcoming = 0, live = 0, ended = 0, regs = 0;
+    for (final s in seminars) {
+      regs += s.registeredCount;
+      if (s.isLiveNow) {
+        live++;
+      } else if (s.hasEnded) {
+        ended++;
+      } else if (s.status != SeminarStatus.draft) {
+        upcoming++;
+      }
+    }
+    return _InstructorStats(
+      total: seminars.length,
+      upcoming: upcoming,
+      live: live,
+      ended: ended,
+      totalRegistrations: regs,
+    );
+  }
+}
+
+/// نزدیک‌ترین سمیناری که هنوز پایان نیافته — سمینارهای زنده همیشه اولویت
+/// دارند؛ در غیر آن صورت زودترین سمینار پیش‌رو انتخاب می‌شود. پیش‌نویس‌ها
+/// (draft) در این انتخاب نادیده گرفته می‌شوند چون هنوز آماده/منتشر نشده‌اند.
+Seminar? _pickSpotlightSeminar(List<Seminar> seminars) {
+  final candidates =
+      seminars.where((s) => !s.hasEnded && s.status != SeminarStatus.draft).toList();
+  if (candidates.isEmpty) return null;
+  candidates.sort((a, b) {
+    if (a.isLiveNow != b.isLiveNow) return a.isLiveNow ? -1 : 1;
+    return a.scheduledStart.compareTo(b.scheduledStart);
+  });
+  return candidates.first;
+}
+
+/// متن شمارش معکوس/وضعیت یک سمینار — «همین حالا زنده» یا «۳ روز دیگر» و…
+String _countdownLabel(BuildContext context, Seminar s) {
+  if (s.isLiveNow) return context.tr('seminars.live');
+  final diff = s.scheduledStart.difference(DateTime.now());
+  if (diff.isNegative) return context.tr('seminars.ended');
+  if (diff.inDays >= 1) {
+    return context.tr('seminars.startsInDays', {'count': '${diff.inDays}'});
+  }
+  if (diff.inHours >= 1) {
+    return context.tr('seminars.startsInHours', {'count': '${diff.inHours}'});
+  }
+  return context.tr('seminars.startsInMinutes', {'count': '${diff.inMinutes + 1}'});
 }
 
 class _InstructorSeminarCard extends ConsumerWidget {
@@ -390,6 +556,399 @@ class _MiniChip extends StatelessWidget {
           Text(label, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
         ],
       ),
+    );
+  }
+}
+
+/// نقطهٔ سرخ تپنده — نشان «سمینار زنده» در هدر قهرمان.
+class _LivePulseDot extends StatelessWidget {
+  final double size;
+  const _LivePulseDot({this.size = 10});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+    )
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .scale(
+            begin: const Offset(0.75, 0.75),
+            end: const Offset(1.15, 1.15),
+            duration: 800.ms,
+            curve: Curves.easeInOut)
+        .fade(begin: 0.6, end: 1);
+  }
+}
+
+/// عدد با شمارش انیمیشنی — هر بار مقدار تغییر کند نرم می‌شمارد (هماهنگ با
+/// همان جلوهٔ داشبورد مدیر/شاگرد).
+class _InstructorAnimatedCount extends StatelessWidget {
+  final int value;
+  final TextStyle? style;
+  const _InstructorAnimatedCount({required this.value, this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value.toDouble()),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeOutCubic,
+      builder: (context, v, _) => Text('${v.round()}', style: style),
+    );
+  }
+}
+
+/// هدر قهرمان داشبورد استاد — گرادیان گرم معمولی، یا قرمزِ فوری وقتی یکی از
+/// سمینارهایش همین حالا زنده است (بیشترین اولویت بصری، چون نیاز به توجه دارد).
+class _InstructorHeroHeader extends StatelessWidget {
+  final String name;
+  final _InstructorStats stats;
+  const _InstructorHeroHeader({required this.name, required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasLive = stats.live > 0;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: hasLive
+            ? const LinearGradient(colors: [Color(0xFFE5484D), Color(0xFFB03038)])
+            : AppColors.heroGradient,
+        borderRadius: BorderRadius.circular(AppRadii.xl),
+        boxShadow: hasLive
+            ? [
+                BoxShadow(
+                  color: AppColors.danger.withValues(alpha: 0.3),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ]
+            : AppShadows.warm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (name.isNotEmpty) ...[
+            Text(
+              context.tr('dashboard.welcomeBack', {'name': name}),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
+              if (hasLive) ...[
+                const _LivePulseDot(),
+                const SizedBox(width: 8),
+              ] else ...[
+                const Icon(Icons.groups_rounded, size: 16, color: Colors.white),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                hasLive ? context.tr('seminars.live') : context.tr('instructor.overviewTitle'),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _InstructorAnimatedCount(
+                value: hasLive ? stats.live : stats.total,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 44, fontWeight: FontWeight.w900, height: 1),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  hasLive ? context.tr('seminars.live') : context.tr('instructor.totalSeminars'),
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.06);
+  }
+}
+
+/// نوار «آمار سمینارهای شما» — پنج شاخص در یک ردیف قابل‌اسکرول، هماهنگ با
+/// الگوی همین نوار در داشبورد مدیر (`_TodayActivityStrip`).
+class _InstructorStatsStrip extends StatelessWidget {
+  final _InstructorStats stats;
+  const _InstructorStatsStrip({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final items = [
+      (Icons.groups_rounded, context.tr('instructor.totalSeminars'), stats.total, AppColors.info),
+      (Icons.event_available_rounded, context.tr('seminars.upcoming'), stats.upcoming, AppColors.orange600),
+      (Icons.videocam_rounded, context.tr('seminars.live'), stats.live, AppColors.danger),
+      (Icons.how_to_reg_rounded, context.tr('instructor.registrations'), stats.totalRegistrations, AppColors.green600),
+      (Icons.check_circle_rounded, context.tr('seminars.ended'), stats.ended, AppColors.ink500),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(context.tr('instructor.overviewTitle'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Container(
+                    width: 92,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: items[i].$4.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(items[i].$1, size: 18, color: items[i].$4),
+                        const SizedBox(height: 6),
+                        _InstructorAnimatedCount(
+                          value: items[i].$3,
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900, color: items[i].$4),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(items[i].$2,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 9.5, color: scheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  ).animate().fadeIn(delay: (60 * i).ms, duration: 250.ms).scale(
+                      begin: const Offset(0.92, 0.92), curve: Curves.easeOutBack),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// کارت درخشان «سمینار بعدی شما» — نزدیک‌ترین سمینارِ هنوز پایان‌نیافته،
+/// با شمارش معکوس زنده و دکمهٔ مستقیم شروع/میزبانیِ پخش.
+class _NextSeminarSpotlight extends StatelessWidget {
+  final Seminar seminar;
+  final VoidCallback onStart;
+  const _NextSeminarSpotlight({required this.seminar, required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final s = seminar;
+    final live = s.isLiveNow;
+    final canHost = !s.hasEnded && s.status != SeminarStatus.draft;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(
+          color: live ? AppColors.danger.withValues(alpha: 0.55) : scheme.outlineVariant,
+          width: live ? 1.4 : 1,
+        ),
+        boxShadow: AppShadows.soft,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bolt_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(context.tr('instructor.nextSeminar'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  gradient: live
+                      ? const LinearGradient(colors: [Color(0xFFE5484D), Color(0xFFB03038)])
+                      : (s.audience == SeminarAudience.parents
+                          ? AppColors.successGradient
+                          : AppColors.heroGradientWarm),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  live ? Icons.videocam_rounded : Icons.groups_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: live ? AppColors.danger : scheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _countdownLabel(context, s),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: live ? AppColors.danger : scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (canHost) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: live ? AppColors.danger : AppColors.green500,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.md)),
+                ),
+                onPressed: onStart,
+                icon: Icon(live ? Icons.videocam_rounded : Icons.play_circle_rounded, size: 18),
+                label: Text(
+                  live ? context.tr('instructor.hostLive') : context.tr('instructor.startSeminar'),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// یک بخش در گرید «دسترسی سریع» داشبورد استاد — آیکن، کلید ترجمه، مسیر و
+/// رنگ. منبع حقیقت همان `_instructorItems` در `app_drawer.dart` است (منهای
+/// خودِ «سمینارها» چون همین صفحه است).
+class _InstructorSectionItem {
+  final IconData icon;
+  final String labelKey;
+  final String route;
+  final Color color;
+  const _InstructorSectionItem(this.icon, this.labelKey, this.route, this.color);
+}
+
+class _InstructorQuickSectionsGrid extends StatelessWidget {
+  const _InstructorQuickSectionsGrid();
+
+  static const _sections = [
+    _InstructorSectionItem(
+        Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
+    _InstructorSectionItem(
+        Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.instructorContactAdmin, AppColors.info),
+    _InstructorSectionItem(
+        Icons.notifications_rounded, 'nav.notifications', AppRoutes.instructorNotifications, AppColors.gold600),
+    _InstructorSectionItem(
+        Icons.person_rounded, 'nav.profile', AppRoutes.instructorProfile, AppColors.green700),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 0.86,
+      children: [
+        for (final s in _sections)
+          Material(
+            color: scheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              onTap: () => context.push(s.route),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: s.color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(s.icon, color: s.color, size: 21),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr(s.labelKey),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

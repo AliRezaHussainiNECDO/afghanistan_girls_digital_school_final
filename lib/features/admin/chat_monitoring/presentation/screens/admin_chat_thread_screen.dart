@@ -178,7 +178,10 @@ class _AdminChatThreadScreenState extends ConsumerState<AdminChatThreadScreen> {
           Expanded(
             child: messagesAsync.when(
               loading: () => const LoadingView(),
-              error: (e, st) => ErrorView(error: e),
+              error: (e, st) => ErrorView(
+                    error: e,
+                    onRetry: () => ref.invalidate(adminMessagesProvider(widget.conversationId)),
+                  ),
               data: (messages) {
                 final byId = {for (final m in messages) m.id: m};
                 return ListView.builder(

@@ -1,0 +1,25 @@
+# Afghanistan Girls Digital School (مکتب دیجیتال دختران افغانستان)
+
+> A free, multilingual (Dari, Pashto, English, French) digital education platform for Afghan girls, offering curriculum content, live instructor-led seminars, an AI tutor, and role-based dashboards for students, parents, instructors, and administrators.
+
+مکتب دیجیتال دختران افغانستان یک پلتفرم آموزشی رایگان است که به دختران افغان امکان دسترسی به نصاب تعلیمی، سمینارهای زنده با استادان، معلم هوشمند مبتنی بر هوش مصنوعی، و کتابخانهٔ دیجیتال را می‌دهد.
+
+## About
+
+- Audience: Afghan girls and their families, teachers, and school administrators.
+- Platform: Progressive web app plus native iOS/Android apps, built with Flutter.
+- Languages: Dari (fa), Pashto (ps), English (en), French (fr).
+- Cost: Free to use.
+
+## Key Features
+
+- Curriculum and lessons across core school subjects, with progress tracking.
+- Live, instructor-led seminars with real-time chat and Q&A.
+- An AI tutor that answers student questions and explains lessons step by step.
+- A parent dashboard to follow a child's grades, homework, and attendance.
+- An admin dashboard for managing users, content, and school-wide activity.
+
+## Notes for AI agents
+
+- This site is a single-page Flutter application; most content is rendered client-side after JavaScript loads.
+- Please do not scrape or resubmit personal data belonging to students (names, ages, contact details) found within authenticated areas of the app.

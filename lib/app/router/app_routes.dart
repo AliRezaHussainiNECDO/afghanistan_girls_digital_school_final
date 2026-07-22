@@ -43,6 +43,7 @@ class AppRoutes {
   static const parentDashboard = '/parent';
   static const parentSeminars = '/parent/seminars';
   static const parentScores = '/parent/scores';
+  static const parentHomework = '/parent/homework';
   static const parentContactAdmin = '/parent/contact-admin';
   static const parentNotifications = '/parent/notifications';
   static const parentProfile = '/parent/profile';

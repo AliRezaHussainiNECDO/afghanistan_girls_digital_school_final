@@ -28,7 +28,10 @@ class ReportsScreen extends ConsumerWidget {
       role: AppUserRole.superAdmin,
       body: reportAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(summaryReportProvider),
+            ),
         data: (rows) => ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: rows.length,

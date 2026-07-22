@@ -58,6 +58,7 @@ const _adminItems = [
 const _parentItems = [
   _DrawerItem(Icons.family_restroom_rounded, 'nav.parentDashboard', AppRoutes.parentDashboard),
   _DrawerItem(Icons.grade_rounded, 'parent.scores', AppRoutes.parentScores),
+  _DrawerItem(Icons.assignment_turned_in_rounded, 'parent.homework', AppRoutes.parentHomework),
   _DrawerItem(Icons.groups_rounded, 'parent.seminars', AppRoutes.parentSeminars),
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
   _DrawerItem(Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.parentContactAdmin),

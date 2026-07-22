@@ -57,6 +57,7 @@ import '../../features/onboarding/presentation/providers/onboarding_providers.da
 import '../../features/onboarding/presentation/screens/language_select_screen.dart';
 import '../../features/onboarding/presentation/screens/welcome_screen.dart';
 import '../../features/parent_dashboard/presentation/screens/parent_dashboard_screen.dart';
+import '../../features/parent_dashboard/presentation/screens/parent_homework_screen.dart';
 import '../../features/parent_dashboard/presentation/screens/parent_seminars_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/seminars/presentation/screens/seminar_room_screen.dart';
@@ -229,6 +230,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: AppRoutes.parentScores,
           pageBuilder: (c, s) => fadeSlidePage(s, const ParentScoresScreen())),
+      GoRoute(
+          path: AppRoutes.parentHomework,
+          pageBuilder: (c, s) => fadeSlidePage(s, const ParentHomeworkScreen())),
       GoRoute(
           path: AppRoutes.parentProfile, pageBuilder: (c, s) => fadeSlidePage(s, const ProfileScreen())),
       GoRoute(

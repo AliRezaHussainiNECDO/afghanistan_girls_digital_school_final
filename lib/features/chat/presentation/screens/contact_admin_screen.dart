@@ -97,7 +97,10 @@ class _ContactAdminScreenState extends ConsumerState<ContactAdminScreen> {
       role: role,
       body: convIdAsync.when(
         loading: () => const _LoadingStage(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(contactAdminConversationProvider),
+            ),
         data: (conversationId) => _Thread(
           conversationId: conversationId,
           controller: _controller,
@@ -211,7 +214,10 @@ class _ThreadState extends ConsumerState<_Thread> {
         Expanded(
           child: messagesAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => ErrorView(error: e),
+            error: (e, st) => ErrorView(
+                  error: e,
+                  onRetry: () => ref.invalidate(messagesProvider(conversationId)),
+                ),
             data: (messages) {
               if (messages.isEmpty) return _intro(context);
               // فقط با آمدن پیام تازه به انتها بپر — نه با هر تازه‌سازی زنده.

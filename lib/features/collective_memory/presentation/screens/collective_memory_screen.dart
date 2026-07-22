@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/error_view.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/collective_memory_providers.dart';
 import '../widgets/memory_composer_sheet.dart';
@@ -72,11 +73,9 @@ class CollectiveMemoryScreen extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, __) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(context.tr('memory.loadError', {'error': '$e'}), style: TextStyle(color: scheme.error)),
-            ),
+          error: (e, __) => ErrorView(
+            error: e,
+            onRetry: () => ref.invalidate(memoryPostsProvider),
           ),
         ),
       ),

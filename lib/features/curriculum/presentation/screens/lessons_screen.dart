@@ -30,7 +30,10 @@ class LessonsScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.tr('curriculum.lessons'))),
       body: lessonsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(lessonsProvider(chapterId)),
+            ),
         data: (lessons) {
           if (lessons.isEmpty) {
             return Center(

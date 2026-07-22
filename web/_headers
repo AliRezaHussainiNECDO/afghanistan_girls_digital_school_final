@@ -1,0 +1,13 @@
+# هدرهای امنیتی برای Cloudflare Pages — طبق نمونهٔ گزارش PageSpeed
+# (Best Practices: COOP، X-Frame-Options/Clickjacking، HSTS). عمداً از
+# افزودن Content-Security-Policy و Trusted-Types در این مرحله خودداری
+# شده چون این دو می‌توانند اسکریپت‌ها/منابع بیرونی اپ (Firebase،
+# Jitsi Meet، فونت‌های گوگل، Azure/Gemini) را بدون تست کامل بشکنند —
+# این‌ها باید جداگانه و با احتیاط تنظیم شوند.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin

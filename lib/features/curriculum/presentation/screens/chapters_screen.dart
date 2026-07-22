@@ -29,7 +29,10 @@ class ChaptersScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(context.tr('curriculum.chapters'))),
       body: chaptersAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(chaptersProvider(subjectId)),
+            ),
         data: (chapters) {
           if (chapters.isEmpty) {
             return Center(

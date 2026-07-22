@@ -23,7 +23,10 @@ binding = "BUCKET"
 bucket_name = "afghan-girls-school-storage"
 
 [vars]
-ALLOWED_ORIGIN = "*"
+# محدود به دامنهٔ واقعی اپ — قبلاً "*" بود (هر سایتی مجاز بود). چند نسخهٔ
+# دامنه (http/https و با/بدون www) با کاما جدا شده‌اند تا وقتی گواهی SSL را
+# فعال کردید یا کاربر با www وارد شد، درخواست به‌اشتباه رد نشود.
+ALLOWED_ORIGIN = "https://afghanistangirlsdigitalschool.org,http://afghanistangirlsdigitalschool.org,https://www.afghanistangirlsdigitalschool.org,http://www.afghanistangirlsdigitalschool.org"
 # ── پخش زندهٔ سمینار با Cloudflare Stream ──────────────────────────────────
 # ۱) در داشبورد Cloudflare، بخش Stream را فعال کنید (پلن پخش زنده).
 # ۲) شناسهٔ حساب و زیردامنهٔ مشتری استریم را اینجا بگذارید:

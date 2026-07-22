@@ -57,7 +57,10 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
       ),
       body: seminarsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        error: (e, st) => ErrorView(
+              error: e,
+              onRetry: () => ref.invalidate(adminSeminarsProvider),
+            ),
         data: (all) {
           final studentCount = all.where((s) => s.audience == SeminarAudience.students).length;
           final parentCount = all.where((s) => s.audience == SeminarAudience.parents).length;

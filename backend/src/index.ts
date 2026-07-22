@@ -53,7 +53,13 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('*', async (c, next) => {
-  const mw = cors({ origin: c.env.ALLOWED_ORIGIN ?? '*' });
+  // `ALLOWED_ORIGIN` می‌تواند چند دامنه با کاما جدا شده باشد (مثلاً نسخهٔ
+  // http/https یا با/بدون www) — اینجا به فهرست تبدیل می‌شود تا Hono دقیقاً
+  // همان Originهای مجاز را بپذیرد. "*" هم هنوز پشتیبانی می‌شود (برای توسعهٔ
+  // محلی)، اما دیگر مقدار پیش‌فرض نیست.
+  const raw = c.env.ALLOWED_ORIGIN ?? '*';
+  const origin = raw === '*' ? '*' : raw.split(',').map((o) => o.trim()).filter(Boolean);
+  const mw = cors({ origin });
   return mw(c, next);
 });
 

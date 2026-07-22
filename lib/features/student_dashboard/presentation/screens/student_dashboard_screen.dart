@@ -101,6 +101,27 @@ class StudentDashboardScreen extends ConsumerWidget {
                 .slideY(begin: 0.12, end: 0, duration: 420.ms, curve: Curves.easeOutCubic),
             const SizedBox(height: 18),
 
+            // ── بخش‌های اصلی برنامه — هماهنگ با مینوی کشویی شاگرد ──
+            // طبق درخواست صاحب پروژه: صفحهٔ اول شاگرد باید با بخش‌های اصلی
+            // مینوی شاگردان (منبع حقیقت: `_studentItems` در `app_drawer.dart`)
+            // هماهنگ باشد تا هر بخش، بدون باز کردن منو، مستقیماً از خانه
+            // قابل دسترس باشد. عنوان‌ها از همان کلیدهای ترجمهٔ `nav.*` مینو
+            // خوانده می‌شوند تا هرگز بین منو و خانه ناهماهنگی پیش نیاید.
+            Row(
+              children: [
+                Icon(Icons.apps_rounded, size: 18, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(context.tr('dashboard.mainSections'),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const _MainSectionsGrid()
+                .animate()
+                .fadeIn(delay: 60.ms, duration: 400.ms)
+                .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 18),
+
             // ── انتخاب صنف + مضامین همان صنف ──
             Row(
               children: [
@@ -237,6 +258,91 @@ class StudentDashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// یک بخش اصلی برنامه در گرید خانهٔ شاگرد — آیکن، کلید ترجمه، مسیر، و رنگ.
+class _SectionItem {
+  final IconData icon;
+  final String labelKey;
+  final String route;
+  final Color color;
+  const _SectionItem(this.icon, this.labelKey, this.route, this.color);
+}
+
+/// گرید «بخش‌های اصلی» — دقیقاً همان بخش‌های مینوی کشویی شاگرد
+/// (`_studentItems` در `app_drawer.dart`)، با همان آیکن‌ها، همان کلیدهای
+/// ترجمه (`nav.*`) و همان مسیرها؛ فقط «خانه» حذف شده چون خودِ همین صفحه
+/// است. اگر بخشی به مینو اضافه/کم شد، این فهرست هم باید به‌روز شود.
+class _MainSectionsGrid extends StatelessWidget {
+  const _MainSectionsGrid();
+
+  static const _sections = [
+    _SectionItem(Icons.map_rounded, 'nav.gradeMap', AppRoutes.gradeMap, AppColors.info),
+    _SectionItem(Icons.menu_book_rounded, 'nav.curriculum', AppRoutes.curriculum, AppColors.orange600),
+    _SectionItem(Icons.assignment_turned_in_rounded, 'nav.homework', AppRoutes.homework, AppColors.orange500),
+    _SectionItem(Icons.volunteer_activism_rounded, 'nav.advisor', AppRoutes.advisor, AppColors.danger),
+    _SectionItem(Icons.assignment_rounded, 'nav.exams', AppRoutes.exams, AppColors.green600),
+    _SectionItem(Icons.event_available_rounded, 'nav.attendance', AppRoutes.attendance, AppColors.green500),
+    _SectionItem(Icons.local_library_rounded, 'nav.library', AppRoutes.library, AppColors.gold600),
+    _SectionItem(Icons.groups_rounded, 'nav.seminars', AppRoutes.seminars, AppColors.info),
+    _SectionItem(Icons.chat_bubble_rounded, 'nav.chat', AppRoutes.chat, AppColors.orange400),
+    _SectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
+    _SectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.notifications, AppColors.gold500),
+    _SectionItem(Icons.person_rounded, 'nav.profile', AppRoutes.profile, AppColors.green700),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      childAspectRatio: 0.86,
+      children: [
+        for (final s in _sections)
+          Material(
+            color: scheme.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              onTap: () => context.push(s.route),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  border: Border.all(color: scheme.outlineVariant),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: s.color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(s.icon, color: s.color, size: 21),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr(s.labelKey),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, height: 1.25),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

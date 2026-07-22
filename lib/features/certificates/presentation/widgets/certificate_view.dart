@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/network/api_client.dart';
 import '../../domain/entities/certificate.dart';
 
 /// طراحی رسمی و تزئینی گواهی‌نامه — همین ویجت هم در اپ نمایش داده می‌شود و
@@ -17,6 +19,10 @@ class CertificateView extends StatelessWidget {
 
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
+
+  /// آدرس عمومی تأیید اصالت — صفحهٔ HTML بدون نیاز به ورود روی همان Worker
+  /// بک‌اند (`GET /certificates/verify/:serial`)؛ پشت QR روی خودِ سند.
+  String _verificationUrl(String serial) => '$kApiBaseUrl/certificates/verify/$serial';
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +104,37 @@ class CertificateView extends StatelessWidget {
                                     fontSize: compact ? 7.5 : 9,
                                     fontWeight: FontWeight.w700,
                                     color: _ink.withValues(alpha: .8))),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        // ── QR تأیید اصالت — لینک به صفحهٔ عمومیِ تأیید سرور؛
+                        // هر دانشگاه/کارفرض بدون نیاز به حساب کاربری می‌تواند
+                        // اسکن کند و اصالت این سند را آنلاین بررسی کند (طبق
+                        // درخواست کاربر برای اعتبار بین‌المللی — همان الگوی
+                        // Coursera/edX).
+                        Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: _gold.withValues(alpha: .5)),
+                              ),
+                              child: QrImageView(
+                                data: _verificationUrl(c.serial),
+                                version: QrVersions.auto,
+                                size: compact ? 34 : 46,
+                                gapless: true,
+                                foregroundColor: _ink,
+                              ),
+                            ),
+                            SizedBox(height: compact ? 1 : 2),
+                            Text(context.tr('certificates.scanToVerify'),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: compact ? 5.5 : 6.5,
+                                    color: _ink.withValues(alpha: .55))),
                           ],
                         ),
                       ],
