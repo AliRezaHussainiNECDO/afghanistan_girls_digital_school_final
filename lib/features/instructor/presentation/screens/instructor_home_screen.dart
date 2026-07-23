@@ -16,6 +16,12 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../../shared_models/seminar.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+// نکته: فقط `seminarRegistrationsProvider` از این فایل import می‌شود — هم
+// این فایل و هم `instructor_providers.dart` یک Provider هم‌نام دیگر
+// (`setSeminarStatusUseCaseProvider`) با پارامترهای متفاوت دارند؛ `show`
+// عمدی از برخورد نام هنگام کامپایل جلوگیری می‌کند.
+import '../../../seminars/presentation/providers/seminars_providers.dart'
+    show seminarRegistrationsProvider;
 import '../../../seminars/presentation/widgets/go_live_flow.dart';
 import '../../../seminars/presentation/widgets/seminar_editor_dialog.dart';
 import '../../domain/usecases/instructor_usecases.dart';
@@ -91,6 +97,11 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
               data: (seminars) {
                 final stats = _InstructorStats.from(seminars);
                 final spotlight = _pickSpotlightSeminar(seminars);
+                // تفکیک «در انتظار» از «آرشیف» — رجوع کنید به توضیح بالا.
+                final pendingSeminars = seminars.where((s) => !s.isArchived).toList();
+                final archivedSeminars = seminars.where((s) => s.isArchived).toList()
+                  ..sort((a, b) => (b.archivedAt ?? b.scheduledStart)
+                      .compareTo(a.archivedAt ?? a.scheduledStart));
                 return RefreshIndicator(
                   onRefresh: () async => ref.invalidate(myInstructorSeminarsProvider),
                   child: ListView(
@@ -122,10 +133,10 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
                           .fadeIn(delay: 60.ms, duration: 400.ms)
                           .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
                       const SizedBox(height: 20),
-                      Text(context.tr('instructor.allSeminars'),
+                      Text(context.tr('instructor.pendingSeminars'),
                           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       const SizedBox(height: 10),
-                      if (seminars.isEmpty) ...[
+                      if (pendingSeminars.isEmpty) ...[
                         const SizedBox(height: 8),
                         EmptyView(
                           message: context.tr('instructor.noSeminars'),
@@ -143,9 +154,34 @@ class _InstructorHomeScreenState extends ConsumerState<InstructorHomeScreen> {
                           ),
                         ),
                       ] else
-                        for (var i = 0; i < seminars.length; i++) ...[
+                        for (var i = 0; i < pendingSeminars.length; i++) ...[
                           if (i > 0) const SizedBox(height: 14),
-                          _InstructorSeminarCard(seminar: seminars[i], index: i),
+                          _InstructorSeminarCard(seminar: pendingSeminars[i], index: i),
+                        ],
+                      // ── آرشیف: رفع اشکال «سمینارها هیچ‌وقت آرشیف نمی‌شوند» —
+                      // سمینارهایی که سرور خودکار به `archived` منتقل کرده
+                      // (به‌همراه گزارش هوش مصنوعی) این‌جا جدا از فهرست
+                      // «در انتظار» بالا نمایش داده می‌شوند تا آن فهرست با
+                      // گذشت زمان شلوغ/گمراه‌کننده نشود.
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Icon(Icons.inventory_2_rounded, size: 18, color: scheme.primary),
+                          const SizedBox(width: 8),
+                          Text(context.tr('instructor.archivedSeminars'),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (archivedSeminars.isEmpty)
+                        EmptyView(
+                          message: context.tr('instructor.noArchivedSeminars'),
+                          icon: Icons.inventory_2_outlined,
+                        )
+                      else
+                        for (var i = 0; i < archivedSeminars.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 14),
+                          _ArchivedSeminarCard(seminar: archivedSeminars[i], index: i),
                         ],
                     ],
                   ),
@@ -338,6 +374,7 @@ class _InstructorSeminarCard extends ConsumerWidget {
                           label: s.capacity != null
                               ? '${s.registeredCount}/${s.capacity}'
                               : '${s.registeredCount}',
+                          onTap: () => _showRegistrants(context, ref),
                         ),
                         _MiniChip(
                           icon: s.audience == SeminarAudience.parents
@@ -429,6 +466,21 @@ class _InstructorSeminarCard extends ConsumerWidget {
   }
 
   static String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// نمایش فهرست ثبت‌نامی‌های همین سمینار در یک شیت پایینی — رفع اشکال
+  /// «استاد نمی‌تواند ببیند چه کسی ثبت‌نام کرده» (رجوع کنید به مستندِ
+  /// [_MiniChip]).
+  void _showRegistrants(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _InstructorRegistrantsSheet(seminar: seminar),
+    );
+  }
 
   /// شروع/میزبانی پخش زنده — از جریان مشترک `startSeminarLive` استفاده می‌کند
   /// (go-live روی Cloudflare Stream، انتخاب پخش درون‌اپ/OBS، و برگشت امن).
@@ -534,15 +586,125 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _MiniChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _MiniChip({required this.icon, required this.label});
+/// کارت یک سمینارِ آرشیف‌شده — عنوان + تاریخ آرشیف + گزارش هوش مصنوعیِ
+/// خلاصهٔ برگزاری (رجوع کنید به `generateSeminarArchiveReport` سرور). چون
+/// گزارش می‌تواند نسبتاً طولانی باشد، به‌طور پیش‌فرض جمع‌شده (Collapsed) و
+/// با لمس باز می‌شود.
+class _ArchivedSeminarCard extends StatefulWidget {
+  final Seminar seminar;
+  final int index;
+  const _ArchivedSeminarCard({required this.seminar, required this.index});
+
+  @override
+  State<_ArchivedSeminarCard> createState() => _ArchivedSeminarCardState();
+}
+
+class _ArchivedSeminarCardState extends State<_ArchivedSeminarCard> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final s = widget.seminar;
     return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.inventory_2_rounded, color: scheme.onSurfaceVariant, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.title,
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                    const SizedBox(height: 4),
+                    if (s.archivedAt != null)
+                      Text(
+                        '${context.tr('instructor.archivedOn')} ${_fmtDate(s.archivedAt!)}',
+                        style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded),
+                onPressed: () => setState(() => _expanded = !_expanded),
+              ),
+            ],
+          ),
+          if (_expanded && s.aiReportFa.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 14, color: scheme.primary),
+                      const SizedBox(width: 6),
+                      Text(context.tr('instructor.aiReportLabel'),
+                          style: TextStyle(
+                              fontSize: 11.5, fontWeight: FontWeight.w800, color: scheme.primary)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(s.aiReportFa, style: const TextStyle(fontSize: 12.5, height: 1.7)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(delay: (widget.index * 60).ms, duration: 300.ms)
+        .slideY(begin: 0.08, end: 0, delay: (widget.index * 60).ms, duration: 300.ms);
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+class _MiniChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  /// رفع اشکال «تفاوت با پنل مدیر»: قبلاً استاد هیچ راهی برای دیدن فهرست
+  /// ثبت‌نامی‌های سمینار خودش نداشت (فقط عدد، بدون امکان لمس)، در حالی که
+  /// همان Endpoint (`GET /seminars/:id/registrations`) و همان
+  /// `seminarRegistrationsProvider` که پنل مدیر استفاده می‌کند، از قبل روی
+  /// سرور مالکیت را چک می‌کند و برای استاد هم کار می‌کند. با دادن [onTap]
+  /// همین چیپ هم مثل مدیر قابل‌لمس می‌شود.
+  final VoidCallback? onTap;
+  const _MiniChip({required this.icon, required this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHigh,
@@ -551,19 +713,125 @@ class _MiniChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: scheme.onSurfaceVariant),
+          Icon(icon, size: 12, color: onTap != null ? scheme.primary : scheme.onSurfaceVariant),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: onTap != null ? FontWeight.w700 : FontWeight.normal,
+                  color: onTap != null ? scheme.primary : scheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+    if (onTap == null) return chip;
+    return InkWell(borderRadius: BorderRadius.circular(AppRadii.pill), onTap: onTap, child: chip);
+  }
+}
+
+/// شیت فهرست ثبت‌نامی‌های سمینار برای استاد — همان الگوی پنل مدیر
+/// (`admin_seminars_screen.dart`'s `_RegistrantsSheet`)، روی همان
+/// `seminarRegistrationsProvider`/Endpoint مشترک.
+class _InstructorRegistrantsSheet extends ConsumerWidget {
+  final Seminar seminar;
+  const _InstructorRegistrantsSheet({required this.seminar});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final async = ref.watch(seminarRegistrationsProvider(seminar.id));
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      minChildSize: 0.35,
+      builder: (ctx, scrollController) => Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 44,
+            height: 4,
+            decoration:
+                BoxDecoration(color: scheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+            child: Row(
+              children: [
+                Icon(Icons.how_to_reg_rounded, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                      context.tr('adminSeminars.registrationsTitle', {'title': seminar.title}),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                  onPressed: () => ref.invalidate(seminarRegistrationsProvider(seminar.id)),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: async.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(context.tr('adminSeminars.fetchError', {'error': '$e'}),
+                      textAlign: TextAlign.center),
+                ),
+              ),
+              data: (list) {
+                if (list.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(context.tr('adminSeminars.noRegistrationsYet')),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final r = list[i];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: scheme.primaryContainer,
+                        child: Text(
+                          (r.name.trim().isNotEmpty && r.name != '—')
+                              ? r.name.trim().substring(0, 1)
+                              : '?',
+                          style: TextStyle(color: scheme.onPrimaryContainer),
+                        ),
+                      ),
+                      title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(r.role == 'parent'
+                          ? context.tr('seminars.forParents')
+                          : r.role == 'student'
+                              ? context.tr('seminars.forStudents')
+                              : (r.role.isEmpty ? '—' : r.role)),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// نقطهٔ سرخ تپنده — نشان «سمینار زنده» در هدر قهرمان.
+/// نقطهٔ سرخ تپنده — نشان «سمینار زنده» در هدر قهرمان. اندازه همیشه ۱۰ است
+/// (هیچ‌جا اندازهٔ دیگری داده نمی‌شود — رفع لینت unused_element_parameter).
 class _LivePulseDot extends StatelessWidget {
-  final double size;
-  const _LivePulseDot({this.size = 10});
+  final double size = 10;
+  const _LivePulseDot();
 
   @override
   Widget build(BuildContext context) {

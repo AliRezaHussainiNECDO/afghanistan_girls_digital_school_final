@@ -19,6 +19,21 @@ class ContinueLearningItem extends Equatable {
   List<Object?> get props => [subjectId, lessonTitle, progressPercent];
 }
 
+/// یک سمینار پیش‌رو برای نمای خانهٔ شاگرد — رفع اشکال: قبلاً سرور/کلاینت
+/// فقط «نزدیک‌ترین یک سمینار» را نگه می‌داشتند (`upcomingSeminarTitle`/
+/// `upcomingSeminarDate` تکی)، در حالی که ممکن بود چند سمینار در انتظار
+/// باشند و شاگرد فقط یکی از آن‌ها را در خانه می‌دید. اکنون فهرستی از
+/// سمینارهای در انتظار (طبق همان قاعدهٔ بخش ۱۲.۲: منتشرشده/زنده و
+/// پایان‌نیافته) نمایش داده می‌شود.
+class UpcomingSeminarPreview extends Equatable {
+  final String title;
+  final DateTime scheduledStart;
+  const UpcomingSeminarPreview({required this.title, required this.scheduledStart});
+
+  @override
+  List<Object?> get props => [title, scheduledStart];
+}
+
 /// خلاصهٔ داشبورد دانش‌آموز — تجمیع چند سیگنال برای نمایش سریع در خانه
 /// (بخش ۵.۵ توصیه‌ها + بخش ۶ پیشرفت + بخش ۷ امتحان + بخش ۱۲ سمینار).
 class DashboardSummary extends Equatable {
@@ -34,8 +49,10 @@ class DashboardSummary extends Equatable {
 
   final String? upcomingExamTitle;
   final DateTime? upcomingExamDate;
-  final String? upcomingSeminarTitle;
-  final DateTime? upcomingSeminarDate;
+
+  /// فهرست سمینارهای در انتظار (حداکثر چند مورد نزدیک‌تر) — رجوع کنید به
+  /// مستندِ [UpcomingSeminarPreview] برای رفع اشکال «فقط یک سمینار».
+  final List<UpcomingSeminarPreview> upcomingSeminars;
   final List<String> recommendedTopics; // طبق بخش ۵.۵ — نقاط ضعف فعال
 
   /// امتیاز فعالیت (Gamification) — طبق `backend/src/lib/progress.ts`
@@ -65,8 +82,7 @@ class DashboardSummary extends Equatable {
     this.continueLearning = const [],
     this.upcomingExamTitle,
     this.upcomingExamDate,
-    this.upcomingSeminarTitle,
-    this.upcomingSeminarDate,
+    this.upcomingSeminars = const [],
     this.recommendedTopics = const [],
     this.pointsTotal = 0,
     this.pointsLevel = 1,

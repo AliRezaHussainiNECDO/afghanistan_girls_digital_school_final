@@ -35,6 +35,24 @@ class NotificationCenter extends ChangeNotifier {
 
   bool isServerSourced(String id) => _serverIds.contains(id);
 
+  /// شناسهٔ کاربری که فهرست فعلی متعلق به اوست.
+  ///
+  /// رفع اشکال امنیتی مهم: چون این کلاس یک Singleton سراسریِ کل عمر برنامه
+  /// است و قبلاً هیچ‌جا مالکِ فهرست را نمی‌شناخت، وقتی روی یک دستگاه/نشستِ
+  /// اپ (بدون بستن کامل و بازکردن دوباره) کاربری خارج و کاربر دیگری وارد
+  /// می‌شد، اعلان‌های کاربر قبلی (از جمله نمره، پیام خصوصی/چت، اعلان حساب)
+  /// همچنان در فهرست می‌ماندند و به کاربر تازه «نشت» می‌کردند. اکنون هر بار
+  /// که مالکِ نشست عوض شود (ورود/خروج/تعویض حساب) باید [setOwner] صدا زده
+  /// شود؛ در صورت تغییر واقعیِ شناسه، فهرست فوراً و کامل پاک می‌شود — پیش از
+  /// آنکه اعلان‌های حساب تازه ادغام شوند.
+  String? _ownerUserId;
+
+  void setOwner(String? userId) {
+    if (userId == _ownerUserId) return;
+    _ownerUserId = userId;
+    clear();
+  }
+
   /// فهرست اعلان‌ها از جدید به قدیم.
   List<AppNotification> get items {
     final copy = [..._items]..sort((a, b) => b.createdAt.compareTo(a.createdAt));

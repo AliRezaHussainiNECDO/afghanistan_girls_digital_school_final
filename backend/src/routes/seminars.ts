@@ -18,6 +18,7 @@ import { Hono, type Context } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { sendPushToUsers } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
+import { generateSeminarArchiveReport } from '../lib/seminarReport';
 
 type Bindings = {
   DB: D1Database;
@@ -30,6 +31,12 @@ type Bindings = {
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;
+  // ── گزارش آرشیفِ هوش مصنوعی (اختیاری — رجوع کنید به lib/seminarReport.ts).
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
+  AI_PROVIDER_KEY?: string;
+  AI_PROVIDER_URL?: string;
+  AI_MODEL?: string;
 };
 
 const seminars = new Hono<{ Bindings: Bindings }>();
@@ -93,6 +100,10 @@ async function toSeminarJson(c: { env: Bindings }, row: any): Promise<any> {
     streamPlaybackUrl: row.stream_playback_url ?? '',
     streamDashUrl: dash,
     registeredUserIds: results.map((r) => r.user_id),
+    // گزارش آرشیفِ هوش مصنوعی — فقط بعد از آرشیف خودکار (`sweepEndedSeminars`)
+    // مقدار واقعی دارد؛ پیش از آن رشتهٔ خالی است.
+    aiReportFa: row.ai_report_fa ?? '',
+    archivedAt: row.archived_at ?? null,
   };
 }
 
@@ -113,9 +124,58 @@ function streamConfigured(c: any): boolean {
   return Boolean(c.env.CF_ACCOUNT_ID && c.env.CF_STREAM_TOKEN && c.env.CF_STREAM_CUSTOMER);
 }
 
+// ───────────────────────────── آرشیف خودکار ────────────────────────────────
+/**
+ * رفع اشکال «سیمینارها هیچ‌وقت آرشیف نمی‌شوند»: قبلاً وقتی زمان یک سمینار
+ * می‌گذشت (یا حتی وقتی استاد دستی «پایان» را می‌زد)، سمینار برای همیشه با
+ * همان وضعیت (`published`/`ended`) در پایگاه‌داده می‌ماند — هیچ مسیری آن را
+ * به «آرشیف» نمی‌برد و هیچ گزارشی از برگزاری‌اش ساخته نمی‌شد؛ یعنی فهرست
+ * «سمینارهای من» برای استاد با گذشت زمان تنها بزرگ‌تر و درهم می‌شد.
+ *
+ * این تابع (Lazy Sweep — بدون نیاز به Cron جداگانه) پیش از هر پاسخ فهرست/
+ * جزئیات سمینار اجرا می‌شود: هر سمیناری که یا دستی «ended» شده، یا زمان
+ * پایانِ برنامه‌ریزی‌شده‌اش گذشته، به `archived` منتقل می‌شود و یک گزارش
+ * خلاصهٔ تولیدشده با هوش مصنوعی (`generateSeminarArchiveReport`) برایش
+ * ذخیره می‌شود. چون شرط WHERE تقریباً همیشه صفر ردیف برمی‌گرداند، هزینهٔ
+ * این Sweep روی درخواست‌های معمولی ناچیز است.
+ */
+async function sweepEndedSeminars(c: Context<{ Bindings: Bindings }>): Promise<void> {
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM seminars
+      WHERE status NOT IN ('archived', 'draft')
+        AND (
+          status = 'ended'
+          OR datetime(scheduled_start, '+' || duration_minutes || ' minutes') <= datetime('now')
+        )`,
+  ).all<any>();
+  for (const row of results) {
+    const { results: regRows } = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM seminar_registrations WHERE seminar_id = ?',
+    )
+      .bind(row.id)
+      .all<{ n: number }>();
+    const report = await generateSeminarArchiveReport(c.env, {
+      title: row.title,
+      description: row.description ?? '',
+      instructorName: row.instructor_name ?? '',
+      audience: row.audience === 'parents' ? 'parents' : 'students',
+      scheduledStart: row.scheduled_start,
+      durationMinutes: row.duration_minutes,
+      registeredCount: regRows[0]?.n ?? 0,
+      capacity: row.capacity ?? null,
+    });
+    await c.env.DB.prepare(
+      "UPDATE seminars SET status = 'archived', ai_report_fa = ?, archived_at = datetime('now') WHERE id = ?",
+    )
+      .bind(report, row.id)
+      .run();
+  }
+}
+
 // ─────────────────────────────── فهرست ─────────────────────────────────────
 
 seminars.get('/seminars', async (c) => {
+  await sweepEndedSeminars(c);
   const audience = c.req.query('audience');
   const instructor = c.req.query('instructor');
   const clauses: string[] = ['1=1'];
@@ -162,6 +222,7 @@ seminars.get('/seminars/live', async (c) => {
 });
 
 seminars.get('/seminars/:id', async (c) => {
+  await sweepEndedSeminars(c);
   const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?')
     .bind(c.req.param('id'))
     .first<any>();

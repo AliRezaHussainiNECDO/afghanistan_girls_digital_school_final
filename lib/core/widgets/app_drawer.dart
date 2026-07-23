@@ -66,8 +66,15 @@ const _parentItems = [
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.parentProfile),
 ];
 
+// رفع اشکال IA: برخلاف مدیر/والد/شاگرد («admin.seminars»/«parent.seminars»/
+// «nav.seminars»)، منوی استاد قبلاً کلید عمومی «nav.instructor» («پنل
+// استاد») را نشان می‌داد که هیچ‌جا صریحاً نمی‌گفت «سمینارها» — با اینکه
+// همین صفحه (`InstructorHomeScreen`) دقیقاً همان بخشِ ساخت/فهرست/آرشیفِ
+// سمینارهای استاد است. اکنون از همان کلید ترجمهٔ موجودِ عنوان صفحه
+// («instructor.mySeminars» = «سمینارهای من») استفاده می‌شود تا منوی استاد
+// هم مثل بقیهٔ نقش‌ها صراحتاً یک بخش «سمینار» داشته باشد.
 const _instructorItems = [
-  _DrawerItem(Icons.groups_rounded, 'nav.instructor', AppRoutes.instructorHome),
+  _DrawerItem(Icons.groups_rounded, 'instructor.mySeminars', AppRoutes.instructorHome),
   _DrawerItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory),
   _DrawerItem(Icons.support_agent_rounded, 'nav.contactAdmin', AppRoutes.instructorContactAdmin),
   _DrawerItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.instructorNotifications),

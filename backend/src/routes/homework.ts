@@ -116,14 +116,39 @@ async function loadOwnedHomework(
 // طبق صنف *فعلی* شاگرد (users.current_grade) — نه یک مقدار ثابت — تا با هر
 // ارتقای صنف خودکار هماهنگ بماند. مدیر می‌تواند با ?studentId= مشق‌های هر
 // شاگردی را ببیند.
-
+//
+// رفع اشکال «کار خانگی والد همیشه خالی است»: قبلاً `?studentId=` فقط برای
+// `super_admin` معتبر بود؛ برای هر نقش دیگر (از جمله والد) بی‌صدا نادیده
+// گرفته می‌شد و `studentId` به `actor.sub` (خودِ والد که هیچ کار خانگی‌ای
+// ندارد) برمی‌گشت — یعنی صفحهٔ «کار خانگی» والد همیشه خالی بود، حتی وقتی
+// فرزندش کار خانگی واقعی داشت. اکنون والد هم می‌تواند (فقط برای فرزند
+// تأییدشدهٔ خودش، طبق `parent_student_links`) با همان پارامتر کار خانگی
+// فرزندش را ببیند — دقیقاً همان نمایی که خودِ شاگرد می‌بیند (صنف فعلی، نه
+// تاریخچهٔ کامل مثل نمای مدیر).
 homework.get('/homework', async (c) => {
   const actor = await me(c);
   if (!actor) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
 
   const requested = c.req.query('studentId');
-  const isAdminViewingOther = actor.role === 'super_admin' && !!requested;
-  const studentId = isAdminViewingOther ? requested! : actor.sub;
+  let studentId = actor.sub;
+  let isAdminViewingOther = false;
+  if (requested) {
+    if (actor.role === 'super_admin') {
+      studentId = requested;
+      isAdminViewingOther = true;
+    } else if (actor.role === 'parent') {
+      const link = await c.env.DB.prepare(
+        "SELECT 1 FROM parent_student_links WHERE parent_user_id = ? AND student_user_id = ? AND status = 'approved'",
+      )
+        .bind(actor.sub, requested)
+        .first();
+      if (link) studentId = requested;
+      // اگر لینک تأییدشده نبود، بی‌صدا به `actor.sub` سقوط می‌کند (فهرست خالی)
+      // نه خطا — تا هیچ اطلاعاتی دربارهٔ وجود/عدم‌وجود شاگرد فاش نشود.
+    }
+    // برای نقش شاگرد یا هر نقش دیگر، `studentId` عمداً همان `actor.sub`
+    // باقی می‌ماند (محافظت در برابر IDOR).
+  }
   const statusFilter = c.req.query('status'); // pending|submitted|graded
 
   const student = await c.env.DB.prepare('SELECT current_grade FROM users WHERE id = ?')

@@ -22,6 +22,8 @@ Seminar seminarFromJson(dynamic e) => Seminar(
       streamDashUrl: e['streamDashUrl'] as String? ?? '',
       registeredUserIds:
           ((e['registeredUserIds'] as List?) ?? []).map((x) => x.toString()).toSet(),
+      aiReportFa: e['aiReportFa'] as String? ?? '',
+      archivedAt: DateTime.tryParse(e['archivedAt'] as String? ?? ''),
     );
 
 SeminarStatus seminarStatusFromName(String? s) => SeminarStatus.values.firstWhere(

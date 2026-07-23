@@ -492,9 +492,15 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
   )
     .bind(grade, uid)
     .first<{ title: string }>();
-  const seminar = await c.env.DB.prepare(
-    "SELECT title, scheduled_start FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 1",
-  ).first<{ title: string; scheduled_start: string }>();
+  // رفع اشکال «فقط یک سمینار در خانهٔ شاگرد نمایش داده می‌شود»: قبلاً این
+  // پرس‌وجو با `LIMIT 1` فقط نزدیک‌ترین سمینار را برمی‌گرداند، در حالی که
+  // ممکن بود چند سمینار در انتظار باشند. اکنون فهرست کامل سمینارهای در
+  // انتظارِ همین مخاطب (published/registrationClosed/live و پایان‌نیافته)
+  // برگردانده می‌شود (سقف ۵ مورد نزدیک‌تر — همان الگوی نمای خانه، نه فهرست
+  // کامل که در بخش «سمینارها» جداگانه موجود است).
+  const { results: seminarRows } = await c.env.DB.prepare(
+    "SELECT title, scheduled_start FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 5",
+  ).all<{ title: string; scheduled_start: string }>();
 
   // خلاصهٔ امتیاز فعالیت (Gamification) — برای نشان دادن نشان/سطح در خانهٔ شاگرد.
   const points = await getPointsSummary(c.env.DB, uid);
@@ -513,8 +519,10 @@ c11m.get('/students/me/dashboard-summary', async (c) => {
     continueLearning,
     upcomingExamTitle: exam?.title ?? null,
     upcomingExamDate: null,
-    upcomingSeminarTitle: seminar?.title ?? null,
-    upcomingSeminarDate: seminar?.scheduled_start ?? null,
+    upcomingSeminars: seminarRows.map((s) => ({
+      title: s.title,
+      scheduledStart: s.scheduled_start,
+    })),
     recommendedTopics: recommended,
     pointsTotal: points.totalPoints,
     pointsLevel: points.level,

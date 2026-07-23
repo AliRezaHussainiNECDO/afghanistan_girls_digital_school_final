@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/app_scaffold.dart';
+import '../../../../core/widgets/error_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/certificate.dart';
@@ -30,7 +31,6 @@ class MyCertificatesScreen extends ConsumerWidget {
     final user = ref.watch(authSessionProvider);
     final effectiveId = studentId ?? user?.id ?? '';
     final certsAsync = ref.watch(certificatesForStudentProvider(effectiveId));
-    final allAsync = ref.watch(allCertificatesProvider);
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
@@ -40,19 +40,19 @@ class MyCertificatesScreen extends ConsumerWidget {
       role: parentMode ? AppUserRole.parent : AppUserRole.student,
       body: certsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(context.tr('certificates.errorLoading', {'error': '$e'}))),
+        // رفع اشکال: قبلاً خطا فقط یک متن ثابت بود (بدون تلاش مجدد)، و علاوه
+        // بر آن، وقتی فهرست این شناسه خالی بود، صفحه یک بار دیگر همان
+        // Endpoint خودِ کاربر را (`allCertificatesProvider`) صدا می‌زد —
+        // دقیقاً همان `/students/me/certificates` که `certificatesForStudentProvider`
+        // هم می‌زند؛ یعنی درخواست دوبرابری بی‌فایده برای یک نتیجهٔ همیشه یکسان
+        // (نه واقعاً «همهٔ صادرشده‌ها»، چون بک‌اند چنین حالتی برای این مسیر
+        // ندارد). این «فال‌بک نمایشی» حذف شد.
+        error: (e, _) => ErrorView(
+          error: e,
+          onRetry: () => ref.invalidate(certificatesForStudentProvider(effectiveId)),
+        ),
         data: (certs) {
-          // حالت نمایشی: اگر برای این شناسه گواهی‌ای نبود، همهٔ صادرشده‌ها
-          // نشان داده می‌شود (تا بک‌اند واقعی، شناسه‌های Mock متفاوت‌اند).
-          var effective = certs;
-          var demoFallback = false;
-          if (certs.isEmpty) {
-            final all = allAsync.valueOrNull ?? [];
-            if (all.isNotEmpty) {
-              effective = all;
-              demoFallback = true;
-            }
-          }
+          final effective = certs;
           if (effective.isEmpty) {
             return Center(
               child: Column(
@@ -85,13 +85,6 @@ class MyCertificatesScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (demoFallback)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(context.tr('certificates.demoModeNotice'),
-                      style: TextStyle(
-                          fontSize: 11, color: scheme.onSurfaceVariant)),
-                ),
               for (final cert in effective) ...[
                 _CertificateCard(certificate: cert),
                 const SizedBox(height: 12),

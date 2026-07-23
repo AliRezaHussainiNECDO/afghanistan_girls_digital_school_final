@@ -62,11 +62,21 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
               onRetry: () => ref.invalidate(adminSeminarsProvider),
             ),
         data: (all) {
-          final studentCount = all.where((s) => s.audience == SeminarAudience.students).length;
-          final parentCount = all.where((s) => s.audience == SeminarAudience.parents).length;
-          final liveCount = all.where((s) => s.isLiveNow).length;
+          // رفع اشکال هماهنگی: تا پیش از این، سمینارهای آرشیف‌شده (که پنل
+          // استاد اکنون جداگانه و همراه با گزارش هوش مصنوعی نشان می‌دهد) در
+          // همین فهرست تخت مدیر مخلوط با سمینارهای فعال می‌ماندند — هم KPIهای
+          // بالای صفحه را با موارد پایان‌یافته منقضی می‌کردند، هم گزارش AI
+          // هرگز به مدیر نشان داده نمی‌شد. اکنون مدیر هم دقیقاً همان تفکیک
+          // «در انتظار/آرشیف» پنل استاد را می‌بیند.
+          final active = all.where((s) => !s.isArchived).toList();
+          final archived = all.where((s) => s.isArchived).toList()
+            ..sort((a, b) => (b.archivedAt ?? b.scheduledStart)
+                .compareTo(a.archivedAt ?? a.scheduledStart));
+          final studentCount = active.where((s) => s.audience == SeminarAudience.students).length;
+          final parentCount = active.where((s) => s.audience == SeminarAudience.parents).length;
+          final liveCount = active.where((s) => s.isLiveNow).length;
           final seminars =
-              _filter == null ? all : all.where((s) => s.audience == _filter).toList();
+              _filter == null ? active : active.where((s) => s.audience == _filter).toList();
 
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminSeminarsProvider),
@@ -74,7 +84,7 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
               children: [
                 _SummaryHeader(
-                  total: all.length,
+                  total: active.length,
                   live: liveCount,
                   students: studentCount,
                   parents: parentCount,
@@ -82,7 +92,7 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
                 const SizedBox(height: 14),
                 _AudienceFilterBar(
                   current: _filter,
-                  all: all.length,
+                  all: active.length,
                   students: studentCount,
                   parents: parentCount,
                   onChanged: (v) => setState(() => _filter = v),
@@ -98,6 +108,27 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
                 else
                   for (var i = 0; i < seminars.length; i++) ...[
                     _AdminSeminarCard(seminar: seminars[i], index: i),
+                    const SizedBox(height: 14),
+                  ],
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Icon(Icons.inventory_2_rounded,
+                        size: 18, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text('${context.tr('instructor.archivedSeminars')} (${archived.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (archived.isEmpty)
+                  EmptyView(
+                    message: context.tr('instructor.noArchivedSeminars'),
+                    icon: Icons.inventory_2_outlined,
+                  )
+                else
+                  for (var i = 0; i < archived.length; i++) ...[
+                    _AdminArchivedSeminarCard(seminar: archived[i], index: i),
                     const SizedBox(height: 14),
                   ],
               ],
@@ -554,6 +585,142 @@ class _AdminSeminarCard extends ConsumerWidget {
     if (confirmed != true || !context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     final result = await ref.read(deleteAdminSeminarUseCaseProvider).call(seminar.id);
+    result.fold(
+      (f) => messenger.showSnackBar(SnackBar(content: Text(f.message))),
+      (_) {
+        ref.invalidate(adminSeminarsProvider);
+        messenger.showSnackBar(SnackBar(
+            content: Text(context.mounted ? context.tr('admin.seminarDeleted') : '')));
+      },
+    );
+  }
+}
+
+/// کارت یک سمینارِ آرشیف‌شده برای نمای مدیر — عنوان + استاد + تاریخ آرشیف +
+/// گزارش هوش مصنوعیِ خلاصهٔ برگزاری (همان `aiReportFa` که سرور هنگام آرشیفِ
+/// خودکار می‌سازد؛ رجوع کنید به `sweepEndedSeminars` در `seminars.ts`). بر
+/// خلاف پنل استاد، مدیر امکان حذف کامل رکورد آرشیف‌شده را هم دارد.
+class _AdminArchivedSeminarCard extends ConsumerStatefulWidget {
+  final Seminar seminar;
+  final int index;
+  const _AdminArchivedSeminarCard({required this.seminar, required this.index});
+
+  @override
+  ConsumerState<_AdminArchivedSeminarCard> createState() => _AdminArchivedSeminarCardState();
+}
+
+class _AdminArchivedSeminarCardState extends ConsumerState<_AdminArchivedSeminarCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final s = widget.seminar;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: scheme.surfaceContainerHigh, shape: BoxShape.circle),
+                child: Icon(Icons.inventory_2_rounded, color: scheme.onSurfaceVariant, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                    const SizedBox(height: 3),
+                    Text(s.instructorName, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+                    if (s.archivedAt != null) ...[
+                      const SizedBox(height: 3),
+                      Text('${context.tr('instructor.archivedOn')} ${_fmt(s.archivedAt!)}',
+                          style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(_expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded),
+                onPressed: () => setState(() => _expanded = !_expanded),
+              ),
+              IconButton(
+                tooltip: context.tr('common.delete'),
+                icon: Icon(Icons.delete_outline_rounded, color: scheme.error, size: 20),
+                onPressed: () => _confirmDelete(context, ref),
+              ),
+            ],
+          ),
+          if (_expanded && s.aiReportFa.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(AppRadii.md),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 14, color: scheme.primary),
+                      const SizedBox(width: 6),
+                      Text(context.tr('instructor.aiReportLabel'),
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: scheme.primary)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(s.aiReportFa, style: const TextStyle(fontSize: 12.5, height: 1.7)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(delay: (widget.index * 60).ms, duration: 300.ms)
+        .slideY(begin: 0.08, end: 0, delay: (widget.index * 60).ms, duration: 300.ms);
+  }
+
+  static String _fmt(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(context.tr('admin.deleteSeminar')),
+        content: Text(widget.seminar.title),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(context.tr('common.cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(context.tr('common.delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(deleteAdminSeminarUseCaseProvider).call(widget.seminar.id);
     result.fold(
       (f) => messenger.showSnackBar(SnackBar(content: Text(f.message))),
       (_) {

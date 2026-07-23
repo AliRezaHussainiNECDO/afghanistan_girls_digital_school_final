@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/localization/locale_provider.dart';
+import '../../../../core/notifications/notification_center.dart';
 import '../../../../core/push/push_notifications_service.dart';
 import '../../../../core/usecase/usecase.dart';
 import '../../../profile/presentation/providers/profile_providers.dart';
@@ -217,6 +218,11 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
     await ref.read(logoutUseCaseProvider).call(const NoParams());
     state = null;
     ref.read(profilePhotoProvider.notifier).state = null;
+    // رفع اشکال نشتِ اعلان بین حساب‌ها (بند امنیتی): فهرست محلیِ
+    // NotificationCenter را همین لحظه (بدون تأخیرِ بازاجرای Provider) پاک
+    // می‌کنیم تا اگر بلافاصله بعد از این حساب دیگری روی همین دستگاه وارد شد،
+    // حتی یک لحظه هم اعلان‌های حساب قبلی دیده نشود.
+    NotificationCenter.instance.setOwner(null);
   }
 
   /// تغییر رمز عبور — رفع اشکال: قبلاً دیالوگ «تغییر رمز» در UI هیچ

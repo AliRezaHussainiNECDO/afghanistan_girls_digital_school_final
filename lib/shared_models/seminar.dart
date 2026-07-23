@@ -35,6 +35,13 @@ class Seminar extends Equatable {
   /// شناسهٔ کاربرانی که ثبت‌نام کرده‌اند — تضمین «فقط یک‌بار ثبت‌نام».
   final Set<String> registeredUserIds;
 
+  /// گزارش خلاصهٔ تولیدشده با هوش مصنوعی — فقط بعد از آرشیف خودکار روی
+  /// سرور (`status == archived`) مقدار واقعی دارد؛ پیش از آن خالی است.
+  final String aiReportFa;
+
+  /// زمان آرشیف‌شدن — برای مرتب‌سازی/نمایش در تب «آرشیف».
+  final DateTime? archivedAt;
+
   const Seminar({
     required this.id,
     required this.title,
@@ -51,6 +58,8 @@ class Seminar extends Equatable {
     this.streamPlaybackUrl = '',
     this.streamDashUrl = '',
     this.registeredUserIds = const {},
+    this.aiReportFa = '',
+    this.archivedAt,
   });
 
   /// آیا لینک جلسهٔ زندهٔ معتبری ثبت شده است؟
@@ -92,6 +101,9 @@ class Seminar extends Equatable {
   bool get hasEnded =>
       effectiveStatus == SeminarStatus.ended || effectiveStatus == SeminarStatus.archived;
 
+  /// آیا این سمینار به آرشیف منتقل شده (با گزارش هوش مصنوعی همراه)؟
+  bool get isArchived => status == SeminarStatus.archived;
+
   /// آیا ثبت‌نام باز است؟
   bool get isRegistrationOpen =>
       (status == SeminarStatus.published || status == SeminarStatus.live) && !hasEnded && !isFull;
@@ -112,6 +124,8 @@ class Seminar extends Equatable {
     String? streamPlaybackUrl,
     String? streamDashUrl,
     Set<String>? registeredUserIds,
+    String? aiReportFa,
+    DateTime? archivedAt,
   }) {
     return Seminar(
       id: id,
@@ -129,6 +143,8 @@ class Seminar extends Equatable {
       streamPlaybackUrl: streamPlaybackUrl ?? this.streamPlaybackUrl,
       streamDashUrl: streamDashUrl ?? this.streamDashUrl,
       registeredUserIds: registeredUserIds ?? this.registeredUserIds,
+      aiReportFa: aiReportFa ?? this.aiReportFa,
+      archivedAt: archivedAt ?? this.archivedAt,
     );
   }
 
@@ -147,5 +163,7 @@ class Seminar extends Equatable {
         streamPlaybackUrl,
         streamDashUrl,
         registeredUserIds,
+        aiReportFa,
+        archivedAt,
       ];
 }

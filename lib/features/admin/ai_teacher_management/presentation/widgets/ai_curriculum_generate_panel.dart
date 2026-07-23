@@ -99,6 +99,9 @@ class _AiCurriculumGeneratePanelState extends ConsumerState<AiCurriculumGenerate
         '/admin/curriculum/ai-generate',
         data: {'gradeNumber': _grade, 'subjectId': _subjectId},
       );
+      // رفع لینت use_build_context_synchronously: بعد از `await` باید قبل از
+      // استفادهٔ دوبارهٔ `context` مطمئن شویم ویجت هنوز در درخت است.
+      if (!mounted) return;
       final m = Map<String, dynamic>.from(data as Map? ?? {});
       messenger.showSnackBar(SnackBar(
         duration: const Duration(seconds: 6),
@@ -114,6 +117,7 @@ class _AiCurriculumGeneratePanelState extends ConsumerState<AiCurriculumGenerate
       ref.invalidate(lessonProvider);
       await _loadTree();
     } on ApiException catch (e) {
+      if (!mounted) return;
       // مدیریت صریح 429 (سهمیهٔ رایگان Gemini) — پیام محترمانه، بدون کرش.
       messenger.showSnackBar(SnackBar(
         backgroundColor: e.type == ApiErrorType.rateLimited
@@ -176,7 +180,7 @@ class _AiCurriculumGeneratePanelState extends ConsumerState<AiCurriculumGenerate
             children: [
               Expanded(
                 child: DropdownButtonFormField<int>(
-                  value: _grade,
+                  initialValue: _grade,
                   decoration: InputDecoration(
                     labelText: context.tr('adminAiCurriculum.gradeLabel'),
                     border: OutlineInputBorder(
@@ -199,7 +203,7 @@ class _AiCurriculumGeneratePanelState extends ConsumerState<AiCurriculumGenerate
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: _subjectId,
+                  initialValue: _subjectId,
                   decoration: InputDecoration(
                     labelText: context.tr('adminAiCurriculum.subjectLabel'),
                     border: OutlineInputBorder(

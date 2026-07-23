@@ -280,7 +280,7 @@ class _ExamResultHistoryCard extends StatelessWidget {
                     border: Border.all(color: color, width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: Text('${result.scorePercent.toStringAsFixed(0)}',
+                  child: Text(result.scorePercent.toStringAsFixed(0),
                       style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 12.5)),
                 ),
                 const SizedBox(height: 4),

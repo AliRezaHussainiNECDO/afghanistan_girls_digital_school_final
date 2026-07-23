@@ -35,8 +35,18 @@ class DashboardRemoteDataSource implements DashboardDataSource {
           .toList(),
       upcomingExamTitle: m['upcomingExamTitle'] as String?,
       upcomingExamDate: DateTime.tryParse(m['upcomingExamDate'] as String? ?? ''),
-      upcomingSeminarTitle: m['upcomingSeminarTitle'] as String?,
-      upcomingSeminarDate: DateTime.tryParse(m['upcomingSeminarDate'] as String? ?? ''),
+      // رفع اشکال «فقط یک سمینار»: سرور اکنون فهرست کامل سمینارهای در
+      // انتظار را می‌فرستد (`upcomingSeminars`)، نه یک عنوان/تاریخ تکی.
+      upcomingSeminars: (m['upcomingSeminars'] as List? ?? [])
+          .map((e) {
+            final j = Map<String, dynamic>.from(e as Map);
+            return UpcomingSeminarPreview(
+              title: j['title'] as String? ?? '',
+              scheduledStart:
+                  DateTime.tryParse(j['scheduledStart'] as String? ?? '') ?? DateTime.now(),
+            );
+          })
+          .toList(),
       recommendedTopics:
           (m['recommendedTopics'] as List? ?? []).map((e) => e.toString()).toList(),
       pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import '../../../core/network/api_client.dart';
+import '../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../domain/advisor_entities.dart';
 import 'advisor_remote_datasource.dart';
 
@@ -20,7 +21,18 @@ import 'advisor_remote_datasource.dart';
 /// [hydrateForStudent]/[hydrateForAdmin] تاریخچهٔ واقعی را از سرور می‌خوانند.
 class AdvisorStore extends ChangeNotifier {
   AdvisorStore._() {
-    _seed();
+    // رفع اشکال امنیتی/حساسیت‌محتوایی جدی: قبلاً `_seed()` همیشه (حتی در
+    // بیلد Live واقعی) دو گفتگوی جعلیِ حساس (موضوع خودآزاری/فشار خانوادگی)
+    // را برای شناسه‌های ثابت `stu-1000`/`stu-1004` می‌ساخت. اگر `hydrateFor*`
+    // به هر دلیل (خطای شبکه) ناکام می‌ماند، این دادهٔ ساختگی به‌جای تاریخچهٔ
+    // واقعی باقی می‌ماند — هم ممکن بود به یک شاگرد واقعی با همان شناسه
+    // نسبت داده شود، و هم در فهرست «گفتگوهای مشاور» مدیر (`threads()`)
+    // همیشه به‌عنوان یک مورد پرچم‌دارِ واقعی ظاهر می‌شد و بازبینی امنیتی
+    // واقعی مدیر را با نمونهٔ ساختگی گیج می‌کرد. اکنون این داده‌های نمونه
+    // فقط در حالت Mock (فاز نمایشی/توسعه، `kUseLiveBackend == false`)
+    // ساخته می‌شوند؛ در بیلد واقعی این فهرست تا رسیدن دادهٔ واقعیِ سرور
+    // خالی می‌ماند.
+    if (!kUseLiveBackend) _seed();
   }
   static final AdvisorStore instance = AdvisorStore._();
 

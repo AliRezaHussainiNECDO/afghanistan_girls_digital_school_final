@@ -1,5 +1,6 @@
-// این فایل جابه‌جا شده است.
-// پنل پخش زنده اکنون مشترک است و در ماژول seminars قرار دارد:
-//   lib/features/seminars/presentation/screens/seminar_broadcast_screen.dart
-// (کلاس SeminarBroadcastScreen). این فایل صرفاً برای سازگاری باقی مانده است.
-export '../../../seminars/presentation/screens/seminar_broadcast_screen.dart';
+// این فایل عمداً خالی شده است.
+//
+// پنل «پخش مستقیم از اپ» (که قبلاً این فایل صرفاً به
+// `seminars/presentation/screens/seminar_broadcast_screen.dart` اشاره
+// می‌کرد) به‌طور کامل از پروژه حذف شد — رجوع کنید به توضیح ریشه‌ای مشکل در
+// همان فایل و در `seminars/presentation/widgets/go_live_flow.dart`.

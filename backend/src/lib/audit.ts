@@ -40,14 +40,37 @@ function toJson(v: unknown): string | null {
   }
 }
 
+/**
+ * رفع اشکال «صفحه‌بندی لاگ بازبینی بی‌صدا ردیف حذف می‌کند»: قبلاً `created_at`
+ * را به DEFAULT ستون (`datetime('now')`، دقت فقط تا ثانیه) واگذار می‌کردیم.
+ * صفحه‌بندی سرشماره‌ای سمت کلاینت (`GET /admin/audit-logs?before=<آخرین
+ * created_at>`) با مقایسهٔ رشته‌ای `created_at < ?` کار می‌کند؛ اگر دو یا چند
+ * اقدام مدیر (مثلاً صدور دسته‌ای کد دعوت، یا انتشار نصاب + Embedding) درست در
+ * همان یک ثانیه ثبت می‌شدند، مقدار `created_at`شان کاملاً یکسان می‌شد و در
+ * صفحهٔ بعد، هر ردیفِ هم‌زمانِ دیگر برای همیشه نادیده گرفته می‌شد — یک نشتِ
+ * خاموشِ داده در دقیقاً همان جایی (مسیر بازبینی امنیتی) که نباید هیچ ردیفی
+ * گم شود.
+ *
+ * راه‌حل: خودمان `created_at` را با دقت میلی‌ثانیه می‌سازیم و صریحاً INSERT
+ * می‌کنیم — با همان قالب `YYYY-MM-DD HH:MM:SS[.sss]` که `datetime('now')`
+ * تولید می‌کرد (نه فرمت ISO با `T`/`Z`) تا ترتیب رشته‌ای (لغوی) با ردیف‌های
+ * قدیمی‌تر هم سازگار بماند. برخورد دو اقدام در یک میلی‌ثانیهٔ دقیق عملاً
+ * غیرممکن است، پس این مشکل را در عمل به‌طور کامل برطرف می‌کند — بدون نیاز به
+ * تغییر قرارداد صفحه‌بندی سمت کلاینت (فلاتر همچنان همان رشته را عیناً پس
+ * می‌فرستد).
+ */
+function preciseTimestamp(): string {
+  return new Date().toISOString().replace('T', ' ').replace('Z', '');
+}
+
 export async function logAudit(db: D1Database, e: AuditEntry): Promise<void> {
   try {
     await db
       .prepare(
         `INSERT INTO audit_logs
            (id, actor_id, actor_role, action_type, target_table, target_id, reason,
-            before_value, after_value, detail, ip_address, priority)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            before_value, after_value, detail, ip_address, priority, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         crypto.randomUUID(),
@@ -62,6 +85,7 @@ export async function logAudit(db: D1Database, e: AuditEntry): Promise<void> {
         toJson(e.detail),
         e.ipAddress ?? null,
         e.priority ?? 'normal',
+        preciseTimestamp(),
       )
       .run();
   } catch (err) {

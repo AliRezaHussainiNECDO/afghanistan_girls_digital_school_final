@@ -284,8 +284,25 @@ academy.get('/academy/submissions', async (c) => {
   const u = await me(c);
   if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   // شاگرد فقط پاسخ‌های خودش؛ مدیر می‌تواند studentId دلخواه یا همه را ببیند.
+  //
+  // رفع اشکال «تمرین/آزمون عملی والد همیشه خالی است»: قبلاً `?studentId=`
+  // فقط برای `super_admin` معتبر بود؛ برای والد نادیده گرفته می‌شد و
+  // `target` به `u.sub` (خودِ والد، بدون هیچ رکورد تمرینی) برمی‌گشت. اکنون
+  // والد هم می‌تواند (فقط برای فرزند تأییدشدهٔ خودش) پاسخ‌های تمرینی فرزندش
+  // را ببیند؛ در نبود لینک تأییدشده بی‌صدا به `u.sub` سقوط می‌کند (نتیجهٔ
+  // خالی، نه نشتِ داده یا خطای فاش‌کننده).
   const requested = c.req.query('studentId');
-  const target = u.role === 'super_admin' ? requested : u.sub;
+  let target: string | undefined = u.sub;
+  if (u.role === 'super_admin') {
+    target = requested; // ممکن است undefined بماند → یعنی «همه» (رفتار قبلی حفظ شد)
+  } else if (u.role === 'parent' && requested) {
+    const link = await c.env.DB.prepare(
+      "SELECT 1 FROM parent_student_links WHERE parent_user_id = ? AND student_user_id = ? AND status = 'approved'",
+    )
+      .bind(u.sub, requested)
+      .first();
+    target = link ? requested : u.sub;
+  }
   let stmt;
   if (target) {
     stmt = c.env.DB.prepare(

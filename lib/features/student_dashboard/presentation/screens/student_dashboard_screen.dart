@@ -224,19 +224,27 @@ class StudentDashboardScreen extends ConsumerWidget {
               ).animate().fadeIn(delay: 200.ms, duration: 380.ms).slideY(
                   begin: 0.15, end: 0, delay: 200.ms, duration: 380.ms, curve: Curves.easeOutCubic),
             ],
-            if (summary.upcomingSeminarTitle != null) ...[
-              const SizedBox(height: 12),
-              _ActionCard(
-                icon: Icons.groups_rounded,
-                iconColor: scheme.secondary,
-                title: context.tr('dashboard.upcomingSeminar'),
-                subtitle: summary.upcomingSeminarDate != null
-                    ? '${summary.upcomingSeminarTitle} — ${_fmtDate(summary.upcomingSeminarDate!)}'
-                    : summary.upcomingSeminarTitle!,
-                onTap: () => context.push(AppRoutes.seminars),
-              ).animate().fadeIn(delay: 260.ms, duration: 380.ms).slideY(
-                  begin: 0.15, end: 0, delay: 260.ms, duration: 380.ms, curve: Curves.easeOutCubic),
-            ],
+            // رفع اشکال «فقط یک سمینار نمایش/ایجاد می‌شود»: قبلاً این‌جا فقط
+            // نزدیک‌ترین سمینار (یک کارت) نشان داده می‌شد، در حالی که ممکن
+            // بود چند سمینار در انتظار باشند. اکنون فهرست کامل سمینارهای در
+            // انتظار (طبق `upcomingSeminars` سرور) نمایش داده می‌شود.
+            if (summary.upcomingSeminars.isNotEmpty)
+              for (var i = 0; i < summary.upcomingSeminars.length; i++) ...[
+                const SizedBox(height: 12),
+                _ActionCard(
+                  icon: Icons.groups_rounded,
+                  iconColor: scheme.secondary,
+                  title: context.tr('dashboard.upcomingSeminar'),
+                  subtitle:
+                      '${summary.upcomingSeminars[i].title} — ${_fmtDate(summary.upcomingSeminars[i].scheduledStart)}',
+                  onTap: () => context.push(AppRoutes.seminars),
+                ).animate().fadeIn(delay: (260 + i * 60).ms, duration: 380.ms).slideY(
+                    begin: 0.15,
+                    end: 0,
+                    delay: (260 + i * 60).ms,
+                    duration: 380.ms,
+                    curve: Curves.easeOutCubic),
+              ],
             if (summary.recommendedTopics.isNotEmpty) ...[
               const SizedBox(height: 20),
               Text(

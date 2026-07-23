@@ -151,9 +151,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                         value: '${stats.atRiskCount}',
                         gradient: const LinearGradient(colors: [AppColors.danger, Color(0xFFB4232A)]),
                       ),
+                      // رفع اشکال هماهنگی داده: این کارت قبلاً با همان برچسبِ
+                      // «پیشرفت کلی» که در داشبورد شاگرد/والد یعنی درصد
+                      // تکمیل دروس (`getSubjectProgressList`/`averagePercent`)
+                      // نشان داده می‌شد، در واقع مقدار کاملاً متفاوتی
+                      // (میانگین نمرات امتحانات، `AVG(score_percent)`) را
+                      // نشان می‌داد — یعنی مدیر می‌توانست دو معیار متفاوت را
+                      // یکی فرض کند. اکنون برچسب دقیق و مجزا دارد.
                       _KpiCard(
                         icon: Icons.grade_rounded,
-                        label: context.tr('dashboard.overallProgress'),
+                        label: context.tr('admin.avgExamScore'),
                         value: '${stats.avgScorePercent.toStringAsFixed(1)}%',
                         gradient: AppColors.heroGradientWarm,
                       ),

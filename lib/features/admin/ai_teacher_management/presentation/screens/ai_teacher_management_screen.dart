@@ -36,7 +36,7 @@ class AiTeacherManagementScreen extends ConsumerWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             if (i == 0) {
-              return Column(
+              return const Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const AiTeacherStatsSection(),
