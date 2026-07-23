@@ -126,8 +126,8 @@ class CertificateView extends StatelessWidget {
                                 version: QrVersions.auto,
                                 size: compact ? 34 : 46,
                                 gapless: true,
-                                eyeStyle: QrEyeStyle(color: _ink),
-                                dataModuleStyle: QrDataModuleStyle(color: _ink),
+                                eyeStyle: const QrEyeStyle(color: _ink),
+                                dataModuleStyle: const QrDataModuleStyle(color: _ink),
                               ),
                             ),
                             SizedBox(height: compact ? 1 : 2),
@@ -186,6 +186,27 @@ class CertificateView extends StatelessWidget {
                           height: 1.7,
                           color: _ink.withValues(alpha: .85)),
                     ),
+                    if (!compact) ...[
+                      const SizedBox(height: 6),
+                      // ── استاندارد نصاب آموزشی — طبق کدام معیار شاگرد
+                      // ارزیابی شده؛ برای اعتبار بین‌المللی سند (بخش
+                      // ۱۷.۴ سند)، به دری و انگلیسی با هم.
+                      Text(
+                        certificate.curriculumStandardFa,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 8,
+                            color: _ink.withValues(alpha: .5)),
+                      ),
+                      Text(
+                        certificate.curriculumStandardEn,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 6.5,
+                            letterSpacing: .3,
+                            color: _ink.withValues(alpha: .45)),
+                      ),
+                    ],
                     const Spacer(),
                     // ── پایین: تاریخ | مهر | امضا ──
                     Row(

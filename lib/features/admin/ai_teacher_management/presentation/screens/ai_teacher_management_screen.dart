@@ -39,19 +39,19 @@ class AiTeacherManagementScreen extends ConsumerWidget {
               return const Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const AiTeacherStatsSection(),
-                  const SizedBox(height: 16),
-                  const AiEngineSettingsCard(),
-                  const SizedBox(height: 10),
+                  AiTeacherStatsSection(),
+                  SizedBox(height: 16),
+                  AiEngineSettingsCard(),
+                  SizedBox(height: 10),
                   // ═══ تولید هوشمند نصاب (Pure AI Generation — Gemini) ═══
                   // جایگزین کامل سیستم قدیمی مبتنی بر PDF: تمام گزینه‌های
                   // فایل‌محور (ورود دسته‌ای PDF، رفع متن‌های معکوس، پاک‌سازی
                   // دروس یتیم، آپلود کتاب هر مضمون) از این رابط حذف شدند —
                   // منبع مطلق محتوا خودِ Gemini است.
-                  const AiCurriculumGeneratePanel(),
-                  const SizedBox(height: 10),
+                  AiCurriculumGeneratePanel(),
+                  SizedBox(height: 10),
                   // ── نظارت/بازنویسی رفتار پایه و پرامپت معلم هوشمند ──
-                  const AiBasePromptCard(),
+                  AiBasePromptCard(),
                 ],
               );
             }

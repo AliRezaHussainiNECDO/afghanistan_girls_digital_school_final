@@ -1,5 +1,14 @@
 import 'package:equatable/equatable.dart';
 
+/// استاندارد نصاب آموزشی — برای اعتبار بین‌المللی گواهی‌نامه؛ منبع اصلی این
+/// متن سرور است (`certJson` در `exams.ts`)، این‌جا فقط به‌عنوان مقدار
+/// پیش‌فرض برای حالت آفلاین/نمایشی (`CertificatesLocalDataSource`) و برای
+/// سازگاری با دادهٔ کش‌شدهٔ قدیمی‌تر (بدون این فیلد) نگه داشته شده.
+const String kDefaultCurriculumStandardFa =
+    'نصاب آموزشی: منطبق با مفردات معارف / سطح ۲ استاندارد بین‌المللی ISCED';
+const String kDefaultCurriculumStandardEn =
+    'Curriculum Standard: AFG MoE Alignment / ISCED 2011 Level 2';
+
 /// گواهی‌نامهٔ اتمام صنف — پس از ختم هر صنف توسط مدیر برای شاگرد صادر و
 /// ارسال می‌شود؛ شاگرد و والدینش می‌توانند آن را مشاهده و دانلود کنند.
 class Certificate extends Equatable {
@@ -25,6 +34,11 @@ class Certificate extends Equatable {
   final DateTime issuedAt;
   final String issuedBy;
 
+  /// استاندارد نصاب آموزشی که شاگرد بر اساس آن ارزیابی شده (به دری/انگلیسی؛
+  /// روی خودِ گواهی و صفحهٔ عمومی تأیید اصالت هم نشان داده می‌شود).
+  final String curriculumStandardFa;
+  final String curriculumStandardEn;
+
   const Certificate({
     required this.id,
     required this.serial,
@@ -36,6 +50,8 @@ class Certificate extends Equatable {
     required this.honor,
     required this.issuedAt,
     required this.issuedBy,
+    this.curriculumStandardFa = kDefaultCurriculumStandardFa,
+    this.curriculumStandardEn = kDefaultCurriculumStandardEn,
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +65,8 @@ class Certificate extends Equatable {
         'honor': honor,
         'issuedAt': issuedAt.toIso8601String(),
         'issuedBy': issuedBy,
+        'curriculumStandardFa': curriculumStandardFa,
+        'curriculumStandardEn': curriculumStandardEn,
       };
 
   factory Certificate.fromJson(Map<String, dynamic> j) => Certificate(
@@ -63,6 +81,10 @@ class Certificate extends Equatable {
         issuedAt:
             DateTime.tryParse(j['issuedAt'] as String? ?? '') ?? DateTime.now(),
         issuedBy: j['issuedBy'] as String? ?? 'مدیریت مکتب',
+        curriculumStandardFa:
+            j['curriculumStandardFa'] as String? ?? kDefaultCurriculumStandardFa,
+        curriculumStandardEn:
+            j['curriculumStandardEn'] as String? ?? kDefaultCurriculumStandardEn,
       );
 
   @override

@@ -63,6 +63,15 @@ const TYPE_MAP: Record<string, string> = {
   final: 'finalExam',
 };
 
+// ── استاندارد نصاب آموزشی — برای اعتبار بین‌المللی گواهی‌نامه (بخش «کدام
+// استاندارد شاگرد بر اساس آن ارزیابی شده؟»). فعلاً یک مقدار ثابت برای همهٔ
+// گواهی‌نامه‌هاست؛ منبعِ واحدِ حقیقت همین‌جاست — هم در پاسخ API (`certJson`)
+// و هم در صفحهٔ عمومی تأیید اصالت (`certificateVerifyPage`) از همین
+// استفاده می‌شود تا کلاینت و صفحهٔ عمومی هرگز از هم واگرا نشوند.
+const CURRICULUM_STANDARD_FA =
+  'نصاب آموزشی: منطبق با مفردات معارف / سطح ۲ استاندارد بین‌المللی ISCED';
+const CURRICULUM_STANDARD_EN = 'Curriculum Standard: AFG MoE Alignment / ISCED 2011 Level 2';
+
 // انواع سؤال (migration 0030): چهارگزینه‌ای | صحیح‌وغلط | تشریحی.
 const QUESTION_TYPES = new Set(['mcq', 'true_false', 'essay']);
 const TRUE_FALSE_OPTIONS = ['صحیح', 'غلط'];
@@ -509,7 +518,13 @@ exams.post('/admin/certificates', async (c) => {
   if (!b?.studentId) return c.json(fail('BAD_REQUEST', 'ورودی ناقص', 'Missing fields', 'نیمګړی ننوت', 'Entrée incomplète'), 400);
   const id = uid();
   const grade = Number(b.grade ?? 7);
-  const serial = `AGDS-${grade}-${Date.now()}`;
+  // رفع اشکال «سریال قابل‌حدس»: قبلاً سریال فقط از صنف+زمان به میلی‌ثانیه
+  // ساخته می‌شد — چون تاریخ صدور روی خودِ گواهی هم چاپ می‌شود، این بازهٔ
+  // زمانی را برای مهاجم خیلی باریک می‌کند و عملاً حدس‌زدنی/قابل‌شمارش
+  // می‌شود (Enumeration در صفحهٔ عمومی تأیید اصالت). یک بخش تصادفیِ واقعی
+  // (نه قابل‌پیش‌بینی) اضافه شد تا حدس‌زدن سریال گواهی‌نامهٔ دیگران عملاً
+  // غیرممکن شود — پیشوند صنف/زمان فقط برای خوانایی/مرتب‌سازی مدیر حفظ شده.
+  const serial = `AGDS-${grade}-${Date.now()}-${uid().replace(/-/g, '').slice(0, 6).toUpperCase()}`;
   await c.env.DB.prepare(
     `INSERT INTO certificates (id, serial, student_id, student_name, grade, year_label, average, honor, issued_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -612,6 +627,7 @@ function certificateVerifyPage(found: boolean, cert?: any): string {
 <div><b>شمارهٔ سریال:</b> ${escapeHtml(c.serial)}</div>
 ${honorLine}
 </div>
+<p style="color:#9aa5b1;font-size:10.5px;margin-top:14px;">${escapeHtml(CURRICULUM_STANDARD_FA)}<br>${escapeHtml(CURRICULUM_STANDARD_EN)}</p>
 </div></body></html>`;
 }
 
@@ -633,6 +649,8 @@ function certJson(r: any) {
     honor: r.honor,
     issuedAt: r.issued_at,
     issuedBy: r.issued_by,
+    curriculumStandardFa: CURRICULUM_STANDARD_FA,
+    curriculumStandardEn: CURRICULUM_STANDARD_EN,
   };
 }
 
