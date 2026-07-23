@@ -9,8 +9,22 @@ name = "afghan-girls-school-api"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# دامنهٔ شما — بعداً می‌توانید روی afghanistangirlsdigitalschool.org هم Route بسازید.
-# routes = [{ pattern = "api.afghanistangirlsdigitalschool.org/*", zone_name = "afghanistangirlsdigitalschool.org" }]
+# رفع اشکال حیاتی «کاربران نمی‌توانند وارد شوند»: تشخیص داده شد که دامنهٔ
+# اشتراکی *.workers.dev احتمالاً روی شبکهٔ برخی کاربران (مثلاً در افغانستان)
+# فیلتر/مسدود است — یک دامنهٔ عمومیِ اشتراکی که گاهی به‌طور کلی توسط
+# ISPها بلاک می‌شود، برخلاف دامنهٔ اختصاصیِ خودِ مکتب. برای همین، دامنهٔ
+# api.afghanistangirlsdigitalschool.org (که از قبل در حساب Cloudflare کاربر
+# وجود دارد) اکنون به همین Worker Route شده — اپ باید به این آدرس سوییچ کند
+# (`kApiBaseUrl` در api_client.dart).
+#
+# آدرس عمومیِ برندشدهٔ تأیید اصالت گواهی‌نامه (پشت QR روی سرتیفیکت) —
+# afghanistangirlsdigitalschool.org/verify/AGDS-... طبق درخواست کاربر —
+# فقط همین یک مسیر مشخص از ریشهٔ دامنه (نه کل دامنه) تا آیندهٔ سایت اصلی/
+# تبلیغاتی دامنه (اگر جای دیگری میزبانی شود) دست‌نخورده بماند.
+routes = [
+  { pattern = "api.afghanistangirlsdigitalschool.org/*", zone_name = "afghanistangirlsdigitalschool.org" },
+  { pattern = "afghanistangirlsdigitalschool.org/verify/*", zone_name = "afghanistangirlsdigitalschool.org" },
+]
 
 [[d1_databases]]
 binding = "DB"

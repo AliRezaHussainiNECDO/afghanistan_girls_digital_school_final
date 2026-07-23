@@ -9,7 +9,7 @@ import { cors } from 'hono/cors';
 import { verifyBearer } from './lib/auth';
 import authRouter from './routes/auth';
 import curriculumRouter from './routes/curriculum';
-import examsRouter from './routes/exams';
+import examsRouter, { verifyCertificateHandler } from './routes/exams';
 import engagementRouter from './routes/engagement';
 import adminRouter from './routes/admin';
 import seminarsRouter from './routes/seminars';
@@ -64,6 +64,16 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/', (c) => c.json({ ok: true, service: 'afghan-girls-school-api' }));
+
+// ─────────── تأیید عمومی اصالت گواهی‌نامه — روی ریشهٔ دامنهٔ برند ───────────
+// همان Handler که زیر `/api/v1/certificates/verify/:serial` هم هست (سازگاری
+// با نسخه‌های قبلی)، این‌جا مستقیماً روی `/verify/:serial` هم mount شده تا
+// وقتی Route دامنهٔ afghanistangirlsdigitalschool.org فعال شود، آدرس روی QR
+// همان آدرس کوتاه و برندشدهٔ خواسته‌شده باشد:
+// afghanistangirlsdigitalschool.org/verify/AGDS-... — نه یک آدرس فنی زیر
+// api./workers.dev. عمداً بیرون از `/api/v1/*` است چون یک صفحهٔ HTML عمومیِ
+// بدون نیاز به ورود است، نه یک Endpoint JSON.
+app.get('/verify/:serial', verifyCertificateHandler);
 
 // ─────────────────── ضربان حضور (Presence Heartbeat) ────────────────────────
 // هر درخواستِ دارای توکن معتبر، `users.last_seen_at` را در پس‌زمینه تازه

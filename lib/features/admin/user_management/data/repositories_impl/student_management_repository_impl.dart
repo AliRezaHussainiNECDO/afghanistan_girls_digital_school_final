@@ -5,6 +5,7 @@ import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 
 import '../../../../../core/errors/failures.dart';
+import '../../../../../core/network/api_client.dart';
 import '../../domain/entities/student_entities.dart';
 import '../../domain/repositories/student_management_repository.dart';
 import '../datasources/remote/student_management_remote_datasource.dart';
@@ -16,6 +17,8 @@ class StudentManagementRepositoryImpl implements StudentManagementRepository {
   Future<Either<Failure, T>> _guard<T>(Future<T> Function() run) async {
     try {
       return Right(await run());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionError ||
           e.type == DioExceptionType.connectionTimeout) {
@@ -29,6 +32,10 @@ class StudentManagementRepositoryImpl implements StudentManagementRepository {
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  Failure _mapApi(ApiException e) => e.isNetworkError
+      ? NetworkFailure(e.message)
+      : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 
   @override
   Future<Either<Failure, PagedStudents>> getStudents(

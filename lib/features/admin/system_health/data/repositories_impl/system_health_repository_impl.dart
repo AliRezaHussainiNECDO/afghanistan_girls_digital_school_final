@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import '../../../../../core/errors/failures.dart';
+import '../../../../../core/network/api_client.dart';
 import '../../domain/entities/system_health.dart';
 import '../../domain/repositories/system_health_repository.dart';
 import '../datasources/system_health_remote_datasource.dart' show SystemHealthDataSource;
@@ -12,8 +13,14 @@ class SystemHealthRepositoryImpl implements SystemHealthRepository {
   Future<Either<Failure, SystemHealth>> checkHealth() async {
     try {
       return Right(await dataSource.checkHealth());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(NetworkFailure(e.toString()));
     }
   }
+
+  Failure _mapApi(ApiException e) => e.isNetworkError
+      ? NetworkFailure(e.message)
+      : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 }

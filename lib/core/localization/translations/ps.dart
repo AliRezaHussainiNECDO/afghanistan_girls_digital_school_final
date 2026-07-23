@@ -1423,6 +1423,7 @@ const Map<String, String> psStrings = {
 'examAdmin.aiGenerating': 'جوړېږي…',
 'examAdmin.aiAtLeastOne': 'لږترلږه یوه پوښتنه وټاکئ',
 'examAdmin.aiGeneratedCount': '{count} پوښتنې د مصنوعي هوښیارتیا لخوا اضافه شوې',
+'examAdmin.aiGeneratedPartial': 'د {requested} نه {count} پوښتنې جوړې شوې — د پاتې لپاره بیا «تولید» کېکاږئ',
 'examAdmin.backTooltip': 'مینو',
 'examAdmin.pageTitle': 'د رسمي ازموینو مدیریت',
 'examAdmin.pageSubtitle': 'د ټولګي د ترفیع دروازه — د پوښتنو بانک تمرینونو څخه بېل',

@@ -1426,6 +1426,7 @@ const Map<String, String> enStrings = {
 'examAdmin.aiGenerating': 'Generating…',
 'examAdmin.aiAtLeastOne': 'Choose at least one question',
 'examAdmin.aiGeneratedCount': '{count} questions added by AI',
+'examAdmin.aiGeneratedPartial': '{count} of {requested} questions were generated — tap "Generate" again for the rest',
 'examAdmin.backTooltip': 'Menu',
 'examAdmin.pageTitle': 'Official Exam Management',
 'examAdmin.pageSubtitle': 'Grade promotion gate — separate from question bank practice',

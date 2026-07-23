@@ -8,6 +8,10 @@ import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
+import '../../../../curriculum/presentation/providers/curriculum_providers.dart';
+import '../../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/homework.dart';
 import '../../domain/usecases/homework_usecases.dart';
 import '../providers/homework_providers.dart';
@@ -109,6 +113,20 @@ class _HomeworkDashboardScreenState extends ConsumerState<HomeworkDashboardScree
         (f) => _snack(f.message),
         (updated) {
           ref.invalidate(homeworksProvider);
+          // رفع اشکال «مشق را فرستادم ولی درس بعدی هنوز قفل نشان داده می‌شود»:
+          // این وضعیت واقعاً به نمرهٔ AI ربطی ندارد (سرور با هر وضعیت
+          // submitted/graded درس را باز می‌کند — backend/src/lib/progress.ts)،
+          // مشکل واقعی این بود که فقط `homeworksProvider` باطل می‌شد؛ صفحهٔ
+          // «فهرست درس‌ها»/«فصل‌ها»/«خانه»/«نقشهٔ صنوف» که ممکن است هنوز در
+          // پشتهٔ ناوبری زنده باشند، هرگز خبردار نمی‌شدند و قفل/تکمیل‌شدهٔ
+          // کهنه نشان می‌دادند. حالا همهٔ این Providerها هم باطل می‌شوند تا
+          // بازگشت به آن صفحات فوراً وضعیت تازه را نشان دهد.
+          if (updated.chapterId.isNotEmpty) ref.invalidate(lessonsProvider(updated.chapterId));
+          if (updated.subjectId.isNotEmpty) ref.invalidate(chaptersProvider(updated.subjectId));
+          if (updated.lessonId.isNotEmpty) ref.invalidate(lessonProvider(updated.lessonId));
+          final studentId = ref.read(authSessionProvider)?.id;
+          if (studentId != null) ref.invalidate(dashboardSummaryProvider(studentId));
+          ref.invalidate(gradeMapProvider);
           _snack(
             updated.isGraded
                 ? context.tr('homework.gradedSnack', {'score': '${updated.aiScore}'})

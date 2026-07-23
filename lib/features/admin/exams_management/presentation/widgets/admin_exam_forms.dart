@@ -457,6 +457,7 @@ class _ExamAiGenerateSheetState extends ConsumerState<ExamAiGenerateSheet> {
       _toast(context, context.tr('examAdmin.aiAtLeastOne'));
       return;
     }
+    final requested = _mcq + _trueFalse + _essay;
     setState(() => _generating = true);
     final result = await ref.read(generateQuestionsUseCaseProvider).call(GenerateQuestionsParams(
           examId: widget.examId,
@@ -473,7 +474,16 @@ class _ExamAiGenerateSheetState extends ConsumerState<ExamAiGenerateSheet> {
         ref.invalidate(adminExamQuestionsProvider(widget.examId));
         ref.invalidate(adminExamsProvider);
         Navigator.pop(context);
-        _toast(context, context.tr('examAdmin.aiGeneratedCount', {'count': '${questions.length}'}));
+        // اگر پاسخ AI به‌خاطر حجم زیادِ درخواستی ناقص/کوتاه برگشته باشد (رفع
+        // اشکال «فقط سه سؤال ساخته می‌شود» — سرور حالا هر سؤال کاملِ تولیدشده
+        // را ذخیره می‌کند، پس اینجا فقط پیام روشن می‌دهیم که برای بقیه دوباره
+        // بزند، نه یک خطای گنگ یا سکوت.
+        _toast(
+          context,
+          questions.length < requested
+              ? context.tr('examAdmin.aiGeneratedPartial', {'count': '${questions.length}', 'requested': '$requested'})
+              : context.tr('examAdmin.aiGeneratedCount', {'count': '${questions.length}'}),
+        );
       },
     );
   }

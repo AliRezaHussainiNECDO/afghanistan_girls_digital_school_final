@@ -27,7 +27,8 @@ import { verifyBearer } from '../lib/auth';
 import { promoteIfEligible, PROMOTION_EXAM_PASS_PERCENT } from '../lib/progress';
 import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
-import { gradeEssaysWithAi } from '../lib/essayGrading';
+import { gradeEssaysWithAi, callAiJsonArrayLenient } from '../lib/essayGrading';
+import { signCertificate, verifyCertificateSignature } from '../lib/certSigning';
 
 type Bindings = {
   DB: D1Database;
@@ -41,6 +42,9 @@ type Bindings = {
   AI_PROVIDER_KEY?: string;
   AI_PROVIDER_URL?: string;
   AI_MODEL?: string;
+  // امضای دیجیتال گواهی‌نامه (ECDSA P-256) — `wrangler secret put
+  // CERT_SIGNING_PRIVATE_KEY`؛ در نبودش گواهی بدون امضا صادر می‌شود.
+  CERT_SIGNING_PRIVATE_KEY?: string;
 };
 
 const exams = new Hono<{ Bindings: Bindings }>();
@@ -525,20 +529,37 @@ exams.post('/admin/certificates', async (c) => {
   // (نه قابل‌پیش‌بینی) اضافه شد تا حدس‌زدن سریال گواهی‌نامهٔ دیگران عملاً
   // غیرممکن شود — پیشوند صنف/زمان فقط برای خوانایی/مرتب‌سازی مدیر حفظ شده.
   const serial = `AGDS-${grade}-${Date.now()}-${uid().replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+  const studentName = String(b.studentName ?? '');
+  const yearLabel = String(b.yearLabel ?? '');
+  const average = Number(b.average ?? 0);
+  // زمان صدور را خودمان صریح می‌سازیم (نه DEFAULT ستون) چون همین مقدار
+  // دقیق باید امضا شود — اگر به DEFAULT دیتابیس واگذار می‌شد، مقداری که
+  // امضا کرده‌ایم با مقدار واقعاً ذخیره‌شده می‌توانست کمی فرق کند.
+  const issuedAt = new Date().toISOString();
+  const signature = await signCertificate(c.env, {
+    serial,
+    studentName,
+    grade,
+    yearLabel,
+    average,
+    issuedAt,
+  });
   await c.env.DB.prepare(
-    `INSERT INTO certificates (id, serial, student_id, student_name, grade, year_label, average, honor, issued_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO certificates (id, serial, student_id, student_name, grade, year_label, average, honor, issued_by, issued_at, signature)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
       serial,
       String(b.studentId),
-      String(b.studentName ?? ''),
+      studentName,
       grade,
-      String(b.yearLabel ?? ''),
-      Number(b.average ?? 0),
+      yearLabel,
+      average,
       String(b.honor ?? ''),
       'مدیریت مکتب',
+      issuedAt,
+      signature,
     )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM certificates WHERE id = ?').bind(id).first<any>();
@@ -594,7 +615,17 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function certificateVerifyPage(found: boolean, cert?: any): string {
+/**
+ * @param signatureState  'valid' = امضای ECDSA تأیید شد (داده دست‌نخورده)،
+ *   'invalid' = رکورد پیدا شد ولی امضا با داده هم‌خوانی ندارد (نشانهٔ
+ *   دستکاری مستقیم دیتابیس — به‌جای فتوشاپِ تصویر)، 'unsigned' = گواهی
+ *   قدیمی‌تر از قبل از فعال‌شدن امضا یا کلید پیکربندی نشده بود.
+ */
+function certificateVerifyPage(
+  found: boolean,
+  cert?: any,
+  signatureState?: 'valid' | 'invalid' | 'unsigned',
+): string {
   const brand = 'مکتب دیجیتال دختران افغانستان';
   if (!found) {
     return `<!doctype html>
@@ -610,6 +641,14 @@ function certificateVerifyPage(found: boolean, cert?: any): string {
   const c = cert;
   const issuedAt = c.issued_at ? String(c.issued_at).slice(0, 10) : '';
   const honorLine = c.honor ? `<div style="margin-top:6px;color:#b8860b;font-weight:700;">${escapeHtml(c.honor)}</div>` : '';
+  // نشانِ امضا — فقط وقتی صراحتاً نامعتبر است هشدار قرمز نشان می‌دهیم؛
+  // «بدون امضا» (گواهی‌های قدیمی‌تر) خنثی است، نه یک خطای هشداردهنده.
+  const signatureBadge =
+    signatureState === 'valid'
+      ? '<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#eafaf1;color:#1b6e4b;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:700;">🔏 امضای رمزنگاری‌شدهٔ سرور تأیید شد</div>'
+      : signatureState === 'invalid'
+        ? '<div style="margin-top:10px;display:inline-flex;align-items:center;gap:6px;background:#fdecea;color:#b3261e;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:700;">⚠️ هشدار: داده با امضای ثبت‌شده هم‌خوانی ندارد</div>'
+        : '';
   return `<!doctype html>
 <html dir="rtl" lang="fa"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>تأیید سرتیفیکت — ${brand}</title></head>
@@ -617,8 +656,9 @@ function certificateVerifyPage(found: boolean, cert?: any): string {
 <div style="background:#fff;border:1px solid #e3e8ee;border-radius:14px;padding:36px 32px;max-width:460px;width:100%;text-align:center;">
 <div style="font-size:48px;">✅</div>
 <h2 style="color:#1b6e4b;margin:14px 0 4px;">این سرتیفیکت اصیل و معتبر است</h2>
-<p style="color:#7b8794;font-size:12.5px;margin-bottom:20px;">صادرشده توسط ${brand}</p>
-<div style="text-align:right;background:#f9fafb;border:1px solid #e3e8ee;border-radius:10px;padding:16px 18px;font-size:14px;line-height:2;">
+<p style="color:#7b8794;font-size:12.5px;margin-bottom:4px;">صادرشده توسط ${brand}</p>
+${signatureBadge}
+<div style="text-align:right;background:#f9fafb;border:1px solid #e3e8ee;border-radius:10px;padding:16px 18px;font-size:14px;line-height:2;margin-top:16px;">
 <div><b>نام شاگرد:</b> ${escapeHtml(c.student_name)}</div>
 <div><b>صنف تکمیل‌شده:</b> ${escapeHtml(String(c.grade))}</div>
 <div><b>سال تعلیمی:</b> ${escapeHtml(c.year_label)}</div>
@@ -631,11 +671,37 @@ ${honorLine}
 </div></body></html>`;
 }
 
-exams.get('/certificates/verify/:serial', async (c) => {
+/**
+ * دستهٔ عمومی/بدون ورود برای تأیید اصالت — هم زیر `/api/v1/certificates/
+ * verify/:serial` (سازگاری با نسخه‌های قبلی) و هم مستقیم روی ریشهٔ دامنهٔ
+ * برند (`/verify/:serial` در `index.ts`، پشت Route دامنهٔ
+ * afghanistangirlsdigitalschool.org) قابل استفاده است — چون کلاینتی که QR
+ * را اسکن می‌کند به یک صفحهٔ وب معمولی نیاز دارد، نه یک Endpoint زیر
+ * `/api/v1` با پیشوند فنی.
+ */
+export async function verifyCertificateHandler(c: any) {
   const serial = c.req.param('serial');
   const row = await c.env.DB.prepare('SELECT * FROM certificates WHERE serial = ?').bind(serial).first<any>();
-  return c.html(certificateVerifyPage(!!row, row));
-});
+  if (!row) return c.html(certificateVerifyPage(false));
+  let signatureState: 'valid' | 'invalid' | 'unsigned' = 'unsigned';
+  if (row.signature) {
+    const ok = await verifyCertificateSignature(
+      {
+        serial: row.serial,
+        studentName: row.student_name,
+        grade: row.grade,
+        yearLabel: row.year_label,
+        average: row.average,
+        issuedAt: row.issued_at,
+      },
+      row.signature,
+    );
+    signatureState = ok ? 'valid' : 'invalid';
+  }
+  return c.html(certificateVerifyPage(true, row, signatureState));
+}
+
+exams.get('/certificates/verify/:serial', verifyCertificateHandler);
 
 function certJson(r: any) {
   return {
@@ -651,6 +717,7 @@ function certJson(r: any) {
     issuedBy: r.issued_by,
     curriculumStandardFa: CURRICULUM_STANDARD_FA,
     curriculumStandardEn: CURRICULUM_STANDARD_EN,
+    signed: !!r.signature,
   };
 }
 
@@ -894,8 +961,17 @@ exams.post('/admin/exams/:examId/generate-questions', async (c) => {
     return c.json(fail('BAD_REQUEST', 'حداقل یک سؤال انتخاب کنید', 'Choose at least one question', 'لږترلږه یوه پوښتنه وټاکئ', 'Choisissez au moins une question'), 400);
   }
 
+  // رفع اشکال «فقط سه سؤال ساخته می‌شود»: قبلاً max_tokens همیشه ۴۰۰۰ ثابت بود،
+  // در حالی که رابط کاربری تا ۳۰ سؤال از هر نوع (تا ۹۰ سؤال) اجازه می‌داد —
+  // برای درخواست‌های بزرگ، پاسخ AI وسط راه بریده و JSON.parse با شکست کامل
+  // مواجه می‌شد (۰ سؤال ذخیره). حالا سقف توکن متناسب با تعداد درخواستی
+  // محاسبه می‌شود و در نبود آن هم، پارسِ نرم (lenient) هر سؤال کامل تا نقطهٔ
+  // قطع را نجات می‌دهد به‌جای رد کردن کل دسته.
+  const totalRequested = mcqCount + trueFalseCount + essayCount;
+  const maxTokens = Math.min(16000, Math.max(1200, 700 + totalRequested * 260));
+
   try {
-    const parsed = await callAiJson(
+    const parsed = await callAiJsonArrayLenient(
       c.env,
       'تو یک معلم باتجربهٔ نصاب معارف افغانستان هستی و برای شاگردان دختر سؤال امتحان به زبان دری می‌سازی. فقط JSON خالص برگردان — بدون هیچ متن اضافه.',
       `برای امتحان «${exam.title}» مضمون «${exam.subject_name}» صنف ${exam.grade_number}` +
@@ -906,7 +982,7 @@ exams.post('/admin/exams/:examId/generate-questions', async (c) => {
         `- ${essayCount} سؤال تشریحی (type="essay"، بدون options، فیلد answer = پاسخ نمونهٔ کوتاه برای کلید نمره‌دهی)\n` +
         `سؤالات باید متناسب با سطح صنف ${exam.grade_number} و از نصاب معارف افغانستان باشند.\n` +
         `خروجی: آرایهٔ JSON دقیقاً به شکل [{"type":"mcq","text":"...","options":["..","..","..",".."],"correctIndex":0},{"type":"true_false","text":"...","correctIndex":1},{"type":"essay","text":"...","answer":"..."}]`,
-      4000,
+      maxTokens,
     );
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return c.json(fail('AI_EMPTY', 'پاسخ نامعتبر از سرویس هوش مصنوعی', 'Invalid AI reply', 'د مصنوعي هوښیارتیا له خدمت نه ناسم ځواب', 'Réponse invalide du service d\'IA'), 502);
@@ -957,7 +1033,10 @@ exams.post('/admin/exams/:examId/generate-questions', async (c) => {
         detail: { purpose: 'exam_question_generation', mcqCount, trueFalseCount, essayCount, topic, generated: saved.length },
       }),
     );
-    return c.json({ questions: saved }, 201);
+    // requestedCount/truncated: به کلاینت اجازه می‌دهد وقتی تعداد ذخیره‌شده
+    // کمتر از درخواستی است (مثلاً به‌خاطر یک پاسخ ناقص AI که با پارس نرم تا
+    // همان نقطه نجات داده شد)، پیام روشنی نشان دهد به‌جای سکوت.
+    return c.json({ questions: saved, requestedCount: totalRequested, truncated: saved.length < totalRequested }, 201);
   } catch (e: any) {
     return c.json(
       { ...fail('AI_UPSTREAM_ERROR', 'خطا از سرویس هوش مصنوعی', 'AI upstream error', 'د مصنوعي هوښیارتیا له خدمت نه تېروتنه', 'Erreur du service d\'IA'), detail: String(e?.message ?? e).slice(0, 200) },

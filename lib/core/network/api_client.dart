@@ -22,11 +22,22 @@ import 'package:dio/dio.dart';
 /// تزریق شود؛ مقدار زیر پیش‌فرضِ امن است اگر تزریق نشده باشد.
 const String kApiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  // نکته: دامنهٔ سفارشی api.afghanistangirlsdigitalschool.org هنوز در
-  // wrangler.toml روت نشده (خط routes کامنت است)، پس آدرس واقعیِ در حال کار
-  // همان Workers.dev است. وقتی Route دامنه را فعال کردید، این مقدار را
-  // به همان دامنهٔ سفارشی برگردانید یا از --dart-define=API_BASE_URL استفاده کنید.
-  defaultValue: 'https://afghan-girls-school-api.alireza-necdo.workers.dev/api/v1',
+  // رفع اشکال حیاتی «ورود ناموفق»: دامنهٔ اشتراکیِ *.workers.dev احتمالاً
+  // روی شبکهٔ برخی کاربران (مثلاً افغانستان) فیلتر است — تأیید شد با تست
+  // مستقیم: همان دامنه از یک شبکهٔ دیگر جواب می‌دهد ولی روی گوشیِ کاربرِ
+  // گزارش‌دهنده، حتی ریشهٔ همان دامنه هم باز نمی‌شود. دامنهٔ اختصاصیِ خودِ
+  // مکتب (که در wrangler.toml هم اکنون Route شده) این ریسک را ندارد.
+  defaultValue: 'https://api.afghanistangirlsdigitalschool.org/api/v1',
+);
+
+/// آدرس عمومیِ برندشدهٔ تأیید اصالت گواهی‌نامه (پشت QR روی سرتیفیکت) —
+/// جدا از [kApiBaseUrl] چون این یکی باید همیشه دامنهٔ اصلی/برندِ مکتب باشد
+/// (نه آدرس فنی Workers.dev)، حتی وقتی [kApiBaseUrl] هنوز به دامنهٔ
+/// سفارشی سوییچ نشده. Route مربوطه (`/verify/*` روی ریشهٔ دامنه) در
+/// `backend/wrangler.toml` فعال است.
+const String kCertVerifyBaseUrl = String.fromEnvironment(
+  'CERT_VERIFY_BASE_URL',
+  defaultValue: 'https://afghanistangirlsdigitalschool.org',
 );
 
 /// امضای تابعی که Access Token فعلی را برمی‌گرداند (یا null اگر کاربر وارد

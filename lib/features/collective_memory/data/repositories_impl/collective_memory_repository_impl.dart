@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import '../../../../core/errors/failures.dart';
+import '../../../../core/network/api_client.dart';
 import '../../domain/entities/memory_comment.dart';
 import '../../domain/entities/memory_post.dart';
 import '../../domain/repositories/collective_memory_repository.dart';
@@ -14,6 +15,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
   Future<Either<Failure, List<MemoryPost>>> getPosts() async {
     try {
       return Right(await dataSource.getPosts());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -37,6 +40,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
         body: body,
         imagesBase64: imagesBase64,
       ));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -50,6 +55,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
   }) async {
     try {
       return Right(await dataSource.updatePost(postId: postId, body: body, imagesBase64: imagesBase64));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -60,6 +67,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
     try {
       await dataSource.deletePost(postId);
       return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -73,6 +82,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
   }) async {
     try {
       return Right(await dataSource.toggleReaction(postId: postId, emoji: emoji, userId: userId));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -82,6 +93,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
   Future<Either<Failure, List<MemoryComment>>> getComments(String postId) async {
     try {
       return Right(await dataSource.getComments(postId));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -107,6 +120,8 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
         authorAvatarBase64: authorAvatarBase64,
         body: body,
       ));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
@@ -117,8 +132,14 @@ class CollectiveMemoryRepositoryImpl implements CollectiveMemoryRepository {
     try {
       await dataSource.deleteComment(commentId);
       return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
     }
   }
+
+  Failure _mapApi(ApiException e) => e.isNetworkError
+      ? NetworkFailure(e.message)
+      : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 }

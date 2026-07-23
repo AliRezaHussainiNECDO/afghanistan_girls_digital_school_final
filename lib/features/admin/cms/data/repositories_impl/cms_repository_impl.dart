@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import '../../../../../core/errors/failures.dart';
+import '../../../../../core/network/api_client.dart';
 import '../../domain/entities/cms_entities.dart';
 import '../../domain/repositories/cms_repository.dart';
 import '../datasources/cms_remote_datasource.dart' show CmsDataSource;
@@ -11,10 +12,16 @@ class CmsRepositoryImpl implements CmsRepository {
   Future<Either<Failure, T>> _guard<T>(Future<T> Function() body) async {
     try {
       return Right(await body());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  Failure _mapApi(ApiException e) => e.isNetworkError
+      ? NetworkFailure(e.message)
+      : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 
   // Books
   @override

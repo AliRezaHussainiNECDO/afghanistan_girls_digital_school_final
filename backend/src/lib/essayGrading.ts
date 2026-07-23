@@ -17,12 +17,17 @@ export type EssayAiBindings = {
   AI_MODEL?: string;
 };
 
-async function callAiJson(
+/** فراخوانی خام سرویس AI — متن تمیزشده (بدون کدبلاک ```، بدون متن اضافه
+ * قبل از اولین [ یا {) را برمی‌گرداند، بدون JSON.parse. جدا شد تا هم
+ * `callAiJson` (پارس سخت‌گیرانه) و هم `callAiJsonArrayLenient` (پارس نرم،
+ * برای وقتی پاسخ به دلیل محدودیت `max_tokens` بریده می‌شود) از یک منطق
+ * مشترک fetch/پاک‌سازی استفاده کنند. */
+async function fetchAiRaw(
   env: EssayAiBindings,
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number,
-): Promise<any> {
+): Promise<string | null> {
   if (!env.AI_PROVIDER_KEY) return null;
   const url = env.AI_PROVIDER_URL ?? 'https://api.openai.com/v1/chat/completions';
   const model = env.AI_MODEL ?? 'gpt-4o-mini';
@@ -48,7 +53,82 @@ async function callAiJson(
     ? text.indexOf('[')
     : text.indexOf('{');
   if (start > 0) text = text.slice(start);
+  return text;
+}
+
+async function callAiJson(
+  env: EssayAiBindings,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+): Promise<any> {
+  const text = await fetchAiRaw(env, systemPrompt, userPrompt, maxTokens);
+  if (text === null) return null;
   return JSON.parse(text);
+}
+
+/** اشیاء کاملِ سطح‌بالا را از یک متن (که ممکن است ناقص/بریده باشد) استخراج
+ * می‌کند — با شمارش عمق آکولاد و نادیده‌گرفتن آکولاد داخل رشته‌ها. اگر
+ * پاسخ AI وسط یک شیء قطع شده باشد، همان شیء ناقص رد می‌شود ولی اشیاء کاملِ
+ * قبلی حفظ می‌شوند. */
+function extractCompleteJsonObjects(text: string): any[] {
+  const out: any[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}') {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0 && start >= 0) {
+        const candidate = text.slice(start, i + 1);
+        try {
+          out.push(JSON.parse(candidate));
+        } catch {
+          // شیء ناقص/نامعتبر — نادیده گرفته می‌شود، ادامه می‌دهیم.
+        }
+        start = -1;
+      }
+    }
+  }
+  return out;
+}
+
+/** نسخهٔ «نرم» فراخوانی AI برای پاسخ‌هایی که باید آرایه باشند (مثل تولید
+ * چند سؤال با هم): اگر پاسخ کامل باشد، دقیقاً مثل `callAiJson` عمل می‌کند؛
+ * اگر به‌خاطر محدودیت `max_tokens` وسط راه بریده شود (JSON.parse معمولی
+ * شکست می‌خورد)، به‌جای رد کردن کل درخواست با خطا، هر چه سؤال/شیء کامل تا
+ * نقطهٔ قطع تولید شده را نجات می‌دهد. رفع اشکال: قبلاً یک پاسخ بریده باعث
+ * شکست کامل (۰ نتیجه) می‌شد؛ مدیر تصور می‌کرد فقط تعداد کمی سؤال قابل
+ * ساخت است، در حالی که مشکل واقعی سقف `max_tokens` بود. */
+export async function callAiJsonArrayLenient(
+  env: EssayAiBindings,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+): Promise<any[]> {
+  const text = await fetchAiRaw(env, systemPrompt, userPrompt, maxTokens);
+  if (text === null) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return extractCompleteJsonObjects(text);
+  }
 }
 
 /** نمره‌دهی تشریحی با AI — ورودی: سؤالات تشریحی + پاسخ نمونه + پاسخ شاگرد.

@@ -1424,6 +1424,7 @@ const Map<String, String> faStrings = {
 'examAdmin.aiGenerating': 'در حال تولید…',
 'examAdmin.aiAtLeastOne': 'حداقل یک سؤال انتخاب کنید',
 'examAdmin.aiGeneratedCount': '{count} سؤال با هوش مصنوعی افزوده شد',
+'examAdmin.aiGeneratedPartial': '{count} از {requested} سؤال ساخته شد — برای بقیه، دوباره «تولید» را بزنید',
 'examAdmin.backTooltip': 'منو',
 'examAdmin.pageTitle': 'مدیریت امتحانات رسمی',
 'examAdmin.pageSubtitle': 'دروازهٔ ارتقای صنف — جدا از تمرین‌های بانک سؤال',

@@ -1433,6 +1433,7 @@ const Map<String, String> frStrings = {
 'examAdmin.aiGenerating': 'Génération…',
 'examAdmin.aiAtLeastOne': 'Choisissez au moins une question',
 'examAdmin.aiGeneratedCount': '{count} questions ajoutées par l\'IA',
+'examAdmin.aiGeneratedPartial': '{count} question(s) générée(s) sur {requested} — appuyez de nouveau sur « Générer » pour le reste',
 'examAdmin.backTooltip': 'Menu',
 'examAdmin.pageTitle': 'Gestion des examens officiels',
 'examAdmin.pageSubtitle': 'Seuil de promotion de classe — distinct de la pratique de la banque de questions',

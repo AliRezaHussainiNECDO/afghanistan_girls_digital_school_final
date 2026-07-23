@@ -1,5 +1,6 @@
 import 'package:dartz/dartz.dart';
 import '../../../../../core/errors/failures.dart';
+import '../../../../../core/network/api_client.dart';
 import '../../domain/entities/ai_teacher_config.dart';
 import '../../domain/entities/ai_teacher_stats.dart';
 import '../../domain/repositories/ai_teacher_management_repository.dart';
@@ -13,6 +14,8 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
   Future<Either<Failure, List<AiTeacherConfig>>> getConfigs() async {
     try {
       return Right(await dataSource.getConfigs());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
@@ -23,6 +26,8 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
     try {
       await dataSource.updatePersona(subjectId, newDescription);
       return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
@@ -32,6 +37,8 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
   Future<Either<Failure, String?>> getPersonaFor(String subjectId) async {
     try {
       return Right(await dataSource.personaFor(subjectId));
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
@@ -41,8 +48,14 @@ class AiTeacherManagementRepositoryImpl implements AiTeacherManagementRepository
   Future<Either<Failure, AiTeacherStats>> getStats() async {
     try {
       return Right(await dataSource.getStats());
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
     } catch (e) {
       return Left(ServerFailure(e.toString()));
     }
   }
+
+  Failure _mapApi(ApiException e) => e.isNetworkError
+      ? NetworkFailure(e.message)
+      : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 }

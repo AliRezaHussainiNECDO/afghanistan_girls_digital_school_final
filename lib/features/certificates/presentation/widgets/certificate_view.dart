@@ -20,9 +20,10 @@ class CertificateView extends StatelessWidget {
   String _fmtDate(DateTime d) =>
       '${d.year}/${d.month.toString().padLeft(2, '0')}/${d.day.toString().padLeft(2, '0')}';
 
-  /// آدرس عمومی تأیید اصالت — صفحهٔ HTML بدون نیاز به ورود روی همان Worker
-  /// بک‌اند (`GET /certificates/verify/:serial`)؛ پشت QR روی خودِ سند.
-  String _verificationUrl(String serial) => '$kApiBaseUrl/certificates/verify/$serial';
+  /// آدرس عمومی تأیید اصالت — دامنهٔ برندِ اصلی مکتب (نه آدرس فنی API)،
+  /// طبق درخواست کاربر: `afghanistangirlsdigitalschool.org/verify/AGDS-...`.
+  /// پشت QR روی خودِ سند؛ بدون نیاز به ورود/حساب کاربری.
+  String _verificationUrl(String serial) => '$kCertVerifyBaseUrl/verify/$serial';
 
   @override
   Widget build(BuildContext context) {
