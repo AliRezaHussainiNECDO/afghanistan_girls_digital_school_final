@@ -99,8 +99,16 @@ final mySubmissionsProvider = FutureProvider<List<Submission>>((ref) async {
 });
 
 /// پاسخ‌های یک شاگرد مشخص (نمای والد)؛ کلید = studentId.
+///
+/// **رفع اشکال:** قبلاً این Provider فقط کشِ سراسریِ `AcademyStore` را
+/// (که با یک `hydrate()` بدون `studentId` پر می‌شود) فیلتر می‌کرد. برای
+/// والد، آن کش همیشه خالی بود (چون سرور «بدون studentId» را «پاسخ‌های
+/// خودِ کاربر واردشده» تفسیر می‌کند، نه فرزند)، پس این صفحه همیشه هیچ
+/// تمرینی نشان نمی‌داد — حتی وقتی فرزند واقعاً تمرین کرده بود. اکنون مثل
+/// `myExamResultsProvider` (امتحانات رسمی)، برای هر `studentId` یک واکشیِ
+/// تازه و مستقیم از سرور انجام می‌شود.
 final submissionsByStudentProvider =
     FutureProvider.family<List<Submission>, String>((ref, studentId) async {
   await ref.watch(academyHydrationProvider.future);
-  return ref.watch(academyStoreProvider).getSubmissions(studentId: studentId);
+  return ref.watch(academyStoreProvider).fetchSubmissionsFor(studentId);
 });

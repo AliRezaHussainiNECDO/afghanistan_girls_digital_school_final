@@ -9,11 +9,18 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
+import { gradeEssaysWithAi } from '../lib/essayGrading';
 
 type Bindings = {
   DB: D1Database;
   BUCKET: R2Bucket;
   JWT_SECRET: string;
+  // هوش مصنوعی — برای نمره‌دهی سمت سرور سؤالات تشریحیِ تمرین مضامین (همان
+  // پیکربندی exams.ts؛ اختیاری — در نبود کلید، تشریحی‌ها از مخرج نمره حذف
+  // می‌شوند، نه اینکه ظالمانه صفر بگیرند).
+  AI_PROVIDER_KEY?: string;
+  AI_PROVIDER_URL?: string;
+  AI_MODEL?: string;
 };
 
 const academy = new Hono<{ Bindings: Bindings }>();
@@ -289,19 +296,35 @@ academy.get('/academy/submissions', async (c) => {
   // فقط برای `super_admin` معتبر بود؛ برای والد نادیده گرفته می‌شد و
   // `target` به `u.sub` (خودِ والد، بدون هیچ رکورد تمرینی) برمی‌گشت. اکنون
   // والد هم می‌تواند (فقط برای فرزند تأییدشدهٔ خودش) پاسخ‌های تمرینی فرزندش
-  // را ببیند؛ در نبود لینک تأییدشده بی‌صدا به `u.sub` سقوط می‌کند (نتیجهٔ
-  // خالی، نه نشتِ داده یا خطای فاش‌کننده).
-  const requested = c.req.query('studentId');
+  // را ببیند.
+  //
+  // **هماهنگی با امتحانات رسمی:** قبلاً یک لینکِ تأییدنشده (یا مربوط به
+  // فرزند کس دیگری) بی‌صدا به `u.sub` سقوط می‌کرد — یعنی والدِ غیرمجاز به‌جای
+  // خطای صریح، فقط یک لیست خالیِ گمراه‌کننده می‌گرفت (که غیرقابل‌تشخیص از
+  // «فرزند هنوز تمرین نکرده» بود). اکنون دقیقاً مثل الگوی `exams.ts`
+  // (`GET /exams/my-results`)، تلاش برای دیدن یک فرزندِ لینک‌نشده صراحتاً
+  // ۴۰۳ برمی‌گرداند تا رفتار دو داشبورد (امتحانات رسمی و تمرین مضامین)
+  // کاملاً هماهنگ باشد.
+  const requested = c.req.query('studentId')?.trim();
   let target: string | undefined = u.sub;
-  if (u.role === 'super_admin') {
-    target = requested; // ممکن است undefined بماند → یعنی «همه» (رفتار قبلی حفظ شد)
-  } else if (u.role === 'parent' && requested) {
-    const link = await c.env.DB.prepare(
-      "SELECT 1 FROM parent_student_links WHERE parent_user_id = ? AND student_user_id = ? AND status = 'approved'",
-    )
-      .bind(u.sub, requested)
-      .first();
-    target = link ? requested : u.sub;
+  if (requested && requested !== u.sub) {
+    if (u.role === 'super_admin') {
+      target = requested;
+    } else if (u.role === 'parent') {
+      const link = await c.env.DB.prepare(
+        "SELECT 1 FROM parent_student_links WHERE parent_user_id = ? AND student_user_id = ? AND status = 'approved'",
+      )
+        .bind(u.sub, requested)
+        .first();
+      if (!link) {
+        return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+      }
+      target = requested;
+    } else {
+      return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+    }
+  } else if (!requested && u.role === 'super_admin') {
+    target = undefined; // برای مدیر بدون studentId یعنی «همه» (رفتار قبلی حفظ شد)
   }
   let stmt;
   if (target) {
@@ -315,6 +338,17 @@ academy.get('/academy/submissions', async (c) => {
   return c.json({ submissions: results.map(submissionJson) });
 });
 
+// رفع اشکال امنیتی/هماهنگی «تمرین مضامین به نمرهٔ ارسالی کلاینت اعتماد
+// می‌کند»: قبلاً `scorePercent`/`earnedPoints`/`totalPoints` و حتی
+// درستی/نادرستیِ تک‌تک سؤالات (`isCorrect`/`awardedPoints`/`correctIndex`)
+// عیناً از بدنهٔ کلاینت خوانده و ذخیره می‌شد — یعنی هر کلاینتِ دستکاری‌شده
+// (یا حتی یک درخواست HTTP دستی) می‌توانست بدون پاسخ‌دادن به هیچ سؤالی،
+// نمرهٔ ۱۰۰٪ برای خودش ثبت کند. اکنون دقیقاً هماهنگ با امتحانات رسمی
+// (`POST /exams/:examId/submit`)، سرور فقط «کدام سؤال چه پاسخی گرفته»
+// (`questionId` + `chosenIndex`/`chosenBool`/`essayText`) را از کلاینت
+// می‌پذیرد، خودِ سؤالات واقعی را از `academy_questions` می‌خواند، و نمره
+// را خودش محاسبه می‌کند — کلاینت فقط برای «تجربهٔ فوریِ آفلاین» ممکن است
+// همان مقادیر را دوباره بفرستد، ولی سرور هرگز به آن‌ها اعتماد نمی‌کند.
 academy.post('/academy/submissions', async (c) => {
   const u = await me(c);
   if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
@@ -323,6 +357,169 @@ academy.post('/academy/submissions', async (c) => {
   const id = String(b.id ?? '').trim() || `sub_${Date.now()}_${uid().slice(0, 6)}`;
   // شاگرد فقط به نام خودش ثبت می‌کند (ضد جعل).
   const studentId = u.role === 'super_admin' ? String(b.studentId ?? u.sub) : u.sub;
+
+  const rawAnswers: Array<Record<string, any>> = Array.isArray(b.answers) ? b.answers : [];
+  const questionIds = rawAnswers
+    .map((a) => String(a?.questionId ?? '').trim())
+    .filter((qid) => qid.length > 0);
+
+  // خودِ سؤالات (متن، گزینه‌ها، پاسخ صحیح، امتیاز) را از دیتابیس می‌خوانیم —
+  // نه از بدنهٔ کلاینت — تا هیچ‌کدام قابل جعل نباشند.
+  const questionMap = new Map<string, any>();
+  if (questionIds.length > 0) {
+    const placeholders = questionIds.map(() => '?').join(',');
+    const { results } = await c.env.DB.prepare(
+      `SELECT * FROM academy_questions WHERE id IN (${placeholders})`,
+    )
+      .bind(...questionIds)
+      .all<any>();
+    for (const r of results) questionMap.set(r.id, r);
+  }
+
+  const essayItems: Array<{ id: string; text: string; modelAnswer: string; studentAnswer: string }> = [];
+  // پیش‌نویسِ رکورد هر پاسخ — سؤالات تشریحی بعداً (پس از نمره‌دهی AI) کامل می‌شوند.
+  const drafts: Array<{
+    questionId: string;
+    questionText: string;
+    kind: string;
+    options: string[];
+    chosenIndex: number | null;
+    chosenBool: boolean | null;
+    essayText: string | null;
+    correctIndex: number | null;
+    correctBool: boolean | null;
+    modelAnswer: string;
+    maxPoints: number;
+    awardedPoints: number;
+    isCorrect: boolean | null;
+    aiFeedback: string;
+  }> = [];
+
+  for (const a of rawAnswers) {
+    const qid = String(a?.questionId ?? '').trim();
+    const q = questionMap.get(qid);
+    if (!q) continue; // سؤالِ ناموجود/حذف‌شده — نادیده گرفته می‌شود، نه اینکه امتیاز جعلی بگیرد.
+    let options: string[] = [];
+    try {
+      options = JSON.parse(q.options_json ?? '[]');
+    } catch {
+      options = [];
+    }
+    const maxPoints = Number(q.points ?? 1);
+
+    if (q.kind === 'mcq') {
+      const chosenIndex = Number.isInteger(a?.chosenIndex) ? Number(a.chosenIndex) : null;
+      const correct = chosenIndex !== null && chosenIndex === q.correct_index;
+      drafts.push({
+        questionId: qid,
+        questionText: q.text,
+        kind: 'mcq',
+        options,
+        chosenIndex,
+        chosenBool: null,
+        essayText: null,
+        correctIndex: q.correct_index,
+        correctBool: null,
+        modelAnswer: '',
+        maxPoints,
+        awardedPoints: correct ? maxPoints : 0,
+        isCorrect: correct,
+        aiFeedback: '',
+      });
+    } else if (q.kind === 'trueFalse') {
+      const chosenBool = typeof a?.chosenBool === 'boolean' ? (a.chosenBool as boolean) : null;
+      const correctBool = q.correct_bool === 1;
+      const correct = chosenBool !== null && chosenBool === correctBool;
+      drafts.push({
+        questionId: qid,
+        questionText: q.text,
+        kind: 'trueFalse',
+        options: [],
+        chosenIndex: null,
+        chosenBool,
+        essayText: null,
+        correctIndex: null,
+        correctBool,
+        modelAnswer: '',
+        maxPoints,
+        awardedPoints: correct ? maxPoints : 0,
+        isCorrect: correct,
+        aiFeedback: '',
+      });
+    } else {
+      // essay — نمره‌دهی نهایی بعد از فراخوانی AI (پایین‌تر) انجام می‌شود.
+      const essayText = String(a?.essayText ?? '').trim();
+      if (essayText.length > 0) {
+        essayItems.push({ id: qid, text: q.text, modelAnswer: q.model_answer ?? '', studentAnswer: essayText });
+      }
+      drafts.push({
+        questionId: qid,
+        questionText: q.text,
+        kind: 'essay',
+        options: [],
+        chosenIndex: null,
+        chosenBool: null,
+        essayText: essayText.length > 0 ? essayText : null,
+        correctIndex: null,
+        correctBool: null,
+        modelAnswer: q.model_answer ?? '',
+        maxPoints,
+        awardedPoints: 0, // پایین‌تر (در صورت وجود پاسخ + AI در دسترس) به‌روز می‌شود.
+        isCorrect: null,
+        aiFeedback: '',
+      });
+    }
+  }
+
+  const hasEssay = drafts.some((d) => d.kind === 'essay');
+  let aiGraded = false;
+  if (essayItems.length > 0) {
+    const graded = await gradeEssaysWithAi(c.env, essayItems);
+    if (graded) {
+      aiGraded = true;
+      for (const d of drafts) {
+        if (d.kind !== 'essay' || !d.essayText) continue;
+        const g = graded.get(d.questionId);
+        if (g) {
+          d.awardedPoints = Math.round(g.score * d.maxPoints * 10) / 10;
+          d.isCorrect = g.score >= 0.5;
+          d.aiFeedback = g.feedback;
+        }
+      }
+    }
+  }
+
+  // مخرجِ نمره: سؤالات بسته همیشه حساب می‌شوند؛ سؤالات تشریحی فقط اگر واقعاً
+  // نمره‌دهی شدند (AI در دسترس بود) — تا در نبود AI، شاگرد ناعادلانه به‌خاطر
+  // سؤالی که اصلاً نمره نگرفته، امتیاز از دست ندهد (همان الگوی امتحانات رسمی).
+  let earnedPoints = 0;
+  let totalPoints = 0;
+  for (const d of drafts) {
+    if (d.kind === 'essay' && !aiGraded) continue;
+    earnedPoints += d.awardedPoints;
+    totalPoints += d.maxPoints;
+  }
+  const scorePercent = totalPoints === 0 ? 0 : (earnedPoints / totalPoints) * 100;
+  const roundedScore = Math.round(scorePercent * 10) / 10;
+  const roundedEarned = Math.round(earnedPoints * 10) / 10;
+
+  const answersJson = drafts.map((d) => ({
+    questionId: d.questionId,
+    questionText: d.questionText,
+    kind: d.kind,
+    options: d.options,
+    chosenIndex: d.chosenIndex,
+    chosenBool: d.chosenBool,
+    essayText: d.essayText,
+    correctIndex: d.correctIndex,
+    correctBool: d.correctBool,
+    modelAnswer: d.modelAnswer,
+    awardedPoints: d.awardedPoints,
+    maxPoints: d.maxPoints,
+    isCorrect: d.isCorrect,
+    aiFeedback: d.aiFeedback,
+  }));
+
   await c.env.DB.prepare(
     `INSERT OR REPLACE INTO academy_submissions
        (id, student_id, student_name, grade_id, subject, submitted_at, answers_json,
@@ -335,11 +532,11 @@ academy.post('/academy/submissions', async (c) => {
       String(b.studentName ?? ''),
       Number(b.gradeId ?? 0),
       String(b.subject ?? ''),
-      JSON.stringify(Array.isArray(b.answers) ? b.answers : []),
-      Number(b.scorePercent ?? 0),
-      Number(b.earnedPoints ?? 0),
-      Number(b.totalPoints ?? 0),
-      b.aiAssisted ? 1 : 0,
+      JSON.stringify(answersJson),
+      roundedScore,
+      roundedEarned,
+      totalPoints,
+      hasEssay ? 1 : 0,
     )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM academy_submissions WHERE id = ?').bind(id).first<any>();

@@ -769,6 +769,10 @@ const Map<String, String> faStrings = {
 'room.mobileOnlyLong':
     'ویدیوکنفرانس زنده فقط در اپلیکیشن موبایل (اندروید/iOS) در دسترس است. لطفاً از گوشی همراه خود وارد شوید.',
 'room.connectError': 'خطا در اتصال به جلسه: {error}',
+'room.permissionRequiredTitle': 'دسترسی دوربین و میکروفن لازم است',
+'room.permissionRequiredBody':
+    'برای ورود به سمینار زنده، برنامه به دسترسی دوربین و میکروفن نیاز دارد. لطفاً از تنظیمات گوشی این دو دسترسی را فعال کنید تا بتوانید وارد جلسه شوید.',
+'room.openSettings': 'رفتن به تنظیمات',
 'room.leftPromptEndAll': 'از جلسه خارج شدید. آیا سمینار برای همهٔ شرکت‌کنندگان پایان یابد؟',
 'room.noJustDisconnected': 'نه، فقط اتصالم قطع شد',
 'instructor.noInstructorAccountsHint':

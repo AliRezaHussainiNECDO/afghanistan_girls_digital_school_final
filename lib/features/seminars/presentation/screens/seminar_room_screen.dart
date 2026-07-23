@@ -6,9 +6,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/permissions/permission_service.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../../shared_models/seminar.dart';
@@ -54,6 +56,55 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
         (user.role == AppUserRole.seminarInstructor && user.id == seminar.instructorId);
   }
 
+  /// رفع اشکال ریشه‌ای «برنامه هنگام ورود به سمینار قطع/بسته می‌شود»:
+  ///
+  /// دوربین/میکروفن در Android از نوع مجوزهای «خطرناک» (dangerous) هستند —
+  /// اعلامشان در `AndroidManifest.xml` (که قبلاً و همچنان درست انجام شده)
+  /// کافی نیست؛ باید در زمان اجرا هم صریحاً از کاربر خواسته و تأیید شوند.
+  /// این صفحه قبلاً بدون هیچ بررسی/درخواستِ زمان‌اجرا مستقیم به SDK بومی
+  /// Jitsi/WebRTC وصل می‌شد (`_jitsiMeet.join(...)`). وقتی این مجوزها هنوز
+  /// اعطا نشده باشند (مثلاً کاربر در صفحهٔ خوش‌آمدگویی رد کرده یا اصلاً از
+  /// آن صفحه رد نشده)، لایهٔ بومی WebRTC هنگام تلاش برای بازکردن دوربین یک
+  /// خطای بومی (نه یک Exception قابل‌گرفتن در Dart) پرتاب می‌کند که کل
+  /// پردازهٔ اپ را می‌بندد — دقیقاً همان «برنامه قطع/بسته می‌شود» که کاربران
+  /// گزارش می‌دادند؛ `try/catch` دور `_jitsiMeet.join` این را نمی‌گیرد چون
+  /// خرابی در لایهٔ بومی، پیش از رسیدن پاسخ به Dart، رخ می‌دهد.
+  ///
+  /// راه‌حل ریشه‌ای: SDK بومی هرگز صدا زده نمی‌شود مگر هر دو مجوز واقعاً و
+  /// صراحتاً (با یک درخواست زمان‌اجرای واقعی، نه فقط بررسی وضعیت) گرفته
+  /// شده باشند؛ در غیر این صورت یک گفتگوی روشن با راه رفتن به تنظیمات نشان
+  /// داده می‌شود — نه یک کرش.
+  Future<bool> _ensureCallPermissions() async {
+    final cameraOk = await PermissionService.request(Permission.camera);
+    final micOk = await PermissionService.request(Permission.microphone);
+    if (cameraOk && micOk) return true;
+    if (!mounted) return false;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          title: Text(context.tr('room.permissionRequiredTitle')),
+          content: Text(context.tr('room.permissionRequiredBody')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(context.tr('common.cancel')),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                PermissionService.openSettingsPage();
+              },
+              child: Text(context.tr('room.openSettings')),
+            ),
+          ],
+        ),
+      ),
+    );
+    return false;
+  }
+
   Future<void> _joinCall(Seminar seminar, AppUser user, bool isHost) async {
     if (!_jitsiSupported) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -63,6 +114,12 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
     }
     if (_connecting) return;
     setState(() => _connecting = true);
+    final permitted = await _ensureCallPermissions();
+    if (!permitted) {
+      if (mounted) setState(() => _connecting = false);
+      return;
+    }
+    if (!mounted) return;
     try {
       final options = JitsiMeetConferenceOptions(
         room: _roomNameFor(seminar.id),

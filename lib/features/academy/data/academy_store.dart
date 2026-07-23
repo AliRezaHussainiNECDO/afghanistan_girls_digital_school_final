@@ -450,6 +450,10 @@ class AcademyStore {
   // ───────────────────────── پاسخ‌ها (Submissions) ─────────────────────────
   final List<Submission> _submissions = [];
 
+  /// ثبتِ «خوش‌بینانه» و کاملاً محلی — فقط برای حالت آفلاین/نمایشی (بدون
+  /// سرور) به‌کار می‌رود؛ نمره همان چیزی است که کلاینت محاسبه کرده. برای
+  /// حالت Live از [saveSubmissionAwaitingServer] استفاده شود که منتظر
+  /// نمرهٔ رسمیِ سرور می‌ماند (رفع اشکال امنیتی «اعتماد به نمرهٔ کلاینت»).
   Submission saveSubmission(Submission s) {
     final withId = Submission(
       id: _id('sub'),
@@ -465,8 +469,31 @@ class AcademyStore {
       aiAssisted: s.aiAssisted,
     );
     _submissions.insert(0, withId);
-    _push((r) => r.createSubmission(withId));
+    _push((r) async {
+      await r.createSubmission(withId);
+    });
     return withId;
+  }
+
+  /// ثبت پاسخ‌ها و **انتظار برای نمرهٔ رسمیِ سرور** (رفع اشکال امنیتی: قبلاً
+  /// `scorePercent`/`awardedPoints`/`isCorrect` که کلاینت خودش محاسبه کرده
+  /// بود، بدون بازبینی روی سرور ذخیره می‌شد — یک کلاینتِ دستکاری‌شده می‌توانست
+  /// بدون پاسخ‌دادن به هیچ سؤالی نمرهٔ ۱۰۰٪ برای خودش ثبت کند). [s] فقط برای
+  /// حالتی که سرور در دسترس نباشد (`_remote == null`، یعنی حالت آفلاین/نمایشی)
+  /// به‌عنوان نتیجهٔ محلی برگردانده می‌شود؛ در حالت Live، نتیجهٔ بازگشتی همیشه
+  /// همان چیزی است که سرور — بر اساس `academy_questions` واقعی، نه ورودی
+  /// کلاینت — دوباره محاسبه کرده.
+  Future<Submission> saveSubmissionAwaitingServer(Submission s) async {
+    final r = _remote;
+    if (r == null) return saveSubmission(s);
+    final authoritative = await r.createSubmission(s);
+    final idx = _submissions.indexWhere((x) => x.id == authoritative.id);
+    if (idx == -1) {
+      _submissions.insert(0, authoritative);
+    } else {
+      _submissions[idx] = authoritative;
+    }
+    return authoritative;
   }
 
   List<Submission> getSubmissions({String? studentId, int? gradeId, String? subject}) {
@@ -475,5 +502,32 @@ class AcademyStore {
         (gradeId == null || s.gradeId == gradeId) &&
         (subject == null || s.subject == subject));
     return list.toList()..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
+  }
+
+  /// رفع اشکال «تمرین فرزند در داشبورد والد همیشه خالی است»: [hydrate] فقط
+  /// یک‌بار `fetchSubmissions()` بدون `studentId` می‌خواند — که سرور آن را
+  /// به‌عنوان «پاسخ‌های خودِ کاربرِ واردشده» تفسیر می‌کند (بخش
+  /// `academy.ts#GET /academy/submissions`). برای یک والد، «خودش» هیچ
+  /// پاسخ تمرینی ندارد، پس کش همیشه خالی می‌ماند و [getSubmissions] با
+  /// فیلترکردن همان کشِ خالی، هر بار نتیجهٔ خالی برمی‌گرداند — حتی اگر
+  /// فرزند واقعاً تمرین کرده باشد.
+  ///
+  /// این متد برخلاف [getSubmissions] یک واکشیِ **تازه و مستقیم از سرور** با
+  /// همان `studentId` انجام می‌دهد (دقیقاً مثل الگوی `myExamResultsProvider`
+  /// در بخش امتحانات رسمی)، نتیجه را در کش مشترک ادغام می‌کند (برای
+  /// سازگاری با بقیهٔ خواننده‌ها) و همان نتیجهٔ تازه را برمی‌گرداند.
+  Future<List<Submission>> fetchSubmissionsFor(String studentId) async {
+    final r = _remote;
+    if (r == null) return getSubmissions(studentId: studentId);
+    final fresh = await r.fetchSubmissions(studentId: studentId);
+    for (final s in fresh) {
+      final idx = _submissions.indexWhere((x) => x.id == s.id);
+      if (idx == -1) {
+        _submissions.add(s);
+      } else {
+        _submissions[idx] = s;
+      }
+    }
+    return fresh.toList()..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
   }
 }

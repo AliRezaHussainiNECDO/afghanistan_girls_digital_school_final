@@ -779,6 +779,10 @@ const Map<String, String> frStrings = {
 'room.mobileOnlyLong':
     "La visioconférence en direct n'est disponible que dans l'application mobile (Android/iOS). Veuillez vous connecter depuis votre téléphone.",
 'room.connectError': 'Erreur de connexion à la session : {error}',
+'room.permissionRequiredTitle': 'Accès à la caméra et au microphone requis',
+'room.permissionRequiredBody':
+    "Pour rejoindre le séminaire en direct, l'application a besoin d'accéder à la caméra et au microphone. Veuillez activer ces deux accès dans les paramètres de votre téléphone.",
+'room.openSettings': 'Ouvrir les paramètres',
 'room.leftPromptEndAll':
     'Vous avez quitté la session. Le séminaire doit-il se terminer pour tous les participants ?',
 'room.noJustDisconnected': 'Non, je me suis seulement déconnectée',

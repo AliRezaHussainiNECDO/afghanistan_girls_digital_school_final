@@ -75,8 +75,15 @@ class AcademyRemoteDataSource {
     return (data['submissions'] as List? ?? []).map((e) => _submissionFromJson(_map(e))).toList();
   }
 
-  Future<void> createSubmission(Submission s) async {
-    await _api.post('/academy/submissions', data: _submissionToJson(s));
+  /// ثبت یک نوبت پاسخ‌دهی. **نکتهٔ مهم:** آنچه اینجا فرستاده می‌شود فقط
+  /// «کدام سؤال چه پاسخی گرفته» است — نمرهٔ واقعی هرگز از روی مقادیر این
+  /// [Submission] ساخته نمی‌شود؛ سرور خودش دوباره از روی `academy_questions`
+  /// نمره می‌دهد (رفع اشکال امنیتی: قبلاً سرور به نمرهٔ ارسالی کلاینت اعتماد
+  /// می‌کرد) و همان نسخهٔ رسمی/تازه را در پاسخ برمی‌گرداند — که باید به‌جای
+  /// نسخهٔ محلی نمایش داده شود.
+  Future<Submission> createSubmission(Submission s) async {
+    final data = _map(await _api.post('/academy/submissions', data: _submissionToJson(s)));
+    return _submissionFromJson(_map(data['submission']));
   }
 
   // ─────────────────────────── نگاشت‌ها (Book) ──────────────────────────────

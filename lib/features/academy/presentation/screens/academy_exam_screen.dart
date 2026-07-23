@@ -122,7 +122,12 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
       }
 
       final scorePercent = total == 0 ? 0.0 : (earned / total) * 100;
-      final submission = AcademyStore().saveSubmission(Submission(
+      // نکتهٔ مهم: این [Submission] محلی («خوش‌بینانه») فقط برای پاسخ‌ها
+      // (questionId/chosenIndex/chosenBool/essayText) به سرور فرستاده
+      // می‌شود؛ نمرهٔ نهایی (`submission` پایین) همیشه از سرور — که خودش از
+      // روی بانک سؤالِ واقعی دوباره محاسبه می‌کند، نه از روی این مقادیرِ
+      // این‌جا — برمی‌گردد. رفع اشکال امنیتی «اعتماد به نمرهٔ کلاینت».
+      final submission = await AcademyStore().saveSubmissionAwaitingServer(Submission(
         id: 'new',
         studentId: student.id,
         studentName: student.displayName,
@@ -137,8 +142,8 @@ class _AcademyExamScreenState extends ConsumerState<AcademyExamScreen> {
       ));
       ref.invalidate(mySubmissionsProvider);
       ref.invalidate(allSubmissionsProvider);
-      // بعد از `await service.gradeEssay(...)` بالا — قبل از استفادهٔ بعدی از
-      // context باید مطمئن شویم ویجت هنوز در درخت است.
+      // بعد از `await`های بالا (نمره‌دهی AI تشریحی + انتظار برای پاسخ سرور)
+      // — قبل از استفادهٔ بعدی از context باید مطمئن شویم ویجت هنوز در درخت است.
       if (!mounted) return;
       NotificationCenter.instance.push(
         title: submission.passed

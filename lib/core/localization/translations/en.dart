@@ -778,6 +778,10 @@ const Map<String, String> enStrings = {
 'room.mobileOnlyLong':
     'Live video conferencing is only available in the mobile app (Android/iOS). Please sign in from your mobile phone.',
 'room.connectError': 'Error connecting to the session: {error}',
+'room.permissionRequiredTitle': 'Camera and microphone access required',
+'room.permissionRequiredBody':
+    'To join the live seminar, the app needs camera and microphone access. Please enable both in your phone settings so you can join the session.',
+'room.openSettings': 'Open settings',
 'room.leftPromptEndAll': 'You left the session. Should the seminar end for all participants?',
 'room.noJustDisconnected': 'No, I just disconnected',
 'instructor.noInstructorAccountsHint':

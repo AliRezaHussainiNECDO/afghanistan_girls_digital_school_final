@@ -778,6 +778,10 @@ const Map<String, String> psStrings = {
 'room.mobileOnlyLong':
     'ژوندۍ ویډیو کنفرانس یوازې په ګرځنده اپلیکیشن (اندرویډ/iOS) کې شتون لري. مهرباني وکړئ د خپل ګرځنده ټیلیفون څخه ننوځئ.',
 'room.connectError': 'له غونډې سره د نښلولو تېروتنه: {error}',
+'room.permissionRequiredTitle': 'د کامرې او مایکروفون لاسرسی اړین دی',
+'room.permissionRequiredBody':
+    'د ژوندي سیمینار سره د یوځای کیدو لپاره، اپلیکیشن ته د کامرې او مایکروفون لاسرسی اړین دی. مهرباني وکړئ دا دواړه د خپل ټیلیفون تنظیماتو کې فعال کړئ.',
+'room.openSettings': 'تنظیماتو ته لاړ شئ',
 'room.leftPromptEndAll': 'تاسو له غونډې ووتلئ. ایا سیمینار د ټولو ګډونوالو لپاره پای ته ورسیږي؟',
 'room.noJustDisconnected': 'نه، یوازې زما اړیکه پرې شوه',
 'instructor.noInstructorAccountsHint':
