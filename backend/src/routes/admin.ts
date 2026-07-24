@@ -45,6 +45,7 @@ import { getSubjectProgressList, averagePercent, getPointsSummary, getPromotionS
 import { logAudit, clientIp } from '../lib/audit';
 import { embedText } from '../lib/embeddings';
 import { structureBookText, aiRenameFallbackChapters, smartFixRtlText } from '../lib/curriculumStructuring';
+import { encryptField, resolveEncryptedContact } from '../lib/columnCrypto';
 
 type Bindings = {
   DB: D1Database;
@@ -57,6 +58,7 @@ type Bindings = {
   AI_MODEL?: string;
   CF_ACCOUNT_ID?: string;
   CF_STREAM_CUSTOMER?: string;
+  COLUMN_ENCRYPTION_KEY?: string;
 };
 
 const admin = new Hono<{ Bindings: Bindings }>();
@@ -79,36 +81,109 @@ admin.get('/users', async (c) => {
   if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const role = c.req.query('role');
   const q = (c.req.query('q') ?? '').trim();
-  const clauses: string[] = ["status != 'deleted'"];
+  // توجه: چون این پرس‌وجو حالا با `invite_codes` JOIN می‌شود، هر شرط باید با
+  // پیشوند جدول (`u.`) مشخص باشد — وگرنه ستون‌های هم‌نام در دو جدول (مثل
+  // `status`/`created_at`/`id`) در SQLite خطای «ambiguous column» می‌دهند.
+  const clauses: string[] = ["u.status != 'deleted'"];
   const binds: any[] = [];
   if (role) {
-    clauses.push('role = ?');
+    clauses.push('u.role = ?');
     binds.push(role);
   }
   if (q) {
-    clauses.push('(first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)');
+    clauses.push('(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)');
     binds.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
+  // JOIN با invite_codes: رفع اشکال «کد دعوتِ استفاده‌شده در پنل مدیر همیشه
+  // خالی است» — قبلاً کلاینت این را از یک Store محلیِ فقط-Mock (`InstructorInviteStore`)
+  // می‌خواند که در حالت Backend واقعی هرگز پر نمی‌شد؛ حالا مستقیماً از همان
+  // جدول واقعی‌ای که `POST /auth/register` رکورد مصرف کد را در آن ثبت می‌کند
+  // برمی‌گردد (docs/02 بند «کدهای دعوت پراکنده»).
   const { results } = await c.env.DB.prepare(
-    `SELECT id, email, first_name, last_name, role, status, email_verified, avatar_url, phone, specialty, bio, created_at FROM users
-     WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC LIMIT 500`,
+    `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.status, u.email_verified, u.avatar_url,
+            u.phone, u.phone_enc, u.specialty, u.bio, u.created_at,
+            ic.code AS invite_code, ic.batch_label AS invite_batch_label
+     FROM users u
+     LEFT JOIN invite_codes ic ON ic.used_by_user_id = u.id
+     WHERE ${clauses.join(' AND ')} ORDER BY u.created_at DESC LIMIT 500`,
   )
     .bind(...binds)
     .all<any>();
-  const users = results.map((u) => ({
-    id: u.id,
-    name: `${u.first_name} ${u.last_name}`.trim(),
-    email: u.email,
-    role: u.role,
-    suspended: u.status !== 'active',
-    emailVerified: u.email_verified === 1,
-    avatarUrl: u.avatar_url,
-    phone: u.phone ?? '',
-    specialty: u.specialty ?? '',
-    bio: u.bio ?? '',
-    createdAt: u.created_at,
-  }));
+  // شماره تلفن ممکن است رمزنگاری‌شده (کاربران تازه) یا متن‌سادهٔ قدیمی
+  // (کاربران قبل از Migration 0040) باشد — `resolveEncryptedContact` هر دو
+  // حالت را پوشش می‌دهد (docs/02 بند «رمزگذاری ستونی»).
+  const users = await Promise.all(
+    results.map(async (u) => {
+      const { phone } = await resolveEncryptedContact(c.env, u);
+      return {
+        id: u.id,
+        name: `${u.first_name} ${u.last_name}`.trim(),
+        email: u.email,
+        role: u.role,
+        suspended: u.status !== 'active',
+        emailVerified: u.email_verified === 1,
+        avatarUrl: u.avatar_url,
+        phone,
+        specialty: u.specialty ?? '',
+        bio: u.bio ?? '',
+        createdAt: u.created_at,
+        inviteCode: u.invite_code ?? null,
+        inviteBatchLabel: u.invite_batch_label ?? null,
+      };
+    }),
+  );
   return c.json({ users });
+});
+
+// ─────────────── رمزنگاری عقب‌رونده (Backfill) برای کاربران قبل از Migration 0040 ───────────────
+// یک‌بار (یا هر چند بار که خواستید — Idempotent است) بعد از تنظیم
+// `COLUMN_ENCRYPTION_KEY` اجرا کنید: تمام سطرهایی که هنوز phone/date_of_birth
+// را به‌صورت متن‌ساده دارند (و ستون رمزشدهٔ متناظر هنوز خالی است) رمزنگاری و
+// در ستون‌های تازه ذخیره می‌شوند. ستون‌های قدیمیِ متن‌ساده دست‌نخورده باقی
+// می‌مانند تا خودِ مدیر بعد از تأیید کامل، آن‌ها را در یک Migration جداگانه
+// پاک کند (این Endpoint هرگز داده را حذف نمی‌کند — فقط اضافه می‌کند).
+admin.post('/security/backfill-encryption', async (c) => {
+  const adminId = await requireAdmin(c);
+  if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!c.env.COLUMN_ENCRYPTION_KEY) {
+    return c.json(
+      fail(
+        'ENCRYPTION_KEY_MISSING',
+        'کلید COLUMN_ENCRYPTION_KEY هنوز تنظیم نشده — ابتدا با wrangler secret put آن را بگذارید',
+        'COLUMN_ENCRYPTION_KEY is not set yet — configure it with wrangler secret put first',
+      ),
+      503,
+    );
+  }
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, phone, date_of_birth FROM users
+     WHERE (phone IS NOT NULL AND phone_enc IS NULL) OR (date_of_birth IS NOT NULL AND dob_enc IS NULL)`,
+  ).all<{ id: string; phone: string | null; date_of_birth: string | null }>();
+
+  let updated = 0;
+  for (const row of results) {
+    const phoneEnc = row.phone ? await encryptField(c.env, row.phone) : null;
+    const dobEnc = row.date_of_birth ? await encryptField(c.env, row.date_of_birth) : null;
+    if (!phoneEnc && !dobEnc) continue;
+    await c.env.DB.prepare(
+      `UPDATE users SET phone_enc = COALESCE(?, phone_enc), dob_enc = COALESCE(?, dob_enc) WHERE id = ?`,
+    )
+      .bind(phoneEnc, dobEnc, row.id)
+      .run();
+    updated++;
+  }
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: adminId,
+      actorRole: 'super_admin',
+      actionType: 'security_backfill_encryption',
+      targetTable: 'users',
+      targetId: null,
+      ipAddress: clientIp(c),
+      detail: { scanned: results.length, updated },
+    }),
+  );
+  return c.json({ scanned: results.length, updated });
 });
 
 admin.patch('/users/:id/toggle-suspend', async (c) => {
@@ -400,8 +475,22 @@ admin.get('/dashboard/live', async (c) => {
   const pendingChatReviews = await one(
     "SELECT COUNT(*) AS n FROM messages WHERE flagged=1 AND review_status='pending'",
   );
+  // رفع اشکال (۲۴ جولای): این عدد قبلاً فقط ردیف‌های *ذخیره‌شدهٔ* باز در
+  // `safety_events` را می‌شمرد؛ اما موارد «at-risk» (بخش ۹.۴) تا وقتی مدیر
+  // برای اولین‌بار روی آن‌ها اقدام نکند، اصلاً ذخیره نمی‌شوند — یعنی مدیر
+  // ممکن بود روی داشبورد «۰ پرچم باز» ببیند در حالی که صفحهٔ «صف بازبینی
+  // ایمنی» چند شاگرد at-risk باز نشان می‌داد. اکنون همان منطق سنتزِ at-risک
+  // که در `GET /admin/safety-queue` هست، اینجا هم برای شمارش لحاظ می‌شود
+  // تا دو عدد همیشه هم‌خوان باشند.
   const pendingSafetyFlags = await one(
-    "SELECT COUNT(*) AS n FROM safety_events WHERE status='open'",
+    `SELECT (
+       (SELECT COUNT(*) FROM safety_events WHERE status='open') +
+       (SELECT COUNT(*) FROM users u
+          WHERE u.role='student' AND u.status='active' AND u.created_at <= date('now','-5 days')
+            AND NOT EXISTS (SELECT 1 FROM student_lesson_views v WHERE v.user_id=u.id AND v.viewed_at>=date('now','-5 days'))
+            AND NOT EXISTS (SELECT 1 FROM exam_attempts a WHERE a.user_id=u.id AND a.submitted_at>=date('now','-5 days'))
+            AND NOT EXISTS (SELECT 1 FROM safety_events se WHERE se.student_id=u.id AND se.type='atRisk'))
+     ) AS n`,
   ).catch(() => 0);
 
   return c.json({
@@ -927,11 +1016,13 @@ admin.get('/students/:id', async (c) => {
   // این پنل از آن استفاده می‌کنند (رفع اشکال ناهماهنگی قبلی با ProgressionStore محلی).
   const promotion = await getPromotionStatus(c.env.DB, id, grade);
 
+  const { phone: studentPhone, dateOfBirth: studentDob } = await resolveEncryptedContact(c.env, u);
+
   return c.json({
     summary,
     email: u.email,
-    phone: u.phone ?? '',
-    birth_date: u.date_of_birth ?? '2010-01-01',
+    phone: studentPhone,
+    birth_date: studentDob || '2010-01-01',
     registered_at: u.created_at,
     subjects,
     attendance: {
@@ -1161,7 +1252,7 @@ admin.get('/parents', async (c) => {
   const total = totalRow?.n ?? 0;
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, first_name, last_name, email, phone, avatar_url, status, created_at FROM users
+    `SELECT id, first_name, last_name, email, phone, phone_enc, avatar_url, status, created_at FROM users
        WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
   )
     .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE)
@@ -1174,11 +1265,12 @@ admin.get('/parents', async (c) => {
       )
         .bind(u.id)
         .all<{ status: string }>();
+      const { phone } = await resolveEncryptedContact(c.env, u);
       return {
         id: u.id,
         full_name: `${u.first_name} ${u.last_name}`.trim(),
         email: u.email,
-        phone: u.phone ?? '',
+        phone,
         avatar_url: u.avatar_url ?? null,
         status: u.status,
         linked_children_count: links.filter((l) => l.status === 'approved').length,
@@ -1235,11 +1327,13 @@ admin.get('/parents/:id', async (c) => {
     }),
   );
 
+  const { phone: parentPhone } = await resolveEncryptedContact(c.env, u);
+
   return c.json({
     id: u.id,
     full_name: `${u.first_name} ${u.last_name}`.trim(),
     email: u.email,
-    phone: u.phone ?? '',
+    phone: parentPhone,
     avatar_url: u.avatar_url ?? null,
     status: u.status,
     registered_at: u.created_at,

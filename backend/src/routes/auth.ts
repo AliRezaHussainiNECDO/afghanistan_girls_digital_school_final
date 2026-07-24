@@ -27,6 +27,7 @@ import {
   randomSixDigitCode,
 } from '../lib/email';
 import { sendPushToUsers } from '../lib/push';
+import { encryptField } from '../lib/columnCrypto';
 
 type Bindings = {
   DB: D1Database;
@@ -36,6 +37,7 @@ type Bindings = {
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;
+  COLUMN_ENCRYPTION_KEY?: string;
 };
 
 const ACCESS_TTL = 60 * 15; // ۱۵ دقیقه (بخش ۳.۳)
@@ -55,7 +57,7 @@ function fail(code: string, messageFa: string, messageEn: string, messagePs?: st
  * تبدیل ارقام فارسی/عربی به لاتین — تا مقایسهٔ دقیق سرور با کدهایی که
  * کاربر با فاصله/حروف کوچک/ارقام فارسی تایپ کرده هم درست کار کند.
  */
-function normalizeInviteCode(raw: string): string {
+export function normalizeInviteCode(raw: string): string {
   const fa = '۰۱۲۳۴۵۶۷۸۹';
   const ar = '٠١٢٣٤٥٦٧٨٩';
   let out = '';
@@ -251,23 +253,35 @@ auth.post('/register', async (c) => {
     role === 'student' && body.currentGrade != null ? Number(body.currentGrade) : null;
   const awaitingParentLink = role === 'parent' ? 1 : 0;
 
+  // رمزگذاری ستونی AES-256-GCM برای PII حساس (شماره تلفن، تاریخ تولد —
+  // docs/02 بند ۷). اگر `COLUMN_ENCRYPTION_KEY` هنوز تنظیم نشده (مثلاً بلافاصله
+  // بعد از این Migration، پیش از اجرای `wrangler secret put`)، `encryptField`
+  // مقدار null برمی‌گرداند و به‌صورت Fail-safe در ستون قدیمیِ متن‌ساده ذخیره
+  // می‌شود — ثبت‌نام هرگز به‌خاطر نبود این کلید شکست نمی‌خورد.
+  const phoneRaw = body.phone ? String(body.phone) : null;
+  const dobRaw = body.dateOfBirth ? String(body.dateOfBirth) : null;
+  const phoneEnc = await encryptField(c.env, phoneRaw);
+  const dobEnc = await encryptField(c.env, dobRaw);
+
   // درج کاربر + مصرف اتمی Invite Code در یک Batch (بخش ۳.۱ مرحلهٔ ۵-۷).
   const statements = [
     c.env.DB.prepare(
-      'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role, status, ' +
-        'current_grade, province, date_of_birth, preferred_language, awaiting_parent_link, specialty, bio, email_verified) ' +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, 0)",
+      'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, phone_enc, role, status, ' +
+        'current_grade, province, date_of_birth, dob_enc, preferred_language, awaiting_parent_link, specialty, bio, email_verified) ' +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, 0)",
     ).bind(
       id,
       email,
       passwordHash,
       firstName,
       lastName,
-      body.phone ? String(body.phone) : null,
+      phoneEnc ? null : phoneRaw,
+      phoneEnc,
       role,
       currentGrade,
       body.province ? String(body.province) : null,
-      body.dateOfBirth ? String(body.dateOfBirth) : null,
+      dobEnc ? null : dobRaw,
+      dobEnc,
       String(body.preferredLanguage ?? 'fa'),
       awaitingParentLink,
       body.specialty ? String(body.specialty) : null,
@@ -317,6 +331,7 @@ auth.post('/register', async (c) => {
         adminsForNotice.map((a) => a.id),
         'ثبت‌نام کاربر جدید 👋',
         `«${fullNameFa}» به‌عنوان ${roleLabelFa} در برنامه ثبت‌نام کرد.`,
+        { kind: 'account', relatedId: `${role}:${id}` },
       ),
     );
   }

@@ -7,13 +7,13 @@
 ///  • صنف فعلی و پیشرفت مضامین: `ProgressionStore` (منبع داشبورد شاگرد/والد)
 ///  • نمرات: `AcademyStore` (آخرین Submission هر مضمون — همان منطق والد)
 ///  • حاضری: `AttendanceMockDataSource` (همان منبع صفحهٔ حاضری خود شاگرد)
-///  • پیوند والدین: `GuardianLinkStore`  • گواهی‌نامه‌ها: `CertificatesLocalDataSource`
+///  • پیوند والدین: `GuardianLinkMockStore` (فقط Mock)  • گواهی‌نامه‌ها: `CertificatesLocalDataSource`
 ///
 /// در فاز ۲ این کلاس با `StudentManagementRemoteDataSourceImpl` (Dio →
 /// `GET /admin/users?role=student`) جایگزین می‌شود؛ Interface ثابت می‌ماند.
 
 library;
-import '../../../../../../core/student/guardian_link_store.dart';
+import '../../../../../../core/mock/guardian_link_mock_store.dart';
 import '../../../../../../core/student/student_directory.dart';
 import '../../../../../../shared_models/subject.dart';
 import '../../../../../academy/data/academy_store.dart';
@@ -246,8 +246,8 @@ class StudentManagementMockDataSource
           .toList(),
     );
 
-    // ── پیوندهای واقعی والدین (GuardianLinkStore — بخش ۱۳ب) ──
-    final links = GuardianLinkStore.instance.linksForStudent(r.id);
+    // ── پیوندهای والدین در حالت Mock (GuardianLinkMockStore — بخش ۱۳ب) ──
+    final links = GuardianLinkMockStore.instance.linksForStudent(r.id);
     final parentLinks = links
         .map((l) => ParentLink(
               linkId: '${l.parentId}:${l.studentId}',

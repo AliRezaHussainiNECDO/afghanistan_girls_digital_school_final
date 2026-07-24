@@ -37,6 +37,15 @@ class RegisterSeminarUseCase implements UseCase<Unit, RegisterSeminarParams> {
       repository.register(params.seminarId, params.userId);
 }
 
+/// لغو ثبت‌نام (۲۴ جولای) — تنها پیش از شروع/پایان سمینار مجاز است.
+class UnregisterSeminarUseCase implements UseCase<Unit, RegisterSeminarParams> {
+  final SeminarsRepository repository;
+  UnregisterSeminarUseCase(this.repository);
+  @override
+  Future<Either<Failure, Unit>> call(RegisterSeminarParams params) =>
+      repository.unregister(params.seminarId, params.userId);
+}
+
 class SetSeminarStatusParams extends Equatable {
   final String seminarId;
   final SeminarStatus status;

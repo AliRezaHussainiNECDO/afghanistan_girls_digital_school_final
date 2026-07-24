@@ -1,4 +1,4 @@
-import '../../../../core/student/guardian_link_store.dart';
+import '../../../../core/mock/guardian_link_mock_store.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../academy/data/academy_store.dart';
 import '../../../academy/domain/academy_entities.dart';
@@ -11,7 +11,7 @@ import 'parent_remote_datasource.dart' show ParentDataSource;
 /// منبع دادهٔ داشبورد والدین — از منابع واحد حقیقتِ خود شاگرد می‌خواند تا
 /// «هر چه شاگرد می‌بیند، والد همان را ببیند» (اصل بخش ۱۳ب.۳):
 ///
-/// * فرزندان و پیوندها ← `GuardianLinkStore` (کد دعوت، چند فرزند).
+/// * فرزندان و پیوندها ← `GuardianLinkMockStore` (کد دعوت، چند فرزند).
 /// * صنف فعلی و پیشرفت مضامین ← `ProgressionStore` (همان منبع داشبورد شاگرد؛
 ///   پس از ارتقای صنف، خودکار صنف جدید نمایش می‌یابد).
 /// * نمرهٔ هر مضمون ← آخرین Submission در `AcademyStore` (همان منطق امتحانات).
@@ -23,7 +23,7 @@ class ParentMockDataSource implements ParentDataSource {
   final String localeCode;
   ParentMockDataSource({this.localeCode = 'fa'});
 
-  GuardianLinkStore get _links => GuardianLinkStore.instance;
+  GuardianLinkMockStore get _links => GuardianLinkMockStore.instance;
 
   @override
   Future<List<LinkedChild>> getLinkedChildren(String parentId) async {
@@ -122,7 +122,7 @@ class ParentMockDataSource implements ParentDataSource {
   }
 
   /// اعتبارسنجی و مصرف کد دعوت. خطاهای خوانا (کد نامعتبر، منقضی، فرزند
-  /// تکراری، درخواست تکراری) از `GuardianLinkStore.redeemCode` پرتاب و در
+  /// تکراری، درخواست تکراری) از `GuardianLinkMockStore.redeemCode` پرتاب و در
   /// Repository به `ValidationFailure` تبدیل می‌شوند. خروجی = نام فرزند.
   ///
   /// اصلاح ۲.۴ (بخش ۱۳ب.۲ سند): پیوند با وضعیت `pending_student_approval`

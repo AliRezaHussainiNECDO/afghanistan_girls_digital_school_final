@@ -194,6 +194,7 @@ export async function autoAssignLessonHomework(env: LessonHomeworkEnv, p: Lesson
       p.studentId,
       'کار خانگی جدید 📝',
       `بر اساس درس «${p.lessonTitleFa}» یک کار خانگی تازه برایتان آماده شد — از بخش «کار خانگی» عکس حل‌تان را بفرستید.`,
+      { kind: 'homework', relatedId: id },
     );
     return 'created';
   } catch (err) {

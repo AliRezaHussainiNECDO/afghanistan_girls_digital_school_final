@@ -27,6 +27,10 @@ String localizeSeminarFailureMessage(BuildContext context, String raw) {
       return context.tr('seminars.registrationClosedError');
     case 'ظرفیت این سمینار تکمیل شده است':
       return context.tr('seminars.capacityFullError');
+    case 'این سمینار در حال برگزاری یا پایان‌یافته است — امکان لغو ثبت‌نام نیست':
+      return context.tr('seminars.cannotCancelError');
+    case 'شما ثبت‌نام نکرده بودید':
+      return context.tr('seminars.notRegisteredError');
     default:
       return raw;
   }
@@ -47,6 +51,8 @@ final getSeminarByIdUseCaseProvider =
     Provider((ref) => GetSeminarByIdUseCase(ref.watch(seminarsRepositoryProvider)));
 final registerSeminarUseCaseProvider =
     Provider((ref) => RegisterSeminarUseCase(ref.watch(seminarsRepositoryProvider)));
+final unregisterSeminarUseCaseProvider =
+    Provider((ref) => UnregisterSeminarUseCase(ref.watch(seminarsRepositoryProvider)));
 final setSeminarStatusUseCaseProvider =
     Provider((ref) => SetSeminarStatusUseCase(ref.watch(seminarsRepositoryProvider)));
 

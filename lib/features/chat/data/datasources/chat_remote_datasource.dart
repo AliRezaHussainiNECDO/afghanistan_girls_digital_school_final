@@ -210,7 +210,7 @@ class ChatRemoteDataSource implements ChatDataSource {
         .map((e) => ClassChatSummary(
               classId: (e['class_id'] ?? '') as String,
               className: (e['class_name'] ?? '') as String,
-              studentCount: 0,
+              studentCount: (e['student_count'] as num?)?.toInt() ?? 0,
               conversationCount: (e['conversation_count'] as num?)?.toInt() ?? 0,
               messageCount: (e['message_count'] as num?)?.toInt() ?? 0,
               flaggedPendingCount: (e['flagged_pending_count'] as num?)?.toInt() ?? 0,

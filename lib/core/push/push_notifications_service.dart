@@ -13,10 +13,15 @@ library;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/router/root_navigator_key.dart';
+import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../network/api_client.dart';
 import '../network/network_providers.dart';
+import '../notifications/notification_route_resolver.dart';
 
 /// این تابع باید top-level (نه داخل کلاس) بماند و دقیقاً همین امضا را داشته
 /// باشد — فایربیس آن را در یک Isolate کاملاً جدا صدا می‌زند وقتی پیامی
@@ -36,10 +41,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 class PushNotificationsService {
   final ApiClient _api;
-  PushNotificationsService(this._api);
+  final Ref _ref;
+  PushNotificationsService(this._api, this._ref);
 
   static bool _firebaseReady = false;
   static bool _initAttempted = false;
+  static bool _handlersRegistered = false;
 
   /// مطمئن می‌شود Firebase initialize شده — اگر `main.dart` از قبل این کار
   /// را انجام داده باشد (حالت عادی)، دوباره صدایش نمی‌زند (`Firebase.apps`
@@ -71,6 +78,11 @@ class PushNotificationsService {
   /// موفق (login/ثبت‌نام/بازیابی خودکار نشست) صدا زده می‌شود — نه زودتر، چون
   /// سرور برای ثبت توکن به Bearer Token نیاز دارد.
   Future<void> registerCurrentDevice() async {
+    // رفع اشکال: نسخهٔ وب هرگز پیکربندی FCM Web (VAPID key و غیره) ندارد؛
+    // بدون این Guard، `requestPermission` یک درخواست دسترسیِ مرورگرِ واقعی و
+    // بی‌فایده به کاربر نشان می‌داد که همیشه در ادامه (`getToken`) شکست
+    // می‌خورد. سایر پلتفرم‌ها بدون تغییر.
+    if (kIsWeb) return;
     if (!await _ensureFirebaseInitialized()) return;
     try {
       final messaging = FirebaseMessaging.instance;
@@ -85,9 +97,56 @@ class PushNotificationsService {
       messaging.onTokenRefresh.listen((newToken) {
         _api.post('/devices/register', data: {'token': newToken, 'platform': _platformName()}).catchError((_) {});
       });
+
+      _registerMessageHandlers(messaging);
     } catch (e) {
       debugPrint('[push] registerCurrentDevice failed — $e');
     }
+  }
+
+  /// رفع اشکال «لمس اعلان Push هیچ‌جا را باز نمی‌کرد»: قبلاً هیچ Listener‌ای
+  /// برای `onMessage` (پیام در حالی که اپ باز است)، `onMessageOpenedApp`
+  /// (اپ در پس‌زمینه بود و کاربر لمس کرد) یا `getInitialMessage` (اپ کاملاً
+  /// بسته بود و با لمس اعلان باز شد) وجود نداشت — یعنی Payload سرور
+  /// (`data: {kind, relatedId}`) هیچ‌گاه خوانده نمی‌شد. هر سه حالت اکنون از
+  /// همان قاعدهٔ مسیریابیِ صفحهٔ اعلان‌ها (`resolveNotificationRoute`)
+  /// استفاده می‌کنند تا مقصد دقیقاً یکسان باشد.
+  void _registerMessageHandlers(FirebaseMessaging messaging) {
+    if (_handlersRegistered) return;
+    _handlersRegistered = true;
+
+    FirebaseMessaging.onMessage.listen(_showForegroundBanner);
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleTap);
+    messaging.getInitialMessage().then((message) {
+      if (message != null) _handleTap(message);
+    });
+  }
+
+  void _showForegroundBanner(RemoteMessage message) {
+    final ctx = rootNavigatorKey.currentState?.context;
+    final notif = message.notification;
+    if (ctx == null || notif == null) return;
+    final title = notif.title ?? '';
+    final body = notif.body ?? '';
+    if (title.isEmpty && body.isEmpty) return;
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text(title.isNotEmpty ? '$title\n$body' : body),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleTap(RemoteMessage message) {
+    final role = _ref.read(authSessionProvider)?.role;
+    if (role == null) return;
+    final kind = notificationKindFromString(message.data['kind'] as String?);
+    final relatedId = message.data['relatedId'] as String?;
+    final route = resolveNotificationRoute(kind, relatedId, role);
+    if (route == null) return;
+    final ctx = rootNavigatorKey.currentState?.context;
+    if (ctx == null) return;
+    GoRouter.of(ctx).push(route);
   }
 
   /// موقع خروج از حساب صدا زده می‌شود تا این دستگاه دیگر برای این کاربر Push
@@ -105,5 +164,5 @@ class PushNotificationsService {
 }
 
 final pushNotificationsServiceProvider = Provider<PushNotificationsService>(
-  (ref) => PushNotificationsService(ref.watch(apiClientProvider)),
+  (ref) => PushNotificationsService(ref.watch(apiClientProvider), ref),
 );

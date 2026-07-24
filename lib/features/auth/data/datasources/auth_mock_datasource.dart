@@ -1,8 +1,6 @@
 import '../../../../core/errors/failures.dart';
 import '../../../../core/instructor/instructor_directory.dart';
-import '../../../../core/instructor/instructor_invite_store.dart';
 import '../../../../core/student/student_directory.dart';
-import '../../../../core/student/student_invite_store.dart';
 import '../models/app_user_model.dart';
 import '../../domain/entities/app_user.dart';
 import 'auth_remote_datasource.dart' show AuthDataSource;
@@ -21,6 +19,7 @@ class AuthMockDataSource implements AuthDataSource {
       'notLoggedIn': 'وارد نشده‌اید',
       'wrongCurrentPassword': 'رمز عبور فعلی نادرست است',
       'weakPassword': 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد',
+      'emptyInviteCode': 'کد دعوت را وارد کنید',
     },
     'en': {
       'invalidCredentials': 'Incorrect email or password',
@@ -28,6 +27,7 @@ class AuthMockDataSource implements AuthDataSource {
       'notLoggedIn': 'You are not logged in',
       'wrongCurrentPassword': 'The current password is incorrect',
       'weakPassword': 'The new password must be at least 8 characters',
+      'emptyInviteCode': 'Please enter an invite code',
     },
     'ps': {
       'invalidCredentials': 'بریښنالیک یا پټنوم ناسم دی',
@@ -35,6 +35,7 @@ class AuthMockDataSource implements AuthDataSource {
       'notLoggedIn': 'تاسو ننوتلي نه یاست',
       'wrongCurrentPassword': 'اوسنی پټنوم ناسم دی',
       'weakPassword': 'نوی پټنوم باید لږ تر لږه ۸ توري ولري',
+      'emptyInviteCode': 'مهرباني وکړئ د بلنې کوډ ولیکئ',
     },
     'fr': {
       'invalidCredentials': 'E-mail ou mot de passe incorrect',
@@ -42,6 +43,7 @@ class AuthMockDataSource implements AuthDataSource {
       'notLoggedIn': 'Vous n’êtes pas connecté',
       'wrongCurrentPassword': 'Le mot de passe actuel est incorrect',
       'weakPassword': 'Le nouveau mot de passe doit comporter au moins 8 caractères',
+      'emptyInviteCode': 'Veuillez saisir un code d’invitation',
     },
   };
 
@@ -102,19 +104,13 @@ class AuthMockDataSource implements AuthDataSource {
     String password = '', // در Mock استفاده نمی‌شود؛ برای هم‌امضایی با Remote.
   }) async {
     await Future.delayed(const Duration(milliseconds: 700));
-    // اعتبارسنجی و مصرف کد در «منبع واحد حقیقت» (StudentInviteStore) —
-    // همان انباری که مدیر از CMS در آن کد می‌سازد/باطل می‌کند (بخش ۳ب.۳).
-    // پیام یکسان برای نامعتبر/مصرف‌شده/باطل/منقضی (بخش ۳ب.۲.۴) + قفل
-    // ضد حدس، همه داخل خود Store اعمال می‌شوند.
-    try {
-      StudentInviteStore.instance.redeem(
-        rawCode: inviteCode,
-        studentName: '$firstName $lastName'.trim(),
-        studentEmail: email,
-        localeCode: localeCode,
-      );
-    } catch (e) {
-      throw ServerFailure(e.toString(), code: 'INVALID_INVITE_CODE');
+    // رفع اشکال (۲۴ جولای): اعتبارسنجی واقعیِ کد دعوت دیگر اینجا شبیه‌سازی
+    // نمی‌شود — منبع واحد حقیقتِ کدهای دعوت همیشه جدول `invite_codes` در
+    // D1 بوده و فقط از طریق `POST /api/auth/register` واقعی بررسی می‌شود
+    // (`AuthRemoteDataSource`). حالت Mock فقط برای پیش‌نمایش UI بدون سرور
+    // است؛ همین‌جا فقط یک اعتبارسنجی صوریِ سبک (کد خالی نباشد) کافی است.
+    if (inviteCode.trim().isEmpty) {
+      throw ServerFailure(_t('emptyInviteCode'), code: 'INVALID_INVITE_CODE');
     }
     final user = AppUserModel(
       id: 'u-${DateTime.now().millisecondsSinceEpoch}',
@@ -158,10 +154,10 @@ class AuthMockDataSource implements AuthDataSource {
     return user;
   }
 
-  /// ثبت‌نام استاد سمینار — کد دعوت در `InstructorInviteStore` (که مدیر
-  /// از CMS می‌سازد) اعتبارسنجی و مصرف می‌شود؛ حساب بلافاصله با نقش
-  /// `seminarInstructor` فعال می‌گردد و معلومات استاد روی رکورد کد ثبت
-  /// می‌شود تا مدیر ببیند هر کد را چه کسی استفاده کرده است.
+  /// ثبت‌نام استاد سمینار — رفع اشکال (۲۴ جولای): کد دعوت دیگر با
+  /// `InstructorInviteStore` محلی اعتبارسنجی نمی‌شود (منبع واحد حقیقتِ
+  /// واقعی جدول `invite_codes` در D1 است، فقط از راه `AuthRemoteDataSource`
+  /// قابل‌بررسی). این مسیر Mock فقط برای پیش‌نمایش UI است.
   @override
   Future<AppUserModel> registerInstructor({
     required String fullName,
@@ -173,15 +169,9 @@ class AuthMockDataSource implements AuthDataSource {
     String password = '',
   }) async {
     await Future.delayed(const Duration(milliseconds: 700));
-    // خطاهای خوانا (نامعتبر/مصرف‌شده/باطل/منقضی) به‌صورت String پرتاب
-    // می‌شوند و در Repository به Failure تبدیل می‌گردند.
-    InstructorInviteStore.instance.redeem(
-      rawCode: inviteCode,
-      fullName: fullName,
-      email: email,
-      specialty: specialty,
-      localeCode: localeCode,
-    );
+    if (inviteCode.trim().isEmpty) {
+      throw ServerFailure(_t('emptyInviteCode'), code: 'INVALID_INVITE_CODE');
+    }
     final user = AppUserModel(
       id: 'u-${DateTime.now().millisecondsSinceEpoch}',
       email: email,

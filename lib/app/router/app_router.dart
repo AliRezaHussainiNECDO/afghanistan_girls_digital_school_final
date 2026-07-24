@@ -66,6 +66,7 @@ import '../../features/seminars/presentation/screens/seminar_live_player_screen.
 import '../../features/seminars/presentation/screens/seminars_screen.dart';
 import '../../features/student_dashboard/presentation/screens/student_dashboard_screen.dart';
 import 'app_routes.dart';
+import 'root_navigator_key.dart';
 
 /// روتر مرکزی اپ — طبق بخش ۲۴.۴ سند (`app/router/`).
 /// شامل منطق Redirect بر اساس وضعیت نشست (Session) و نقش کاربر (RBAC)،
@@ -76,6 +77,7 @@ import 'app_routes.dart';
 /// حرکت بین صفحات نرم و دلپذیر باشد به‌جای تعویض ناگهانی.
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.login,
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {

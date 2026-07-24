@@ -39,7 +39,7 @@ class ParentRepositoryImpl implements ParentRepository {
     } on ApiException catch (e) {
       return Left(_mapApi(e));
     } catch (e) {
-      // GuardianLinkStore (Mock) پیام‌های خطای خوانا را به‌صورت String پرتاب می‌کند.
+      // GuardianLinkMockStore (Mock) پیام‌های خطای خوانا را به‌صورت String پرتاب می‌کند.
       return Left(ValidationFailure(e.toString()));
     }
   }

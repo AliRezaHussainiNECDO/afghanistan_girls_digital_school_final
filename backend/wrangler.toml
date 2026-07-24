@@ -95,3 +95,14 @@ FCM_PROJECT_ID = "af-digital-girls-school"   # فیلد project_id پروژهٔ 
 #   wrangler secret put FCM_PRIVATE_KEY      (فیلد private_key از همان فایل — کامل، با \n ها)
 # • در نبود این سه مقدار، اعلان‌ها فقط داخل‌اپی (زنگ 🔔) باقی می‌مانند — هیچ
 #   Endpointی کرش/کند نمی‌شود.
+
+# ── رمزگذاری ستونی AES-256-GCM برای PII حساس (تلفن، تاریخ تولد) — lib/columnCrypto.ts ──
+# migrations/0040 دو ستون خالی (phone_enc/dob_enc) اضافه کرده؛ کاربران تازه
+# خودکار رمزنگاری می‌شوند. برای فعال‌سازی، یک‌بار کلید بسازید و به‌عنوان راز
+# (نه در این فایل) تنظیم کنید:
+#   openssl rand -base64 32 | wrangler secret put COLUMN_ENCRYPTION_KEY
+# سپس برای رمزنگاریِ کاربرانِ ثبت‌شدهٔ قبلی، یک‌بار (Idempotent — هر چند بار
+# اجرا شود مشکلی نیست) با حساب مدیر فراخوانی کنید:
+#   POST /api/v1/admin/security/backfill-encryption
+# • در نبود این کلید، تلفن/تاریخ تولد مثل قبل به‌صورت متن‌ساده ذخیره می‌شوند
+#   (Fail-safe — ثبت‌نام هرگز به‌خاطر این کلید شکست نمی‌خورد).

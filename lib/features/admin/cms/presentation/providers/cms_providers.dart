@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../../core/instructor/instructor_invite_store.dart';
 import '../../../../../core/network/network_providers.dart';
-import '../../../../../core/student/student_invite_store.dart';
 import '../../../../../core/usecase/usecase.dart';
 import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/cms_mock_datasource.dart';
@@ -60,24 +58,17 @@ final cmsQuestionsProvider = FutureProvider<List<CmsQuestionRow>>((ref) async {
   return result.fold((f) => throw f, (v) => v);
 });
 
-/// انبار کدهای شاگردان به‌صورت Provider — با هر تغییر (ساخت/ابطال توسط
-/// مدیر، یا مصرف کد هنگام ثبت‌نام شاگرد) لیست خودکار بازسازی می‌شود.
-/// (فقط در حالت Mock واقعاً تغییر می‌کند؛ در حالت Backend واقعی صرفاً یک
-/// شیء بی‌اثر watch می‌شود — بی‌خطر.)
-final studentInviteStoreProvider =
-    ChangeNotifierProvider<StudentInviteStore>((ref) => StudentInviteStore.instance);
-
-/// همتای بالا برای کدهای دعوت استاد — رفع اشکال: تب «کدهای استادان» قبلاً
-/// این را دور می‌زد و مستقیم `InstructorInviteStore` را در Widget صدا
-/// می‌زد؛ کدی که آنجا ساخته می‌شد هرگز به سرور نمی‌رسید.
-final instructorInviteStoreProvider =
-    ChangeNotifierProvider<InstructorInviteStore>((ref) => InstructorInviteStore.instance);
-
 /// کدهای دعوت — `type`: 'student' یا 'instructor'.
+///
+/// رفع اشکال (۲۴ جولای): قبلاً این Provider دو `ChangeNotifierProvider`
+/// سراسری (`studentInviteStoreProvider`/`instructorInviteStoreProvider`،
+/// پوشش‌دهندهٔ Storeهای اکنون‌حذف‌شدهٔ `core/`) را فقط برای بازسازیِ زندهٔ
+/// حالت Mock `watch` می‌کرد؛ هر دو صفحهٔ فراخوان (`cms_screen.dart`،
+/// `instructor_codes_tab.dart`) از قبل بعد از هر ساخت/ابطال به‌صراحت
+/// `ref.invalidate(cmsInviteCodesProvider(type))` را صدا می‌زنند، پس آن دو
+/// Watch عملاً افزونه بودند — حذف شدند.
 final cmsInviteCodesProvider =
     FutureProvider.family<List<CmsInviteCodeRow>, String>((ref, type) async {
-  ref.watch(studentInviteStoreProvider); // بازسازی زنده پس از هر تغییر (حالت Mock)
-  ref.watch(instructorInviteStoreProvider);
   final result = await ref.read(getInviteCodesUseCaseProvider).call(type);
   return result.fold((f) => throw f, (v) => v);
 });

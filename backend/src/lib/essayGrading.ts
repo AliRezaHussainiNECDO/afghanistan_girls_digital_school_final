@@ -71,7 +71,7 @@ async function callAiJson(
  * می‌کند — با شمارش عمق آکولاد و نادیده‌گرفتن آکولاد داخل رشته‌ها. اگر
  * پاسخ AI وسط یک شیء قطع شده باشد، همان شیء ناقص رد می‌شود ولی اشیاء کاملِ
  * قبلی حفظ می‌شوند. */
-function extractCompleteJsonObjects(text: string): any[] {
+export function extractCompleteJsonObjects(text: string): any[] {
   const out: any[] = [];
   let depth = 0;
   let start = -1;

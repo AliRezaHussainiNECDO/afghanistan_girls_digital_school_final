@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/localization/locale_provider.dart';
-import '../../../../core/student/guardian_link_store.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/parent_mock_datasource.dart';
@@ -28,25 +27,24 @@ final getChildSummaryUseCaseProvider =
 final submitInviteCodeUseCaseProvider =
     Provider((ref) => SubmitInviteCodeUseCase(ref.watch(parentRepositoryProvider)));
 
-/// انبار پیوند والد-فرزند به‌صورت Provider — تا هر تغییر (لینک‌شدن فرزند
-/// جدید با کد دعوت، تولید کد) خودکار لیست فرزندان و خلاصه‌ها را بازسازی کند.
-final guardianLinkStoreProvider =
-    ChangeNotifierProvider<GuardianLinkStore>((ref) => GuardianLinkStore.instance);
-
 /// فرزندان تأییدشدهٔ والدِ واردشده (بخش ۱۳ب.۵ — چند فرزند، یک والد).
+///
+/// رفع اشکال (۲۴ جولای): قبلاً این Provider یک `ChangeNotifierProvider`
+/// سراسری (`guardianLinkStoreProvider`، پوششِ Store اکنون‌حذف‌شدهٔ
+/// `core/student/guardian_link_store.dart`) را فقط برای بازسازیِ زندهٔ
+/// حالت Mock `watch` می‌کرد. تنها محل واقعیِ افزودن فرزند
+/// (`_AwaitingLinkView.onSubmitted` در `parent_dashboard_screen.dart`) از
+/// قبل به‌صراحت `ref.invalidate(linkedChildrenProvider)` را صدا می‌زند، پس
+/// آن Watch افزونه بود — حذف شد.
 final linkedChildrenProvider = FutureProvider<List<LinkedChild>>((ref) async {
-  ref.watch(guardianLinkStoreProvider); // بازسازی خودکار پس از افزودن فرزند
   final parent = ref.watch(authSessionProvider);
   final result =
       await ref.read(getLinkedChildrenUseCaseProvider).call(parent?.id ?? 'u-parent-demo');
   return result.fold((f) => throw f, (v) => v);
 });
 
-/// خلاصهٔ یک فرزند — از منابع واقعی خود شاگرد ساخته می‌شود و با هر تغییر
-/// (لینک جدید، پیشرفت مضمون، نتیجهٔ امتحان، ارتقای صنف) خودکار بازسازی
-/// می‌شود، چون هر دو انبار ChangeNotifier هستند.
+/// خلاصهٔ یک فرزند — از منابع واقعی خود شاگرد ساخته می‌شود.
 final childSummaryProvider = FutureProvider.family<ChildSummary, String>((ref, studentId) async {
-  ref.watch(guardianLinkStoreProvider); // نام/صنف فرزند ممکن است تغییر کند
   ref.watch(progressionStoreProvider); // پیشرفت/ارتقای صنف فرزند
   final result = await ref.read(getChildSummaryUseCaseProvider).call(studentId);
   return result.fold((f) => throw f, (v) => v);

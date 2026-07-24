@@ -187,6 +187,34 @@ media.post('/conversations/:id/messages', async (c) => {
     .bind(flagged ? 'در انتظار بازبینی مدیر...' : body.text, conversationId)
     .run();
 
+  // رفع اشکال (۲۴ جولای): پیام‌های فیلترشده با کلمهٔ ممنوعه قبلاً فقط در
+  // «نظارت بر چت» (`/admin/chat/*`) دیده می‌شدند، نه در «صف بازبینی ایمنی»
+  // (`safety_events`) — با اینکه Mock همین سناریو را دقیقاً به‌عنوان یک مورد
+  // واقعی صف نشان می‌داد. اکنون وقتی فرستنده شاگرد باشد، همان لحظه یک
+  // رویداد `chatFlag` هم در `safety_events` ثبت می‌شود تا مدیر بتواند از
+  // یک صف واحد همهٔ موارد نیازمند بررسی را ببیند. نام/صنف از رکورد واقعی
+  // کاربر خوانده می‌شود (نه از بدنهٔ درخواست) تا قابل جعل نباشد.
+  if (flagged && u.role === 'student') {
+    const student = await c.env.DB.prepare('SELECT first_name, last_name, current_grade FROM users WHERE id = ?')
+      .bind(u.sub)
+      .first<{ first_name: string; last_name: string; current_grade: number | null }>();
+    const studentName = student ? `${student.first_name} ${student.last_name}`.trim() : (body.senderName || 'یک شاگرد');
+    await c.env.DB.prepare(
+      `INSERT INTO safety_events (id, type, summary, high_priority, status, student_id, student_name, student_grade, source, detail, trigger_reason)
+         VALUES (?, 'chatFlag', ?, 0, 'open', ?, ?, ?, 'چت هم‌صنفی', ?, ?)`,
+    )
+      .bind(
+        `msg_${id}`,
+        'پیام حاوی کلمهٔ فیلترشده در چت',
+        u.sub,
+        studentName,
+        student?.current_grade ? `صنف ${student.current_grade}` : '',
+        body.text,
+        'کلمهٔ ممنوعه در پیام چت شناسایی شد',
+      )
+      .run();
+  }
+
   // رفع اشکال هماهنگی: وقتی پیام در گفتگوی «کاربر ↔ مدیریت» فرستاده
   // می‌شود، همهٔ مدیران Super Admin باید فوراً اعلان واقعی بگیرند — قبلاً
   // این پیام‌ها فقط منتظر می‌ماندند تا مدیر خودش صندوق ورودی چت را دستی
@@ -207,7 +235,10 @@ media.post('/conversations/:id/messages', async (c) => {
     }
     if (admins.length > 0) {
       c.executionCtx.waitUntil(
-        sendPushToUsers(c.env, admins.map((a) => a.id), `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text),
+        sendPushToUsers(c.env, admins.map((a) => a.id), `پیام جدید از ${body.senderName || 'یک کاربر'} 💬`, body.text, {
+          kind: 'chat',
+          relatedId: conversationId,
+        }),
       );
     }
   }
@@ -288,6 +319,42 @@ media.post('/messages/:id/report', async (c) => {
   )
     .bind(uid(), messageId, body.reason, u.sub, body.reportedByName ?? '')
     .run();
+
+  // رفع اشکال (۲۴ جولای): گزارش‌های دستی پیام هم مثل پرچم خودکار کلمهٔ
+  // ممنوعه، قبلاً هرگز به «صف بازبینی ایمنی» نمی‌رسیدند (فقط در جدول جدای
+  // `chat_reports` می‌ماندند که هیچ صفحهٔ مدیریتی آن را نشان نمی‌دهد). اگر
+  // پیامِ گزارش‌شده از یک شاگرد باشد، یک رویداد `chatReport` هم ثبت می‌شود.
+  const msg = await c.env.DB.prepare(
+    `SELECT m.sender_id, m.body, u.first_name, u.last_name, u.current_grade, u.role
+       FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?`,
+  )
+    .bind(messageId)
+    .first<{
+      sender_id: string;
+      body: string;
+      first_name: string;
+      last_name: string;
+      current_grade: number | null;
+      role: string;
+    }>();
+  if (msg && msg.role === 'student') {
+    const studentName = `${msg.first_name} ${msg.last_name}`.trim() || 'یک شاگرد';
+    await c.env.DB.prepare(
+      `INSERT INTO safety_events (id, type, summary, high_priority, status, student_id, student_name, student_grade, source, detail, trigger_reason)
+         VALUES (?, 'chatReport', ?, 1, 'open', ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        `rep_${uid()}`,
+        'پیام چت توسط کاربر دیگر گزارش شد',
+        msg.sender_id,
+        studentName,
+        msg.current_grade ? `صنف ${msg.current_grade}` : '',
+        body.reportedByName ? `گزارش‌شده توسط ${body.reportedByName}` : 'گزارش‌شده توسط کاربر دیگر',
+        msg.body,
+        body.reason || 'بدون دلیل ثبت‌شده',
+      )
+      .run();
+  }
   return c.json({ ok: true });
 });
 
@@ -295,12 +362,21 @@ media.post('/messages/:id/report', async (c) => {
 
 media.get('/admin/chat/overview', async (c) => {
   if (!(await isAdmin(c))) return forbid(c);
+  // رفع اشکال (۲۴ جولای): این پاسخ هرگز شمار شاگردانِ هر صنف را برنمی‌گرداند؛
+  // کلاینت مقدار را دستی صفر می‌گذاشت («studentCount: 0» در
+  // `chat_remote_datasource.dart`) — یعنی کارت هر صنف در «نظارت بر چت»
+  // همیشه «۰ شاگرد» نشان می‌داد، فارغ از تعداد واقعی. `class_id` با فرمت
+  // `grade-<شماره صنف>` ساخته می‌شود (`GET /classmates`، خط بالاتر)، پس
+  // شمارش واقعی از همان روی جدول `users` قابل محاسبه است.
   const { results } = await c.env.DB.prepare(
     `SELECT conv.class_id, conv.class_name,
             COUNT(DISTINCT conv.id) AS conversation_count,
             COUNT(m.id) AS message_count,
             SUM(CASE WHEN m.flagged = 1 AND m.review_status = 'pending' THEN 1 ELSE 0 END) AS flagged_pending_count,
-            MAX(conv.last_message_at) AS last_activity_at
+            MAX(conv.last_message_at) AS last_activity_at,
+            (SELECT COUNT(*) FROM users su
+               WHERE su.role = 'student' AND su.status = 'active'
+                 AND ('grade-' || su.current_grade) = conv.class_id) AS student_count
      FROM conversations conv LEFT JOIN messages m ON m.conversation_id = conv.id
      GROUP BY conv.class_id, conv.class_name`,
   ).all();
@@ -478,7 +554,9 @@ media.post('/admin/conversations/:id/reply', async (c) => {
     )
       .bind(uid(), targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text, conversationId)
       .run();
-    c.executionCtx.waitUntil(sendPushToUser(c.env, targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text));
+    c.executionCtx.waitUntil(
+      sendPushToUser(c.env, targetUserId, 'پاسخ جدید از مدیریت مکتب 💬', body.text, { kind: 'chat', relatedId: conversationId }),
+    );
   }
 
   return c.json({ id });

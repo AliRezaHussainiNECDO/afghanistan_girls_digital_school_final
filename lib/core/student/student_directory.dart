@@ -40,7 +40,7 @@ class StudentRecord {
 /// **منبع واحد حقیقت حساب‌های شاگرد** — هم‌الگو با `InstructorDirectory`.
 ///
 /// «مدیریت شاگردان» پنل مدیر از این دفترچه + منابع واقعی فعالیت
-/// (ProgressionStore، AcademyStore، حاضری، GuardianLinkStore) تغذیه می‌شود،
+/// (ProgressionStore، AcademyStore، حاضری، GuardianLinkMockStore) تغذیه می‌شود،
 /// نه از لیست تولیدی/تصادفی. هر شاگردی که با Invite Code راجستر شود،
 /// بلافاصله اینجا (و در نتیجه در پنل مدیر) ظاهر می‌شود.
 ///

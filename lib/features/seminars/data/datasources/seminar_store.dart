@@ -150,6 +150,24 @@ class SeminarStore {
     _seminars[idx] = s.copyWith(registeredUserIds: {...s.registeredUserIds, userId});
   }
 
+  /// لغو ثبت‌نام (۲۴ جولای) — قبل از شروع/پایان سمینار، طبق
+  /// `DELETE /seminars/{id}/register`.
+  Future<void> unregister(String seminarId, String userId) async {
+    await _latency();
+    final idx = _seminars.indexWhere((s) => s.id == seminarId);
+    if (idx == -1) throw const ServerFailure('سمینار یافت نشد', code: 'NOT_FOUND');
+    final s = _seminars[idx];
+    if (s.status == SeminarStatus.live || s.hasEnded) {
+      throw const ValidationFailure(
+          'این سمینار در حال برگزاری یا پایان‌یافته است — امکان لغو ثبت‌نام نیست');
+    }
+    if (!s.isRegistered(userId)) {
+      throw const ValidationFailure('شما ثبت‌نام نکرده بودید');
+    }
+    _seminars[idx] = s.copyWith(
+        registeredUserIds: {...s.registeredUserIds}..remove(userId));
+  }
+
   Future<Seminar> create({
     required String title,
     required String description,
@@ -222,6 +240,12 @@ class SeminarStore {
     await _latency(150);
     final idx = _seminars.indexWhere((s) => s.id == id);
     if (idx == -1) throw const ServerFailure('سمینار یافت نشد', code: 'NOT_FOUND');
-    _seminars[idx] = _seminars[idx].copyWith(status: status);
+    // رفع اشکال (۲۴ جولای — هماهنگ با همان اصلاح در seminars.ts): وقتی
+    // سمینار «پایان» می‌یابد، نشانی پخش زندهٔ باقیمانده هم پاک شود، وگرنه
+    // `hasLiveStream` برای همیشه true می‌ماند.
+    _seminars[idx] = _seminars[idx].copyWith(
+      status: status,
+      streamPlaybackUrl: status == SeminarStatus.ended ? '' : null,
+    );
   }
 }

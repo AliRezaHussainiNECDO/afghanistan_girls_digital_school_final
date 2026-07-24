@@ -16,10 +16,9 @@ import 'app_primary_button.dart';
 /// (که پیام‌شان از سرور یا اعتبارسنجی فرم می‌آید و از قبل معنادار است)
 /// همان `message` بدون تغییر برگردانده می‌شود.
 ///
-/// خطاهای غیر از `Failure` (مثل رشته‌های `throw 'متن'` در
-/// `StudentInviteStore`/`GuardianLinkStore` که خودشان از قبل بر اساس زبان
-/// فعال ساخته شده‌اند، یا هر `Exception` دیگر) هم پشتیبانی می‌شوند —
-/// به‌سادگی `toString()` می‌شوند.
+/// خطاهای غیر از `Failure` (رشته‌های `throw 'متن'` که خودشان از قبل بر
+/// اساس زبان فعال ساخته شده‌اند، یا هر `Exception` دیگر) هم پشتیبانی
+/// می‌شوند — به‌سادگی `toString()` می‌شوند.
 String localizeError(BuildContext context, Object error) {
   if (error is NetworkFailure) return context.tr('errors.network');
   if (error is CacheFailure) return context.tr('errors.cache');

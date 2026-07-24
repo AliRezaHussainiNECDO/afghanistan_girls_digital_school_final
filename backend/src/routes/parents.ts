@@ -9,6 +9,7 @@
  *   PATCH /students/me/parent-links/:id         (دانش‌آموز) تأیید/رد
  *   GET   /parents/me/children                  (والد) فرزندان تأییدشده
  *   GET   /parents/me/children/:sid/summary     (والد) کارنامهٔ زندهٔ فرزند — پیشرفت و امتیاز دقیقاً مطابق داشبورد شاگرد
+ *   GET   /parents/me/pending-links              (والد) درخواست‌های ارسالی‌ای که هنوز فرزند تأیید نکرده (۲۴ جولای)
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
@@ -132,7 +133,10 @@ parents.post('/parents/link-requests', async (c) => {
     .bind(uid(), studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`, me.sub)
     .run();
   c.executionCtx.waitUntil(
-    sendPushToUser(c.env, studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`),
+    sendPushToUser(c.env, studentId, 'درخواست پیوند والد', `«${parentName}» درخواست اتصال به حساب شما را دارد. لطفاً تأیید یا رد کنید.`, {
+      kind: 'account',
+      relatedId: me.sub,
+    }),
   );
   // Auditability (بخش ۲۰.۳ — «تأیید/رد پیوند Parent-Student ثبت می‌شود»).
   c.executionCtx.waitUntil(
@@ -228,6 +232,31 @@ parents.get('/parents/me/children', async (c) => {
     children: results.map((r) => ({
       studentId: r.student_user_id,
       displayName: `${r.first_name} ${r.last_name}`.trim(),
+    })),
+  });
+});
+
+// درخواست‌های پیوندی که این والد فرستاده و هنوز فرزند تأیید/رد نکرده
+// (بخش ۱۳ب.۲: LINK_PENDING_STUDENT_APPROVAL). رفع اشکال (۲۴ جولای): پیش از
+// این، داشبورد والد در Flutter این بخش را از یک Store محلی-فقط-Mock
+// می‌خواند که هرگز با سرور همگام نبود — در حالت Live همیشه خالی می‌ماند.
+// این Endpoint معادل واقعی همان چیزی است که آن Store قرار بود شبیه‌سازی کند.
+parents.get('/parents/me/pending-links', async (c) => {
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const { results } = await c.env.DB.prepare(
+    `SELECT l.id, l.student_user_id, u.first_name, u.last_name
+     FROM parent_student_links l JOIN users u ON u.id = l.student_user_id
+     WHERE l.parent_user_id = ? AND l.status='pending_student_approval'
+     ORDER BY l.created_at DESC`,
+  )
+    .bind(me.sub)
+    .all<{ id: string; student_user_id: string; first_name: string; last_name: string }>();
+  return c.json({
+    links: results.map((r) => ({
+      id: r.id,
+      studentId: r.student_user_id,
+      studentName: `${r.first_name} ${r.last_name}`.trim(),
     })),
   });
 });

@@ -12,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/instructor/instructor_directory.dart';
-import '../../../../../core/instructor/instructor_invite_store.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/network/network_providers.dart';
 import '../../../../../shared_models/seminar.dart';
@@ -107,14 +106,18 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
           final totalRegistrations =
               seminars.fold<int>(0, (sum, s) => sum + s.registeredCount);
 
-          // کد دعوتی که این استاد با آن راجستر شده (قابلیت بازبینی —
-          // بخش ۱.۲ سند)؛ برای استادان Seed نمایشی ممکن است وجود نداشته باشد.
-          InstructorInviteCode? usedCode;
-          for (final c in InstructorInviteStore.instance.codes) {
-            if (c.usedByEmail == instructor.email) {
-              usedCode = c;
-              break;
-            }
+          // کد دعوتی که این استاد با آن راجستر شده (قابلیت بازبینی — بخش ۱.۲
+          // سند) — مستقیماً از سرور (`invite_codes` واقعی، پیوسته با JOIN در
+          // `GET /admin/users`) می‌آید. رفع اشکال (۲۴ جولای): قبلاً یک
+          // fallback به `InstructorInviteStore` محلی (کد مرده در حالت Live)
+          // وجود داشت که هیچ‌گاه واقعاً پر نمی‌شد؛ آن Store حذف شد — اگر
+          // سرور فیلد را خالی برگرداند (مثلاً کاربر خیلی قدیمی)، اینجا هم
+          // خالی نشان داده می‌شود، نه یک مقدار جعلی.
+          String? usedCodeText;
+          if (instructor.inviteCode != null && instructor.inviteCode!.isNotEmpty) {
+            usedCodeText = instructor.inviteBatchLabel?.isNotEmpty == true
+                ? '${instructor.inviteCode} (${instructor.inviteBatchLabel})'
+                : instructor.inviteCode;
           }
 
           return Scaffold(
@@ -190,12 +193,11 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                           value: _fmt(instructor.joinedAt)),
                       if (instructor.bio.isNotEmpty)
                         _InfoRow(icon: Icons.info_rounded, label: context.tr('instructorDetail.bioLabel'), value: instructor.bio),
-                      if (usedCode != null)
+                      if (usedCodeText != null)
                         _InfoRow(
                             icon: Icons.qr_code_rounded,
                             label: context.tr('instructorDetail.usedInviteCodeLabel'),
-                            value:
-                                '${usedCode.code} (${usedCode.label})'),
+                            value: usedCodeText),
                       const Divider(height: 20),
                       Row(children: [
                         Icon(

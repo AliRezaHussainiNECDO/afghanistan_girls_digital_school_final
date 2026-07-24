@@ -50,6 +50,20 @@ class SeminarsRepositoryImpl implements SeminarsRepository {
   }
 
   @override
+  Future<Either<Failure, Unit>> unregister(String seminarId, String userId) async {
+    try {
+      await dataSource.unregister(seminarId, userId);
+      return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
+    } on Failure catch (f) {
+      return Left(f);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, Unit>> setStatus(String seminarId, SeminarStatus status) async {
     try {
       await dataSource.setStatus(seminarId, status);

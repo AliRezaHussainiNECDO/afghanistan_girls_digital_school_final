@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../../core/localization/locale_provider.dart';
-import '../../../../core/student/guardian_link_store.dart';
+import '../../../../core/mock/guardian_link_mock_store.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
-import 'parent_providers.dart' show guardianLinkStoreProvider;
 
 const Map<String, String> _unknownParentLabels = {
   'fa': 'والد/سرپرست',
@@ -30,7 +29,7 @@ class PendingParentLink {
 
 /// درخواست‌های پیوندِ در انتظار تأیید دانش‌آموز فعلی (بخش ۱۳ب.۲).
 /// در حالت Live از `GET /students/me/parent-links?status=...` و در Mock از
-/// `GuardianLinkStore` خوانده می‌شود.
+/// `GuardianLinkMockStore` خوانده می‌شود.
 final pendingParentLinksProvider =
     FutureProvider.autoDispose<List<PendingParentLink>>((ref) async {
   final user = ref.watch(authSessionProvider);
@@ -52,9 +51,9 @@ final pendingParentLinksProvider =
         .toList();
   }
 
-  // Mock: از منبع محلی، با بازخوانی خودکار پس از تغییر.
-  ref.watch(guardianLinkStoreProvider);
-  return GuardianLinkStore.instance
+  // Mock: از منبع محلی. بازخوانی با ref.invalidate صریح در respondToParentLink
+  // انجام می‌شود؛ نیازی به watch روی ChangeNotifier نیست.
+  return GuardianLinkMockStore.instance
       .pendingRequestsFor(studentId)
       .map((r) => PendingParentLink(
             id: '${r.parentId}:${r.studentId}',
@@ -82,7 +81,7 @@ Future<String?> respondToParentLink(
       return e.message;
     }
   } else {
-    GuardianLinkStore.instance.respondToRequest(
+    GuardianLinkMockStore.instance.respondToRequest(
       parentId: link.parentId,
       studentId: studentId,
       approve: approve,
@@ -91,3 +90,51 @@ Future<String?> respondToParentLink(
   ref.invalidate(pendingParentLinksProvider);
   return null;
 }
+
+/// یک درخواست پیوندِ ارسالی توسط والدِ فعلی که هنوز فرزند تأیید نکرده —
+/// برای نمایش بنر «در انتظار تأیید» در داشبورد والد.
+class PendingChildLink {
+  final String id;
+  final String studentId;
+  final String studentName;
+  const PendingChildLink({
+    required this.id,
+    required this.studentId,
+    required this.studentName,
+  });
+}
+
+/// رفع اشکال (۲۴ جولای): این Provider جایگزین خواندنِ مستقیمِ
+/// `GuardianLinkStore` در `parent_dashboard_screen.dart` شد — آن صفحه قبلاً
+/// بدون توجه به `kUseLiveBackend` مستقیماً یک Store محلیِ فقط-Mock را
+/// می‌خواند، پس در حالت Live (پیش‌فرض تولید) بنرِ «در انتظار تأیید» هرگز
+/// نمایش داده نمی‌شد، حتی وقتی واقعاً درخواست معلق روی سرور وجود داشت. حالا
+/// در حالت Live از `GET /parents/me/pending-links` واقعی می‌خواند.
+final pendingChildLinksProvider =
+    FutureProvider.autoDispose<List<PendingChildLink>>((ref) async {
+  final parent = ref.watch(authSessionProvider);
+  final parentId = parent?.id ?? '';
+
+  if (kUseLiveBackend) {
+    final api = ref.watch(apiClientProvider);
+    final data = await api.get('/parents/me/pending-links');
+    final list = (data['links'] as List? ?? []);
+    return list
+        .map((l) => PendingChildLink(
+              id: l['id'] as String,
+              studentId: l['studentId'] as String? ?? '',
+              studentName: l['studentName'] as String? ?? '',
+            ))
+        .toList();
+  }
+
+  // Mock: از منبع محلی.
+  return GuardianLinkMockStore.instance
+      .pendingChildrenOf(parentId.isEmpty ? 'u-parent-demo' : parentId)
+      .map((l) => PendingChildLink(
+            id: '${l.parentId}:${l.studentId}',
+            studentId: l.studentId,
+            studentName: l.studentName,
+          ))
+      .toList();
+});

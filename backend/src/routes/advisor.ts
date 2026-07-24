@@ -118,6 +118,7 @@ advisor.post('/advisor/messages', async (c) => {
           admins.map((a) => a.id),
           'گفتگوی مشاور نیاز به توجه دارد 💙',
           `${studentName || 'یک شاگرد'} پیامی حساس ارسال کرد — لطفاً در جزئیات شاگرد بازبینی شود.`,
+          { kind: 'safety', relatedId: u.sub },
         ),
       );
     }

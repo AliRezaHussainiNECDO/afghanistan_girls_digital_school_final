@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/notifications/notification_center.dart';
+import '../../../../core/notifications/notification_route_resolver.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/app_notification.dart';
 import '../../../auth/domain/entities/app_user.dart';
@@ -117,68 +117,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   /// اساس `kind` + `relatedId` + نقش کاربر تعیین می‌شود (بخش ۱۳.۱ سند —
   /// ستون `related_id` در migration 0029). اگر مقصد مشخصی نباشد (null)،
   /// لمس فقط اعلان را خوانده‌شده می‌کند (رفتار قبلی).
-  String? _routeFor(AppNotification n, AppUserRole role) {
-    final rid = n.relatedId;
-    switch (n.kind) {
-      case NotificationKind.chat:
-        if (rid == null) return null;
-        return switch (role) {
-          AppUserRole.superAdmin => AppRoutes.adminChatThread(rid),
-          AppUserRole.student => AppRoutes.chatThread(rid),
-          AppUserRole.parent => AppRoutes.parentContactAdmin,
-          AppUserRole.seminarInstructor => AppRoutes.instructorContactAdmin,
-        };
-      case NotificationKind.exam:
-        // relatedId = examId — شاگرد به صفحهٔ امتحان‌ها (نتیجه/فهرست) می‌رود؛
-        // مدیر به مدیریت امتحانات.
-        return switch (role) {
-          AppUserRole.student => AppRoutes.exams,
-          AppUserRole.superAdmin => AppRoutes.adminExamsManagement,
-          _ => null,
-        };
-      case NotificationKind.homework:
-        return role == AppUserRole.student ? AppRoutes.homework : null;
-      case NotificationKind.seminar:
-        // relatedId = seminarId — هر نقش به فهرست سمینارهای خودش.
-        return switch (role) {
-          AppUserRole.student => AppRoutes.seminars,
-          AppUserRole.parent => AppRoutes.parentSeminars,
-          AppUserRole.superAdmin => AppRoutes.adminSeminars,
-          AppUserRole.seminarInstructor => AppRoutes.instructorHome,
-        };
-      case NotificationKind.safety:
-        // relatedId = studentId (اعلان ایمنی مشاور به مدیر).
-        if (role != AppUserRole.superAdmin) return null;
-        return rid != null ? AppRoutes.adminStudentDetail(rid) : AppRoutes.adminSafetyQueue;
-      case NotificationKind.account:
-        if (role == AppUserRole.superAdmin) {
-          // relatedId به شکل `role:userId` (ثبت‌نام تازه — auth.ts).
-          final parts = rid?.split(':');
-          if (parts != null && parts.length == 2) {
-            final (r, userId) = (parts[0], parts[1]);
-            return switch (r) {
-              'student' => AppRoutes.adminStudentDetail(userId),
-              'parent' => AppRoutes.adminParentDetail(userId),
-              'seminar_instructor' => AppRoutes.adminInstructorDetail(userId),
-              _ => AppRoutes.adminUsers,
-            };
-          }
-          return AppRoutes.adminUsers;
-        }
-        // شاگرد: درخواست پیوند والد در پروفایل تأیید/رد می‌شود (parents.ts).
-        return role == AppUserRole.student ? AppRoutes.profile : null;
-      case NotificationKind.book:
-        return role == AppUserRole.student ? AppRoutes.library : null;
-      case NotificationKind.grade:
-        return switch (role) {
-          AppUserRole.parent => AppRoutes.parentScores,
-          AppUserRole.student => AppRoutes.exams,
-          _ => null,
-        };
-      case NotificationKind.general:
-        return null;
-    }
-  }
+  // منطق واقعی در `core/notifications/notification_route_resolver.dart`
+  // است تا هندلر Push واقعی سیستم‌عامل هم بتواند همان قاعده را استفاده کند.
+  String? _routeFor(AppNotification n, AppUserRole role) => resolveNotificationRoute(n.kind, n.relatedId, role);
 
   Future<void> _openNotification(AppNotification n, AppUserRole role) async {
     // اول مقصد را بگیر و ناوبری کن تا await شدنِ markRead (رفت‌وبرگشت شبکه)

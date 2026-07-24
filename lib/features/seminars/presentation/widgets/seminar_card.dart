@@ -154,7 +154,8 @@ class SeminarCard extends ConsumerWidget {
                                   label: context.tr('seminars.join'),
                                 )
                               : Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 8, horizontal: 4),
                                   decoration: BoxDecoration(
                                     color: AppColors.green50,
                                     borderRadius: BorderRadius.circular(AppRadii.md),
@@ -175,10 +176,24 @@ class SeminarCard extends ConsumerWidget {
                                             fontSize: 13),
                                       ),
                                       const SizedBox(width: 8),
-                                      Text(
-                                        _countdownText(context, s),
-                                        style: const TextStyle(
-                                            color: AppColors.green600, fontSize: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _countdownText(context, s),
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: AppColors.green600, fontSize: 12),
+                                        ),
+                                      ),
+                                      // رفع اشکال (۲۴ جولای): تا پیش از این هیچ راهی
+                                      // برای انصراف از یک ثبت‌نام اشتباه/تغییریافته
+                                      // وجود نداشت.
+                                      IconButton(
+                                        tooltip: context.tr('seminars.cancelRegistration'),
+                                        visualDensity: VisualDensity.compact,
+                                        icon: Icon(Icons.close_rounded,
+                                            color: scheme.error, size: 18),
+                                        onPressed: () =>
+                                            _confirmCancel(context, ref, s),
                                       ),
                                     ],
                                   ),
@@ -248,6 +263,54 @@ class SeminarCard extends ConsumerWidget {
             ),
             backgroundColor: scheme.secondary,
           ),
+        );
+      },
+    );
+  }
+
+  /// لغو ثبت‌نام (۲۴ جولای) — با دیالوگ تأییدِ ساده، تا کاربر با یک لمس
+  /// اشتباه ثبت‌نامش را از دست ندهد.
+  Future<void> _confirmCancel(BuildContext context, WidgetRef ref, Seminar s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.tr('seminars.cancelConfirmTitle')),
+        content: Text(dialogContext.tr('seminars.cancelConfirmBody')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(dialogContext.tr('common.cancel')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(dialogContext).colorScheme.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(dialogContext.tr('seminars.cancelRegistration')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final result = await ref
+        .read(unregisterSeminarUseCaseProvider)
+        .call(RegisterSeminarParams(seminarId: s.id, userId: userId));
+    result.fold(
+      (f) => messenger.showSnackBar(
+        SnackBar(
+            content: Text(context.mounted
+                ? localizeSeminarFailureMessage(context, f.message)
+                : f.message),
+            backgroundColor: scheme.error),
+      ),
+      (_) {
+        ref.invalidate(refreshProvider);
+        messenger.showSnackBar(
+          SnackBar(content: Text(context.mounted
+              ? context.tr('seminars.cancelSuccess')
+              : '')),
         );
       },
     );

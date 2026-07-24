@@ -232,6 +232,20 @@ class CmsInviteCodeRow extends Equatable {
     return d.isNegative ? 0 : d.inDays;
   }
 
+  CmsInviteCodeRow copyWith({
+    String? status,
+    String? usedByName,
+  }) =>
+      CmsInviteCodeRow(
+        id: id,
+        code: code,
+        batchLabel: batchLabel,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        usedByName: usedByName ?? this.usedByName,
+        expiresAt: expiresAt,
+      );
+
   @override
   List<Object?> get props => [id, status, usedByName];
 }

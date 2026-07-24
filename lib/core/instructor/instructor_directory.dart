@@ -11,6 +11,11 @@ class InstructorProfile {
   final String bio;
   final DateTime joinedAt;
   final bool suspended;
+  // کد دعوتی که این استاد با آن راجستر شده — مستقیماً از سرور (جدول واقعی
+  // `invite_codes`)، نه یک Store محلیِ فقط-Mock (رفع اشکال: قبلاً در حالت
+  // Backend واقعی همیشه خالی می‌ماند چون آن Store هرگز از سرور پر نمی‌شد).
+  final String? inviteCode;
+  final String? inviteBatchLabel;
 
   const InstructorProfile({
     required this.id,
@@ -21,6 +26,8 @@ class InstructorProfile {
     this.bio = '',
     required this.joinedAt,
     this.suspended = false,
+    this.inviteCode,
+    this.inviteBatchLabel,
   });
 
   InstructorProfile copyWith({bool? suspended}) => InstructorProfile(
@@ -32,13 +39,15 @@ class InstructorProfile {
         bio: bio,
         joinedAt: joinedAt,
         suspended: suspended ?? this.suspended,
+        inviteCode: inviteCode,
+        inviteBatchLabel: inviteBatchLabel,
       );
 }
 
 /// **منبع واحد حقیقت حساب‌های استاد** — مشترک بین راجستر استاد (افزودن
 /// خودکار پس از فعال‌سازی با کد دعوت) و بخش «مدیریت استادان» پنل مدیر.
 ///
-/// همانند `GuardianLinkStore`/`SeminarStore` یک Singleton درون‌حافظه‌ای فاز ۱
+/// همانند `GuardianLinkMockStore`/`SeminarStore` یک Singleton درون‌حافظه‌ای فاز ۱
 /// است و در فاز بعد با `GET /admin/users?role=seminar_instructor` (بخش ۱۹.۷
 /// سند) جایگزین می‌شود؛ ChangeNotifier است تا لیست مدیر بلافاصله پس از هر
 /// تغییر (راجستر استاد جدید، مسدودسازی) به‌روز شود.
@@ -187,5 +196,7 @@ class InstructorDirectory extends ChangeNotifier {
         bio: j['bio'] as String? ?? '',
         joinedAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
         suspended: j['suspended'] as bool? ?? false,
+        inviteCode: j['inviteCode'] as String?,
+        inviteBatchLabel: j['inviteBatchLabel'] as String?,
       );
 }

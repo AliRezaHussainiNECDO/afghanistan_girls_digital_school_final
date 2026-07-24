@@ -10,7 +10,6 @@ import '../../../../app/theme/theme_provider.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/permissions/permissions_sheet.dart';
-import '../../../../core/student/guardian_link_store.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/info_stat_chip.dart';
@@ -526,7 +525,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : Icon(Icons.qr_code_rounded, color: scheme.onSurfaceVariant),
                 onTap: () async {
-                  // طبق بخش ۲.۴ سند: کد در GuardianLinkStore ثبت می‌شود تا والد
+                  // طبق بخش ۲.۴ سند: کد (در حالت Live روی سرور، در حالت Mock در GuardianLinkMockStore) ثبت می‌شود تا والد
                   // واقعاً بتواند با آن متصل شود. نام و صنف شاگرد هم همراه کد
                   // ذخیره می‌شود تا پس از لینک، معلومات درست فرزند نمایش یابد.
                   final student = user!;

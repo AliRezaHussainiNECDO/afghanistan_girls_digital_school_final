@@ -10,6 +10,7 @@
  *   PUT  /seminars/:id                  (استاد/مدیر) ویرایش
  *   DELETE /seminars/:id                (استاد/مدیر)
  *   POST /seminars/:id/register         (کاربر) ثبت‌نام یک‌بار
+ *   DELETE /seminars/:id/register       (کاربر) لغو ثبت‌نام (۲۴ جولای)
  *   PATCH /seminars/:id/status          (استاد/مدیر) تغییر وضعیت
  *   POST /seminars/:id/go-live          (استاد/مدیر) شروع پخش زنده
  *   POST /seminars/:id/end-live         (استاد/مدیر) پایان پخش زنده
@@ -345,6 +346,7 @@ seminars.post('/seminars', async (c) => {
           recipients.map((r) => r.id),
           'سمینار جدید 🎥',
           `«${String(b.title)}» با استاد ${instructorName || 'مکتب'} برگزار می‌شود.`,
+          { kind: 'seminar', relatedId: id },
         ),
       );
     }
@@ -390,6 +392,42 @@ seminars.post('/seminars/:id/register', async (c) => {
   )
     .bind(seminarId, me.sub)
     .run();
+  return c.json({ success: true });
+});
+
+// ────────────────────────── لغو ثبت‌نام (۲۴ جولای) ──────────────────────────
+// رفع اشکال: هیچ‌جای اپ راهی برای انصراف از یک سمینار ثبت‌نام‌شده وجود
+// نداشت — نه Endpoint، نه دکمه‌ای در UI. شاگرد/والدی که به اشتباه یا از سر
+// تغییر برنامه ثبت‌نام کرده بود، تا ابد در فهرست ثبت‌نامی‌ها می‌ماند.
+seminars.delete('/seminars/:id/register', async (c) => {
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const seminarId = c.req.param('id');
+  const s = await c.env.DB.prepare('SELECT status FROM seminars WHERE id = ?')
+    .bind(seminarId)
+    .first<{ status: string }>();
+  if (!s) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404);
+  // بعد از شروع/پایان سمینار، لغو ثبت‌نام معنا ندارد (بخش ۱۲.۲).
+  if (s.status === 'live' || s.status === 'ended' || s.status === 'archived') {
+    return c.json(
+      fail(
+        'CANNOT_CANCEL',
+        'این سمینار در حال برگزاری یا پایان‌یافته است — امکان لغو ثبت‌نام نیست',
+        'This seminar is live or has already ended — registration can no longer be cancelled',
+        'دا سیمینار روان دی یا پای ته رسیدلی — د ثبت‌نام لغوه کول شونی نه دي',
+        'Ce séminaire est en direct ou déjà terminé — l\'inscription ne peut plus être annulée',
+      ),
+      400,
+    );
+  }
+  const result = await c.env.DB.prepare(
+    'DELETE FROM seminar_registrations WHERE seminar_id = ? AND user_id = ?',
+  )
+    .bind(seminarId, me.sub)
+    .run();
+  if (!result.meta.changes) {
+    return c.json(fail('NOT_REGISTERED', 'شما ثبت‌نام نکرده بودید', 'You were not registered', 'تاسو ثبت‌نام شوي نه وئ', 'Vous n\'étiez pas inscrit(e)'), 404);
+  }
   return c.json({ success: true });
 });
 
@@ -489,9 +527,22 @@ seminars.patch('/seminars/:id/status', async (c) => {
   if (!b?.status || !valid.includes(b.status)) {
     return c.json(fail('BAD_REQUEST', 'وضعیت نامعتبر', 'Invalid status', 'ناسمه وضعیت', 'Statut invalide'), 400);
   }
-  await c.env.DB.prepare('UPDATE seminars SET status = ? WHERE id = ?')
-    .bind(b.status, c.req.param('id'))
-    .run();
+  // رفع اشکال (۲۴ جولای): در عمل هر سه مسیر UI پایان‌دادن سمینار (دکمهٔ
+  // «پایان» در داشبورد استاد/مدیر و اتاق سمینار) از همین Endpoint عمومی
+  // status استفاده می‌کردند، نه از `/end-live` — یعنی پاک‌سازیِ عمدیِ
+  // `stream_playback_url` که در `/end-live` نوشته شده بود عملاً هرگز اجرا
+  // نمی‌شد. اکنون همین رفتار مستقیماً اینجا هم اعمال می‌شود تا مستقل از
+  // اینکه کدام مسیر «پایان» را صدا زده، سمینارِ پایان‌یافته هرگز نشانی
+  // پخش زندهٔ باقیمانده (و بالقوه مرده) نداشته باشد.
+  if (b.status === 'ended') {
+    await c.env.DB.prepare("UPDATE seminars SET status = ?, stream_playback_url = '' WHERE id = ?")
+      .bind(b.status, c.req.param('id'))
+      .run();
+  } else {
+    await c.env.DB.prepare('UPDATE seminars SET status = ? WHERE id = ?')
+      .bind(b.status, c.req.param('id'))
+      .run();
+  }
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: me.sub,

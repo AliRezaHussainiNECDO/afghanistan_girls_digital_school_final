@@ -442,7 +442,13 @@ exams.post('/exams/:examId/submit', async (c) => {
     throw err;
   }
   c.executionCtx.waitUntil(
-    sendPushToUser(c.env, me.sub, 'نتیجهٔ امتحان', `نمرهٔ شما در «${examRow?.title ?? 'امتحان'}»: ${roundedScore}٪ (${correct} از ${total})`),
+    sendPushToUser(
+      c.env,
+      me.sub,
+      'نتیجهٔ امتحان',
+      `نمرهٔ شما در «${examRow?.title ?? 'امتحان'}»: ${roundedScore}٪ (${correct} از ${total})`,
+      { kind: 'exam', relatedId: examId },
+    ),
   );
 
   // رفع اشکال ارتقای صنف: قبلاً ارتقا فقط در ذخیرهٔ محلی گوشی شبیه‌سازی

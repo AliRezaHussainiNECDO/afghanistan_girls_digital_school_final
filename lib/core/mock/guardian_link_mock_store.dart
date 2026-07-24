@@ -1,47 +1,18 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
-
-/// یک کد دعوت والد (بخش ۲.۴ سند): ۶ رقمی، با عمر ۷۲ ساعت، به‌ازای هر
-/// شاگرد فقط یک کد فعال (تولید کد جدید، کد قبلی را باطل می‌کند).
-class GuardianInviteCode {
-  final String code;
-  final String studentId;
-  final String studentName;
-  final int grade;
-  final DateTime issuedAt;
-  final DateTime expiresAt;
-
-  const GuardianInviteCode({
-    required this.code,
-    required this.studentId,
-    required this.studentName,
-    required this.grade,
-    required this.issuedAt,
-    required this.expiresAt,
-  });
-
-  bool get expired => DateTime.now().isAfter(expiresAt);
-
-  /// ساعت‌های باقی‌مانده تا انقضا (برای نمایش به شاگرد).
-  int get remainingHours {
-    final d = expiresAt.difference(DateTime.now());
-    return d.isNegative ? 0 : d.inHours;
-  }
-}
+import '../../features/profile/domain/repositories/profile_repository.dart' show GuardianInviteCode;
 
 /// وضعیت پیوند والد-فرزند (بخش ۱۳ب.۲ سند).
 enum GuardianLinkStatus { pendingStudentApproval, approved, rejected }
 
-/// یک پیوند والد ↔ فرزند (معادل رکورد `parent_student_links` در Schema).
+/// یک پیوند والد ↔ فرزند (معادل رکورد `parent_student_links` در Schema) —
+/// فقط برای پیش‌نمایش UI در حالت Mock.
 class ParentStudentLink {
   final String parentId;
-
-  /// نام والد — تا شاگرد هنگام تأیید بداند چه کسی درخواست داده
-  /// (اصلاح ۲.۴ سند، بخش ۱۳ب.۲).
   final String parentName;
   final String studentId;
   final String studentName;
-  final int gradeAtLink; // صنف فرزند در لحظهٔ لینک‌شدن
+  final int gradeAtLink;
   final DateTime linkedAt;
   final GuardianLinkStatus status;
 
@@ -66,20 +37,22 @@ class ParentStudentLink {
       );
 }
 
-/// **منبع واحد حقیقتِ پیوند والد-فرزند** — مشترک بین پروفایل شاگرد
-/// (تولید کد دعوت) و داشبورد والدین (استفاده از کد و لیست فرزندان).
-///
-/// همانند `AcademyStore`/`ProgressionStore` یک singleton درون‌حافظه‌ای است و
-/// در فاز بعد بدون تغییر UI با Backend واقعی (Endpoint های
-/// `POST /students/{id}/guardian-invite-code` و
-/// `POST /parents/{id}/link-requests`، بخش ۱۹ سند) جایگزین می‌شود.
-///
-/// ChangeNotifier است تا با هر تغییر (تولید کد، لینک‌شدن فرزند جدید)
-/// همهٔ صفحه‌های وابسته — لیست فرزندان، نمرات، خلاصهٔ فرزند — خودکار
-/// بازسازی شوند.
-class GuardianLinkStore extends ChangeNotifier {
-  GuardianLinkStore._();
-  static final GuardianLinkStore instance = GuardianLinkStore._();
+/// **انبار Mock پیوند والد-فرزند** — رفع اشکال (۲۴ جولای): این کلاس قبلاً
+/// `lib/core/student/guardian_link_store.dart` نام داشت و به‌عنوان «منبع
+/// واحد حقیقت» توصیف شده بود، در حالی که منبع واحد حقیقتِ *واقعی* همیشه
+/// جدول `parent_student_links` در D1 بوده (بخش ۱۳ب سند، `backend/src/routes/parents.ts`).
+/// این عدم‌تطابق نام باعث شده بود دست‌کم یک صفحه (`parent_dashboard_screen.dart`)
+/// این Store را بدون توجه به `kUseLiveBackend` مستقیماً بخواند — یعنی در
+/// حالت Live بخش «درخواست‌های در انتظار تأیید» همیشه خالی می‌ماند، چون هرگز
+/// از سرور پر نمی‌شد. آن باگ رفع شد (اکنون از `GET /parents/me/pending-links`
+/// واقعی می‌خواند)؛ این فایل هم به اینجا منتقل و به‌صراحت به‌عنوان
+/// **زیرساخت مخصوص حالت Mock** برچسب‌گذاری شد — فقط `*_mock_datasource.dart`
+/// (در سه فیچر profile/parent_dashboard/admin.user_management) اجازهٔ
+/// استفاده از آن را دارند؛ هیچ Widget یا Provider گیت‌نشده نباید مستقیم به
+/// آن دسترسی داشته باشد.
+class GuardianLinkMockStore extends ChangeNotifier {
+  GuardianLinkMockStore._();
+  static final GuardianLinkMockStore instance = GuardianLinkMockStore._();
 
   final Random _rand = Random();
 
@@ -102,9 +75,6 @@ class GuardianLinkStore extends ChangeNotifier {
 
   // ─────────────────── سمت شاگرد: تولید کد دعوت ───────────────────
 
-  /// تولید کد دعوت برای والدین (بخش ۲.۴): ۶ رقمی، ۷۲ ساعت اعتبار.
-  /// کد قبلی همان شاگرد (در صورت وجود) باطل می‌شود؛ اما تا زمان انقضا،
-  /// «هر دو والد/سرپرست» می‌توانند از همان یک کد استفاده کنند.
   GuardianInviteCode issueCode({
     required String studentId,
     required String studentName,
@@ -129,21 +99,8 @@ class GuardianLinkStore extends ChangeNotifier {
     return invite;
   }
 
-  /// کد فعال فعلی یک شاگرد (برای نمایش دوباره در پروفایل)، یا null.
-  GuardianInviteCode? activeCodeFor(String studentId) {
-    for (final c in _codes.values) {
-      if (c.studentId == studentId && !c.expired) return c;
-    }
-    return null;
-  }
-
   // ─────────────────── سمت والد: استفاده از کد ───────────────────
 
-  /// والد کد دعوت را وارد می‌کند. در صورت اعتبار، پیوند با وضعیت
-  /// `pending_student_approval` ساخته می‌شود و باید توسط خود شاگرد تأیید
-  /// شود (بخش ۱۳ب.۲ / ۳ب.۴ سند — اصلاح ۲.۴: قبلاً در این فاز نمایشی
-  /// بلافاصله approved می‌شد که ناقض عاملیت شاگرد بود). برای چند فرزند،
-  /// والد همین کار را با کدِ هر فرزند تکرار می‌کند (بخش ۱۳ب.۵).
   static const Map<String, Map<String, String>> _i18n = {
     'fa': {
       'codeMustBe6Digits': 'کد دعوت باید ۶ رقم باشد.',
@@ -207,8 +164,6 @@ class GuardianLinkStore extends ChangeNotifier {
     if (pending != null) {
       throw _tr(localeCode, 'requestPending', {'name': invite.studentName}); // ignore: only_throw_errors
     }
-    // درخواست ردشدهٔ قبلی مانع درخواست دوباره نیست (بخش ۱۳ب.۲: والد
-    // می‌تواند کد جدید وارد کند) — رکورد ردشده حذف و درخواست تازه ثبت می‌شود.
     _links.removeWhere((l) =>
         l.parentId == parentId &&
         l.studentId == invite.studentId &&
@@ -229,19 +184,12 @@ class GuardianLinkStore extends ChangeNotifier {
 
   // ─────────────── سمت شاگرد: تأیید/رد درخواست پیوند ───────────────
 
-  /// درخواست‌های پیوندِ در انتظار تأیید این شاگرد (بخش ۱۳ب.۲ —
-  /// LINK_PENDING_STUDENT_APPROVAL؛ معادل
-  /// `GET /students/{id}/parent-links?status=pending` سند v2.4).
   List<ParentStudentLink> pendingRequestsFor(String studentId) => List.unmodifiable(_links
       .where((l) => l.studentId == studentId && l.status == GuardianLinkStatus.pendingStudentApproval));
 
-  /// درخواست‌های در انتظارِ یک والد — برای نمایش وضعیت «منتظر تأیید فرزند»
-  /// در داشبورد والد.
   List<ParentStudentLink> pendingChildrenOf(String parentId) => List.unmodifiable(_links
       .where((l) => l.parentId == parentId && l.status == GuardianLinkStatus.pendingStudentApproval));
 
-  /// شاگرد درخواست پیوند را تأیید یا رد می‌کند (معادل
-  /// `PATCH /students/{id}/parent-links/{linkId}` با action=approve|reject).
   void respondToRequest({
     required String parentId,
     required String studentId,
@@ -268,12 +216,9 @@ class GuardianLinkStore extends ChangeNotifier {
     return null;
   }
 
-  /// فرزندان تأییدشدهٔ یک والد — فقط پیوندهای approved (بخش ۳ب.۴:
-  /// تا تأیید نشده، هیچ داده‌ای برنمی‌گردد).
   List<ParentStudentLink> childrenOf(String parentId) => List.unmodifiable(
       _links.where((l) => l.parentId == parentId && l.status == GuardianLinkStatus.approved));
 
-  /// پیوند یک والد با یک فرزند مشخص، یا null.
   ParentStudentLink? linkFor(String parentId, String studentId) {
     for (final l in _links) {
       if (l.parentId == parentId &&
@@ -286,11 +231,10 @@ class GuardianLinkStore extends ChangeNotifier {
   }
 
   /// همهٔ پیوندهای یک شاگرد با هر وضعیتی — برای «مشاهدهٔ کامل سابقه» در
-  /// پنل مدیر (بخش ۱۵.۲: مدیریت پیوندهای parent_student_links).
+  /// پنل مدیر (بخش ۱۵.۲، فقط حالت Mock).
   List<ParentStudentLink> linksForStudent(String studentId) =>
       List.unmodifiable(_links.where((l) => l.studentId == studentId));
 
-  /// پیوند یک فرزند (فارغ از والد) — برای ساخت خلاصهٔ فرزند.
   ParentStudentLink? linkForStudent(String studentId) {
     for (final l in _links) {
       if (l.studentId == studentId && l.status == GuardianLinkStatus.approved) return l;
@@ -298,8 +242,6 @@ class GuardianLinkStore extends ChangeNotifier {
     return null;
   }
 
-  /// تبدیل ارقام فارسی/عربی به لاتین + حذف فاصله‌ها، تا والد بتواند کد را
-  /// با هر صفحه‌کلیدی وارد کند.
   String _normalize(String raw) {
     const fa = '۰۱۲۳۴۵۶۷۸۹';
     const ar = '٠١٢٣٤٥٦٧٨٩';

@@ -250,7 +250,13 @@ homework.post('/homework', async (c) => {
     .catch(() => {}); // جدول اعلان ممکن است در برخی محیط‌ها هنوز نداشته باشد — بی‌اثر نادیده گرفته می‌شود.
   // Push واقعی روی گوشی (در نبود پیکربندی FCM، بی‌صدا نادیده گرفته می‌شود).
   c.executionCtx.waitUntil(
-    sendPushToUser(c.env, String(b.studentId), 'کار خانگی جدید 📝', 'یک کار خانگی تازه برای شما ثبت شد — از بخش «کار خانگی» عکس حل‌تان را بفرستید.'),
+    sendPushToUser(
+      c.env,
+      String(b.studentId),
+      'کار خانگی جدید 📝',
+      'یک کار خانگی تازه برای شما ثبت شد — از بخش «کار خانگی» عکس حل‌تان را بفرستید.',
+      { kind: 'homework', relatedId: id },
+    ),
   );
   const row = await c.env.DB.prepare('SELECT * FROM student_homeworks WHERE id = ?').bind(id).first<any>();
   return c.json({ homework: homeworkJson(row) }, 201);

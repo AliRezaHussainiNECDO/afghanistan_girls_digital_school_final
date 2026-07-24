@@ -38,6 +38,9 @@ abstract class SeminarsDataSource {
   Future<Seminar> getById(String id);
   Future<void> register(String seminarId, String userId);
 
+  /// لغو ثبت‌نام (۲۴ جولای) — قبل از شروع/پایان سمینار.
+  Future<void> unregister(String seminarId, String userId);
+
   /// تغییر وضعیت (شروع/پایان دستی) — برای اتاق داخلی سمینار (فال‌بک بدون
   /// Cloudflare Stream) وقتی میزبان (استاد/مدیر) شروع/پایان را می‌زند، تا
   /// وضعیت واقعاً روی سرور/پایگاه‌داده ثبت و برای همهٔ نقش‌ها هماهنگ شود.
@@ -65,6 +68,11 @@ class SeminarsRemoteDataSource implements SeminarsDataSource {
   @override
   Future<void> register(String seminarId, String userId) async {
     await _api.post('/seminars/$seminarId/register');
+  }
+
+  @override
+  Future<void> unregister(String seminarId, String userId) async {
+    await _api.delete('/seminars/$seminarId/register');
   }
 
   @override

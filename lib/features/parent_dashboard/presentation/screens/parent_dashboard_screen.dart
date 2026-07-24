@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
-import '../../../../core/student/guardian_link_store.dart';
 import '../../../../core/widgets/app_primary_button.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/email_verification_banner.dart';
@@ -18,6 +17,7 @@ import '../../../curriculum/presentation/widgets/points_badge.dart';
 import '../../../curriculum/presentation/widgets/subject_progress_bar.dart';
 import '../../domain/entities/parent_entities.dart';
 import '../../domain/repositories/parent_repository.dart';
+import '../providers/guardian_link_providers.dart';
 import '../providers/parent_homework_providers.dart';
 import '../providers/parent_providers.dart';
 
@@ -43,13 +43,15 @@ Future<bool> submitGuardianInviteCode(
     },
     (childName) {
       // اصلاح ۲.۴ (بخش ۱۳ب.۲): پیوند بلافاصله فعال نمی‌شود — ابتدا باید
-      // خود شاگرد آن را در پروفایلش تأیید کند.
+      // خود شاگرد آن را در پروفایلش تأیید کند. رفع اشکال (۲۴ جولای): قبلاً
+      // این بازسازی به‌صورت ضمنی از طریق watch روی یک ChangeNotifier انجام
+      // می‌شد؛ اکنون که آن Provider حذف شده، صریحاً invalidate می‌کنیم تا
+      // بنر «در انتظار تأیید» بلافاصله به‌روز شود.
+      ref.invalidate(pendingChildLinksProvider);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(context.tr('parent.linkRequestSubmitted', {'name': childName}))),
       );
-      // GuardianLinkStore خودش notifyListeners می‌کند؛ لیست فرزندان و
-      // نمرات خودکار بازسازی می‌شوند.
       return true;
     },
   );
@@ -175,11 +177,13 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
               onRetry: () => ref.invalidate(linkedChildrenProvider),
             ),
         data: (children) {
-          // درخواست‌های در انتظار تأیید فرزند (اصلاح ۲.۴ — بخش ۱۳ب.۲):
-          // watch روی Store باعث بازسازی خودکار پس از تأیید/رد شاگرد می‌شود.
-          final store = ref.watch(guardianLinkStoreProvider);
-          final parent = ref.watch(authSessionProvider);
-          final pending = store.pendingChildrenOf(parent?.id ?? 'u-parent-demo');
+          // درخواست‌های در انتظار تأیید فرزند (اصلاح ۲.۴ — بخش ۱۳ب.۲) —
+          // رفع اشکال (۲۴ جولای): قبلاً مستقیماً از یک Store محلیِ فقط-Mock
+          // خوانده می‌شد که در حالت Live هرگز پر نمی‌شد؛ اکنون از
+          // `pendingChildLinksProvider` (در حالت Live: `GET
+          // /parents/me/pending-links` واقعی) می‌آید.
+          final pending = ref.watch(pendingChildLinksProvider).valueOrNull ??
+              const <PendingChildLink>[];
 
           if (children.isEmpty) {
             return Column(
@@ -317,7 +321,7 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
 /// بخش ۱۳ب.۲: LINK_PENDING_STUDENT_APPROVAL). فقط اطلاع‌رسانی است؛
 /// تأیید/رد در دست خود شاگرد (پروفایل او) است.
 class _PendingLinksBanner extends StatelessWidget {
-  final List<ParentStudentLink> pending;
+  final List<PendingChildLink> pending;
   const _PendingLinksBanner({required this.pending});
 
   @override
