@@ -54,6 +54,23 @@ Future<void> startSeminarLive(
     return;
   }
 
+  // رفع اشکال ریشه‌ای «دوباره‌ورود به سمینار زندهٔ داخلی خطا می‌دهد»: وقتی
+  // سمینار از قبل زنده است (میزبان قبلاً واقعاً شروع کرده و فقط می‌خواهد
+  // دوباره وارد همان جلسه شود — مثلاً بعد از قطعی موقت شبکه)، این تابع
+  // قبلاً بدون قید‌وشرط دوباره `goLive()` (ساخت/بازیابی Live Input روی
+  // Cloudflare Stream) را صدا می‌زد. چون Cloudflare Stream روی این سرور
+  // اصلاً پیکربندی نشده، هر بار «ورود دوباره» با خطای STREAM_NOT_CONFIGURED
+  // مواجه می‌شد و گفتگوی «پخش زنده در دسترس نیست» را نشان می‌داد — حتی
+  // برای سمینارهایی که همین الان با موفقیت با اتاق Jitsi شروع شده بودند.
+  // اکنون اگر سمینار از قبل زنده است، مستقیم به همان اتاق (بدون تماس تازه
+  // با Cloudflare) بازمی‌گردیم — دقیقاً همان مسیری که شاگردان هم استفاده
+  // می‌کنند (`seminar_card.dart`).
+  if (seminar.isLiveNow) {
+    onWentLive?.call();
+    context.push(AppRoutes.seminarRoom(seminar.id));
+    return;
+  }
+
   showDialog(
     context: context,
     barrierDismissible: false,
