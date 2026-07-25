@@ -94,11 +94,15 @@ export async function getPromotionStatus(
   const withContent = subjectsProgress.filter((s) => s.totalLessons > 0);
   const allSubjectsComplete = withContent.length > 0 && withContent.every((s) => s.percent >= 100);
 
+  // رفع اشکال «امتحان فاینل تک‌مضمونه»: امتحان نهایی از این پس یک امتحان
+  // چندمضمونهٔ واحد برای کل صنف است (migration 0041: final_exams/
+  // final_exam_attempts)، نه یک ردیف جداگانه در `exams` به‌ازای هر مضمون.
+  // منطق و آستانهٔ قبولی (PROMOTION_EXAM_PASS_PERCENT) کاملاً همان قبلی است.
   const bestRow = await db
     .prepare(
-      `SELECT MAX(a.score_percent) AS best FROM exam_attempts a
-       JOIN exams e ON e.id = a.exam_id
-       WHERE a.user_id = ? AND e.grade_number = ? AND e.type = 'final' AND e.status = 'published'`,
+      `SELECT MAX(a.score_percent) AS best FROM final_exam_attempts a
+       JOIN final_exams e ON e.id = a.final_exam_id
+       WHERE a.user_id = ? AND e.grade_number = ? AND e.status = 'published'`,
     )
     .bind(studentId, grade)
     .first<{ best: number | null }>();
@@ -146,6 +150,13 @@ export type ChapterProgress = {
   completed: boolean;
   unlocked: boolean;
   sourceBookId: string | null;
+  // رفع اشکال: قبلاً hasQuiz/quizSubmitted فقط داخل این تابع محاسبه می‌شدند
+  // (برای تصمیم completed/unlocked) ولی هرگز به کلاینت فرستاده نمی‌شدند —
+  // یعنی شاگرد بعد از دیدن همهٔ درس‌های یک فصل که آزمونش ساخته شده، هیچ
+  // نشانه یا راهی برای رفتن به «آزمون فصل» نمی‌دید (پیشرفت ۱۰۰٪ ولی فصل
+  // هرگز completed نمی‌شد و هیچ دکمه‌ای هم نبود). این پرچم دقیقاً همان لحظه
+  // را مشخص می‌کند: آزمون ساخته شده ولی هنوز ارسال نشده.
+  quizPending: boolean;
 };
 
 /**
@@ -164,12 +175,15 @@ export async function getChapterList(
       `SELECT ch.id, ch.title_fa, ch.order_index, ch.source_book_id,
          (SELECT COUNT(*) FROM lessons l WHERE l.chapter_id=ch.id AND l.status='published') AS lesson_count,
          (SELECT COUNT(*) FROM lessons l JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-            WHERE l.chapter_id=ch.id AND l.status='published') AS viewed_count
+            WHERE l.chapter_id=ch.id AND l.status='published') AS viewed_count,
+         (SELECT cq.id FROM chapter_quizzes cq WHERE cq.chapter_id=ch.id AND cq.status='published') AS quiz_id,
+         (SELECT COUNT(*) FROM chapter_quiz_attempts qa JOIN chapter_quizzes cq2 ON cq2.id=qa.quiz_id
+            WHERE cq2.chapter_id=ch.id AND qa.user_id=?) AS quiz_attempted_count
        FROM chapters ch
        WHERE ch.subject_id=? AND ch.grade_number=? AND ch.status='published'
        ORDER BY ch.order_index`,
     )
-    .bind(studentId ?? '', subjectId, grade)
+    .bind(studentId ?? '', studentId ?? '', subjectId, grade)
     .all<{
       id: string;
       title_fa: string;
@@ -177,11 +191,23 @@ export async function getChapterList(
       source_book_id: string | null;
       lesson_count: number;
       viewed_count: number;
+      quiz_id: string | null;
+      quiz_attempted_count: number;
     }>();
 
   let previousCompleted = true; // فصل اول همیشه باز است
   return results.map((r) => {
-    const completed = r.lesson_count > 0 && r.viewed_count >= r.lesson_count;
+    // رفع اشکال/بازطراحی (طبق درخواست صاحب پروژه): اگر برای این فصل یک
+    // «آزمون فصل» با هوش مصنوعی ساخته و منتشر شده باشد (migration 0041 —
+    // lib/chapterQuiz.ts::ensureChapterQuiz، خودکار بعد از دیدن همهٔ درس‌ها)،
+    // معیار «تکمیل» دیگر صرفِ دیدن درس‌ها نیست، بلکه ارسال همان آزمون است —
+    // فصل بعدی فقط بعد از سپری‌کردن امتحان فصل باز می‌شود. اگر (به هر دلیلی،
+    // مثلاً هوش مصنوعی پیکربندی نشده) هیچ آزمونی برای این فصل ساخته نشده،
+    // fail-safe: به همان رفتار قدیمی (دیدن تمام درس‌ها) برمی‌گردیم تا هیچ
+    // شاگردی برای همیشه پشت قفل نماند.
+    const hasQuiz = r.quiz_id != null;
+    const quizSubmitted = (r.quiz_attempted_count ?? 0) > 0;
+    const completed = hasQuiz ? quizSubmitted : r.lesson_count > 0 && r.viewed_count >= r.lesson_count;
     const percent = r.lesson_count > 0 ? Math.round((r.viewed_count / r.lesson_count) * 1000) / 10 : 0;
     const unlocked = previousCompleted;
     previousCompleted = completed;
@@ -195,6 +221,7 @@ export async function getChapterList(
       completed,
       unlocked,
       sourceBookId: r.source_book_id,
+      quizPending: hasQuiz && !quizSubmitted,
     };
   });
 }

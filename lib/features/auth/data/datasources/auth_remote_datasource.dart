@@ -241,6 +241,7 @@ class AuthRemoteDataSource implements AuthDataSource {
         awaitingParentLink: current.awaitingParentLink,
         avatarUrl: url,
         emailVerified: current.emailVerified,
+        permissions: current.permissions,
       );
     }
     return url;
@@ -338,6 +339,7 @@ class AuthRemoteDataSource implements AuthDataSource {
           j['awaitingParentLink'] == true || j['awaiting_parent_link'] == true,
       avatarUrl: (avatarRaw == null || avatarRaw.isEmpty) ? null : _absoluteUrl(avatarRaw),
       emailVerified: j['emailVerified'] == true || j['email_verified'] == true,
+      permissions: (j['permissions'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 
@@ -352,6 +354,8 @@ class AuthRemoteDataSource implements AuthDataSource {
       case 'super_admin':
       case 'superAdmin':
         return AppUserRole.superAdmin;
+      case 'admin':
+        return AppUserRole.admin;
       case 'parent':
         return AppUserRole.parent;
       case 'seminar_instructor':

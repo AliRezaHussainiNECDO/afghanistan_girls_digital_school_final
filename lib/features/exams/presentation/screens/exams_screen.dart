@@ -47,6 +47,10 @@ class ExamsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
+            // امتحان فاینل چندمضمونهٔ صنف (backend/src/routes/finalExams.ts) —
+            // یک امتحان واحد برای کل صنف، جدا از امتحانات تک‌مضمونهٔ پایین.
+            _FinalExamEntryCard(onTap: () => context.push(AppRoutes.finalExam)),
+            const SizedBox(height: 22),
             officialAsync.when(
               loading: () => const _SectionLoading(),
               error: (e, st) => ErrorView(
@@ -257,6 +261,45 @@ class _ExamResultCard extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ورودی به «امتحان فاینل» چندمضمونهٔ صنف (جدا از امتحانات تک‌مضمونهٔ پایین
+/// این صفحه) — یک امتحان واحد برای کل صنف با حداقل ۳ سؤال از هر مضمون.
+class _FinalExamEntryCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _FinalExamEntryCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(gradient: AppColors.goldCelebrationGradient, borderRadius: BorderRadius.circular(AppRadii.lg)),
+          child: const Row(
+            children: [
+              Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 30),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('امتحان فاینل صنف', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                    SizedBox(height: 2),
+                    Text('دروازهٔ ارتقا به صنف بعدی', style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
             ],
           ),
         ),

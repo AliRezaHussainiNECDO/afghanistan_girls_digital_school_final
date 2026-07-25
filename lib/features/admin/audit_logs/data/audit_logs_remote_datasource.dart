@@ -15,12 +15,17 @@ class AuditLogsRemoteDataSource {
     String? actionType,
     String? priority,
     String? before,
+    // فیلتر بر اساس عامل (actor_id) — برای «پروندهٔ فعالیت مدیر» (بخش
+    // «مدیریت مدیران») که فقط اقدامات یک مدیر مشخص را می‌خواهد. سرور از قبل
+    // این فیلتر را پشتیبانی می‌کند (routes/admin.ts GET /admin/audit-logs).
+    String? actorId,
     int limit = 100,
   }) async {
     final data = await _api.get('/admin/audit-logs', queryParameters: {
       if (actionType != null && actionType.isNotEmpty) 'actionType': actionType,
       if (priority != null && priority.isNotEmpty) 'priority': priority,
       if (before != null && before.isNotEmpty) 'before': before,
+      if (actorId != null && actorId.isNotEmpty) 'actorId': actorId,
       'limit': limit,
     });
     final logs = (data is Map ? data['logs'] : null);

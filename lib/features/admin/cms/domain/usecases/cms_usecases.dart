@@ -14,35 +14,6 @@ class SetStatusParams extends Equatable {
   List<Object?> get props => [id, status];
 }
 
-// ─────────────────────────── BOOKS ───────────────────────────
-class GetBooksUseCase implements UseCase<List<CmsBookRow>, NoParams> {
-  final CmsRepository repository;
-  GetBooksUseCase(this.repository);
-  @override
-  Future<Either<Failure, List<CmsBookRow>>> call(NoParams params) => repository.getBooks();
-}
-
-class SaveBookUseCase implements UseCase<CmsBookRow, CmsBookRow> {
-  final CmsRepository repository;
-  SaveBookUseCase(this.repository);
-  @override
-  Future<Either<Failure, CmsBookRow>> call(CmsBookRow params) => repository.saveBook(params);
-}
-
-class DeleteBookUseCase implements UseCase<Unit, String> {
-  final CmsRepository repository;
-  DeleteBookUseCase(this.repository);
-  @override
-  Future<Either<Failure, Unit>> call(String id) => repository.deleteBook(id);
-}
-
-class SetBookStatusUseCase implements UseCase<Unit, SetStatusParams> {
-  final CmsRepository repository;
-  SetBookStatusUseCase(this.repository);
-  @override
-  Future<Either<Failure, Unit>> call(SetStatusParams p) => repository.setBookStatus(p.id, p.status);
-}
-
 // ─────────────────────────── LESSONS ───────────────────────────
 class GetLessonsUseCase implements UseCase<List<CmsLessonRow>, NoParams> {
   final CmsRepository repository;
@@ -70,35 +41,6 @@ class SetLessonStatusUseCase implements UseCase<Unit, SetStatusParams> {
   SetLessonStatusUseCase(this.repository);
   @override
   Future<Either<Failure, Unit>> call(SetStatusParams p) => repository.setLessonStatus(p.id, p.status);
-}
-
-// ─────────────────────────── QUESTIONS ───────────────────────────
-class GetQuestionsUseCase implements UseCase<List<CmsQuestionRow>, NoParams> {
-  final CmsRepository repository;
-  GetQuestionsUseCase(this.repository);
-  @override
-  Future<Either<Failure, List<CmsQuestionRow>>> call(NoParams params) => repository.getQuestions();
-}
-
-class SaveQuestionUseCase implements UseCase<CmsQuestionRow, CmsQuestionRow> {
-  final CmsRepository repository;
-  SaveQuestionUseCase(this.repository);
-  @override
-  Future<Either<Failure, CmsQuestionRow>> call(CmsQuestionRow params) => repository.saveQuestion(params);
-}
-
-class DeleteQuestionUseCase implements UseCase<Unit, String> {
-  final CmsRepository repository;
-  DeleteQuestionUseCase(this.repository);
-  @override
-  Future<Either<Failure, Unit>> call(String id) => repository.deleteQuestion(id);
-}
-
-class SetQuestionStatusUseCase implements UseCase<Unit, SetStatusParams> {
-  final CmsRepository repository;
-  SetQuestionStatusUseCase(this.repository);
-  @override
-  Future<Either<Failure, Unit>> call(SetStatusParams p) => repository.setQuestionStatus(p.id, p.status);
 }
 
 // ─────────────────────────── INVITE CODES ───────────────────────────

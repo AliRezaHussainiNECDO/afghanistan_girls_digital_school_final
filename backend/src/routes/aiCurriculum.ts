@@ -26,6 +26,7 @@ import { geminiGenerate, geminiGenerateImage, rateLimitFailBody, DARI_OUTPUT_RUL
 import { AI_PENDING_MARKER } from '../lib/aiLessonContent';
 import { getChapterList } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -44,7 +45,12 @@ function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
 
 async function adminId(c: any): Promise<string | null> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
-  return p?.['role'] === 'super_admin' ? ((p['sub'] as string) ?? null) : null;
+  if (!p?.['sub']) return null;
+  if (p['role'] === 'super_admin') return p['sub'] as string;
+  if (p['role'] === 'admin' && (await hasAdminPermission(c.env.DB, p['sub'] as string, 'manage_content'))) {
+    return p['sub'] as string;
+  }
+  return null;
 }
 
 /**

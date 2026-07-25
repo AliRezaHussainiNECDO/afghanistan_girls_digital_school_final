@@ -16,13 +16,15 @@ import seminarsRouter from './routes/seminars';
 import parentsRouter from './routes/parents';
 import aiRouter from './routes/ai';
 import mediaRouter from './routes/media';
-import cmsRouter from './routes/cms';
 import memoryRouter from './routes/memory';
 import academyRouter from './routes/academy';
 import advisorRouter from './routes/advisor';
 import homeworkRouter from './routes/homework';
 import devicesRouter from './routes/devices';
 import aiCurriculumRouter from './routes/aiCurriculum';
+import chapterQuizzesRouter from './routes/chapterQuizzes';
+import finalExamsRouter from './routes/finalExams';
+import { notifyFinalExamRetakesDue } from './lib/finalExamRetakeNotify';
 
 type Bindings = {
   DB: D1Database;
@@ -152,6 +154,12 @@ app.route('/api/v1', aiCurriculumRouter);
 // ─────────────────────── امتحانات، نمرات و گواهی‌نامه ───────────────────────
 app.route('/api/v1', examsRouter);
 
+// ───────── «آزمون فصل» خودکار با AI (migration 0041، lib/chapterQuiz.ts) ────
+app.route('/api/v1', chapterQuizzesRouter);
+
+// ───────── امتحان فاینل چندمضمونهٔ صنف + اعادهٔ ۱۵ روزه (migration 0041) ─────
+app.route('/api/v1', finalExamsRouter);
+
 // ───────────────────────────── حاضری و اعلان‌ها ─────────────────────────────
 app.route('/api/v1', engagementRouter);
 
@@ -170,8 +178,14 @@ app.route('/api/v1', aiRouter);
 // ───────────── چت (متن/صوت)، کتابخانهٔ PDF، فایل‌ها روی R2، رضایت‌نامه ────────
 app.route('/api/v1', mediaRouter);
 
-// ───────────────────────── تألیف محتوای مدیر (CMS) ─────────────────────────
-app.route('/api/v1/admin/cms', cmsRouter);
+// رفع اشکال (پاک‌سازی کد مرده): مسیرهای `/admin/cms/books` و
+// `/admin/cms/questions` (routes/cms.ts) هیچ‌گاه از کلاینت واقعی صدا زده
+// نمی‌شدند — تب «کتاب‌ها»/«سؤالات» در پنل مدیر از ابتدا به روتر `academy`
+// (کتابخانه/بانک سؤال واقعی که شاگردان می‌بینند) وصل بود. `/admin/cms/
+// lessons` هم مشابه، به `/admin/curriculum/lessons` منتقل شده بود. پس کل
+// `routes/cms.ts` و mountِ آن (به‌همراه جدول‌های `cms_books`/`cms_lessons`/
+// `cms_questions` — نگاه کن migrations/0042) حذف شد تا کد بی‌اثر منبع
+// سردرگمی/باگ آینده نشود.
 
 // ─────────────────────────── حافظهٔ جمعی (فید اجتماعی) ──────────────────────
 app.route('/api/v1', memoryRouter);
@@ -188,4 +202,16 @@ app.route('/api/v1', homeworkRouter);
 // ─────────────── ثبت/حذف توکن دستگاه برای Push Notification (FCM) ──────────
 app.route('/api/v1', devicesRouter);
 
-export default app;
+// ─────────── Cron روزانه: پوش نوتیفیکیشن «فرصت تلاش دوبارهٔ امتحان فاینل» ───
+// migration 0043 + lib/finalExamRetakeNotify.ts. تلاش دوم بعد از ۱۵ روز از
+// تلاش ناکام به‌طور Lazy (بدون Cron) در routes/finalExams.ts باز می‌شود، اما
+// اگر شاگرد خودش سراغ صفحهٔ امتحان نرود کسی به او یادآوری نمی‌کرد؛ این Cron
+// هر روز یک‌بار (نگاه کنید به [triggers] در wrangler.toml) چک می‌کند کدام
+// تلاش‌های ناکام امروز به ۱۵ روزشان رسیده‌اند و هنوز اطلاع داده نشده‌اند.
+async function scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+  ctx.waitUntil(
+    notifyFinalExamRetakesDue(env).catch((err) => console.error('[scheduled] notifyFinalExamRetakesDue failed —', err)),
+  );
+}
+
+export default { fetch: app.fetch, scheduled };

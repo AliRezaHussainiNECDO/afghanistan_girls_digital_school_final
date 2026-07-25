@@ -21,6 +21,7 @@ import { logAudit, clientIp } from '../lib/audit';
 import { rateLimitFailBody, GEMINI_DEFAULT_MODEL, DARI_OUTPUT_RULES, sanitizeDariText } from '../lib/gemini';
 import { ensureLessonContextCache } from '../lib/geminiCache';
 import { isPendingAiContent, pendingSummary } from '../lib/aiLessonContent';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -703,9 +704,12 @@ const SUBJECT_SEED: { id: string; nameFa: string }[] = [
 ];
 const DEFAULT_PERSONA = 'دقیق و قدم‌به‌قدم، با مثال‌های بومی افغانستان.';
 
+/** Super Admin همیشه؛ مدیر زیرمجموعه فقط با دسترسی 'manage_content'. */
 async function requireAdminAi(c: any): Promise<boolean> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
-  return p?.['role'] === 'super_admin';
+  if (p?.['role'] === 'super_admin') return true;
+  if (p?.['role'] === 'admin') return hasAdminPermission(c.env.DB, p['sub'] as string, 'manage_content');
+  return false;
 }
 
 function personaJson(r: any) {

@@ -6,6 +6,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 
 /// یک درس در نمای ویرایشگر — نسخهٔ سبک، فقط فیلدهای لازم برای این صفحه.
@@ -421,7 +422,7 @@ class _LessonEditorScreenState extends ConsumerState<LessonEditorScreen> {
     final scheme = Theme.of(context).colorScheme;
     return AppScaffold(
       title: context.tr('lessonEditor.title', {'subject': widget.subjectNameFa, 'grade': '${widget.grade}'}),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: _loading
           ? const LoadingView()
           : _error != null

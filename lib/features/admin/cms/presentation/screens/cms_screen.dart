@@ -12,6 +12,7 @@ import '../../../../../core/widgets/language_theme_menu.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../../shared_models/subject.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../academy/domain/academy_entities.dart';
 import '../../../../academy/presentation/academy_providers.dart';
 import '../../../../academy/presentation/widgets/academy_shared.dart' as ash;
@@ -36,7 +37,7 @@ class CmsScreen extends ConsumerWidget {
     return DefaultTabController(
       length: 5,
       child: Scaffold(
-        drawer: const AppDrawer(role: AppUserRole.superAdmin),
+        drawer: AppDrawer(role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin),
         backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(
           toolbarHeight: 72,

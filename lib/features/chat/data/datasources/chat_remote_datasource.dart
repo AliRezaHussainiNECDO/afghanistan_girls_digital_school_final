@@ -59,6 +59,7 @@ class ChatRemoteDataSource implements ChatDataSource {
       case AppUserRole.seminarInstructor:
         return 'instructors';
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
       case null:
         return 'admin-support';
     }
@@ -73,6 +74,7 @@ class ChatRemoteDataSource implements ChatDataSource {
       case AppUserRole.seminarInstructor:
         return 'استادان';
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
       case null:
         return '';
     }

@@ -49,6 +49,13 @@ typedef TokenProvider = String? Function();
 /// یا تلاش Refresh در لایهٔ بالاتر.
 typedef UnauthorizedCallback = void Function();
 
+/// امضای تابعی که Refresh Token فعلی را برمی‌گرداند (یا null اگر موجود نیست).
+typedef RefreshTokenProvider = String? Function();
+
+/// امضای Callback بعد از تمدید موفق Token — جفت تازهٔ access/refresh را
+/// برای ذخیرهٔ ماندگار (SharedPreferences و مانند آن) به لایهٔ بالاتر می‌دهد.
+typedef OnTokensRefreshed = void Function(String accessToken, String? refreshToken);
+
 /// خطای تایپ‌دار شبکه/سرور. لایهٔ Repository این را می‌گیرد و به
 /// `Failure` دامنه (بخش `core/errors/failures.dart`) ترجمه می‌کند.
 class ApiException implements Exception {
@@ -119,6 +126,23 @@ class ApiClient {
   late final Dio _dio;
   final TokenProvider? _tokenProvider;
   final UnauthorizedCallback? _onUnauthorized;
+  final RefreshTokenProvider? _refreshTokenProvider;
+  final OnTokensRefreshed? _onTokensRefreshed;
+
+  /// رفع اشکال ریشه‌ای «نشست بعد از چند دقیقه در همه‌جای اپ قطع می‌شود»:
+  /// Access Token فقط ۱۵ دقیقه (۹۰۰ ثانیه — بخش ۳.۳ سند) اعتبار دارد و این
+  /// کاملاً عمدی/امن است؛ Refresh Token هم از قبل ساخته و ذخیره می‌شد، ولی
+  /// **هیچ‌جای اپ واقعاً از آن استفاده نمی‌کرد** — تنها یک‌بار هنگام باز
+  /// کردن اپ (`restoreSession`) صدا زده می‌شد. یعنی بعد از ۱۵ دقیقهٔ اول
+  /// استفادهٔ فعال، اولین درخواست بعدی با ۴۰۱ روبه‌رو می‌شد و مستقیم
+  /// `onUnauthorized` (پاک‌سازی کامل Token، حتی Refresh Token هنوز معتبر)
+  /// صدا زده می‌شد — یعنی هیچ کاربری نمی‌توانست بیش از ۱۵ دقیقهٔ پیوسته از
+  /// اپ استفاده کند بدون این‌که همه‌جا «دسترسی مجاز نیست»/خروج اجباری ببیند.
+  ///
+  /// این فیلد یک Refresh در حال اجرا را نگه می‌دارد تا اگر چند درخواست
+  /// هم‌زمان با ۴۰۱ روبه‌رو شوند، فقط یک‌بار `/auth/refresh` صدا زده شود
+  /// (نه یک‌بار به‌ازای هر درخواست).
+  Future<bool>? _refreshing;
 
   /// کد زبان فعال اپ (fa/en/ps/fr) — برای پیام‌های خطای این کلاینت. این کلاس
   /// همچنان مستقل از Flutter/Riverpod است؛ فقط یک مقدار ساده‌ی رشته‌ای
@@ -204,11 +228,15 @@ class ApiClient {
     String baseUrl = kApiBaseUrl,
     TokenProvider? tokenProvider,
     UnauthorizedCallback? onUnauthorized,
+    RefreshTokenProvider? refreshTokenProvider,
+    OnTokensRefreshed? onTokensRefreshed,
     Dio? dio,
     bool enableLogging = false,
     this.localeCode = 'fa',
   })  : _tokenProvider = tokenProvider,
-        _onUnauthorized = onUnauthorized {
+        _onUnauthorized = onUnauthorized,
+        _refreshTokenProvider = refreshTokenProvider,
+        _onTokensRefreshed = onTokensRefreshed {
     _dio = dio ??
         Dio(
           BaseOptions(
@@ -236,8 +264,36 @@ class ApiClient {
           }
           handler.next(options);
         },
-        onError: (error, handler) {
-          // 401 → به لایهٔ بالاتر خبر بده (Logout/Refresh) اما همچنان خطا را عبور بده.
+        onError: (error, handler) async {
+          // رفع اشکال «قطع نشست بعد از چند دقیقه»: پیش از تسلیم‌شدن به ۴۰۱،
+          // یک تلاش خاموش برای تمدید Token با Refresh Token موجود می‌کنیم و
+          // همان درخواست را دوباره می‌فرستیم — کاربر هیچ‌چیز نمی‌بیند.
+          // مسیرهای auth/refresh و auth/login عمداً استثنا هستند تا حلقهٔ
+          // بی‌پایان پیش نیاید؛ `_retried` هم مانع تلاش دوبارهٔ همان درخواست
+          // می‌شود اگر حتی بعد از تمدید هم ۴۰۱ بگیرد (یعنی نشست واقعاً باطل شده).
+          final path = error.requestOptions.path;
+          final isAuthEndpoint = path.contains('/auth/refresh') || path.contains('/auth/login');
+          final alreadyRetried = error.requestOptions.extra['_retried'] == true;
+          if (error.response?.statusCode == 401 && !isAuthEndpoint && !alreadyRetried) {
+            final refreshed = await _tryRefresh();
+            if (refreshed) {
+              try {
+                final opts = error.requestOptions;
+                opts.extra['_retried'] = true;
+                final newToken = _tokenProvider?.call();
+                if (newToken != null && newToken.isNotEmpty) {
+                  opts.headers['Authorization'] = 'Bearer $newToken';
+                }
+                final response = await _dio.fetch(opts);
+                return handler.resolve(response);
+              } catch (_) {
+                // تمدید موفق بود ولی تلاش دوباره هم شکست خورد — به مسیر
+                // معمولِ زیر (Logout) ادامه بده.
+              }
+            }
+          }
+          // 401 (بعد از تلاش ناموفق تمدید یا نبود Refresh Token) → به لایهٔ
+          // بالاتر خبر بده (Logout) اما همچنان خطا را عبور بده.
           if (error.response?.statusCode == 401) {
             _onUnauthorized?.call();
           }
@@ -388,6 +444,38 @@ class ApiClient {
           ),
         ));
     return _asMap(data);
+  }
+
+  // ───────────────────────── تمدید خاموش Token (Refresh) ─────────────────────
+
+  /// تلاش برای تمدید Token — اگر چند درخواست هم‌زمان با ۴۰۱ روبه‌رو شوند،
+  /// همه همین یک Future در حال اجرا را به اشتراک می‌گذارند (فقط یک
+  /// `/auth/refresh` واقعی فرستاده می‌شود).
+  Future<bool> _tryRefresh() {
+    return _refreshing ??= _doRefresh().whenComplete(() => _refreshing = null);
+  }
+
+  Future<bool> _doRefresh() async {
+    final refresh = _refreshTokenProvider?.call();
+    if (refresh == null || refresh.isEmpty) return false;
+    try {
+      // از `_dio.post` مستقیم (نه `refreshToken()`/`_request` این کلاس)
+      // استفاده می‌شود تا نگاشت خطای معمول/پرتاب Exception اینجا اتفاق
+      // نیفتد — این متد فقط true/false برمی‌گرداند.
+      final response = await _dio.post('/auth/refresh', data: {'refreshToken': refresh});
+      final data = response.data;
+      if (data is Map) {
+        final newAccess = data['accessToken']?.toString();
+        final newRefresh = (data['refreshToken'] ?? data['refresh_token'])?.toString();
+        if (newAccess != null && newAccess.isNotEmpty) {
+          _onTokensRefreshed?.call(newAccess, newRefresh);
+          return true;
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ───────────────────────── هستهٔ اجرا + نگاشت خطا ─────────────────────────

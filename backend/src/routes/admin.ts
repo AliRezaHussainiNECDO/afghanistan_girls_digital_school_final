@@ -34,7 +34,7 @@
  *   POST   /curriculum-library/lessons/:id/split                تقسیم یک درس به دو درس
  */
 import { Hono } from 'hono';
-import { verifyBearer } from '../lib/auth';
+import { verifyBearer, hashPassword } from '../lib/auth';
 import {
   sendEmail,
   resetEmailHtml,
@@ -46,6 +46,7 @@ import { logAudit, clientIp } from '../lib/audit';
 import { embedText } from '../lib/embeddings';
 import { structureBookText, aiRenameFallbackChapters, smartFixRtlText } from '../lib/curriculumStructuring';
 import { encryptField, resolveEncryptedContact } from '../lib/columnCrypto';
+import { ADMIN_PERMISSIONS, isValidPermission, hasAdminPermission, getAdminPermissions, type AdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -68,8 +69,30 @@ function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
   return { success: false, error: { code, message_fa: fa, message_en: en, message_ps: ps ?? en, message_fr: fr ?? en } };
 }
 
-/** فقط Super Admin. در صورت مجاز، شناسه را برمی‌گرداند؛ در غیر این صورت null. */
-async function requireAdmin(c: any): Promise<string | null> {
+/**
+ * دسترسی مدیر — Super Admin همیشه مجاز است (بدون قید دسترسی). یک «مدیر
+ * زیرمجموعه» (role='admin' — بخش «مدیریت مدیران») فقط اگر `permission`ِ
+ * درخواستی را در جدول admin_permissions داشته باشد مجاز می‌شود. اگر
+ * `permission` داده نشود (خط پایه)، هر مدیر (Super یا زیرمجموعه) صرف‌نظر
+ * از دسترسی‌های اختصاصی‌اش مجاز است — فقط برای صفحات فقط-نمایشیِ عمومی
+ * مثل داشبورد/پایش سیستم که افشای آن‌ها خطری ندارد.
+ * در صورت مجاز، شناسهٔ کاربر را برمی‌گرداند؛ در غیر این صورت null.
+ */
+async function requireAdmin(c: any, permission?: AdminPermission): Promise<string | null> {
+  const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  if (!p?.['sub']) return null;
+  const role = p['role'];
+  const sub = p['sub'] as string;
+  if (role === 'super_admin') return sub;
+  if (role === 'admin') {
+    if (!permission) return sub;
+    if (await hasAdminPermission(c.env.DB, sub, permission)) return sub;
+  }
+  return null;
+}
+
+/** فقط Super Admin — بدون هیچ استثنا، مخصوص عملیات حساس/غیرقابل‌بازگشت (مثل پاک‌سازی کامل نصاب). */
+async function requireSuperAdminOnly(c: any): Promise<string | null> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!p?.['sub'] || p['role'] !== 'super_admin') return null;
   return p['sub'] as string;
@@ -78,7 +101,7 @@ async function requireAdmin(c: any): Promise<string | null> {
 // ────────────────────────────── کاربران ─────────────────────────────────────
 
 admin.get('/users', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const role = c.req.query('role');
   const q = (c.req.query('q') ?? '').trim();
   // توجه: چون این پرس‌وجو حالا با `invite_codes` JOIN می‌شود، هر شرط باید با
@@ -143,7 +166,7 @@ admin.get('/users', async (c) => {
 // می‌مانند تا خودِ مدیر بعد از تأیید کامل، آن‌ها را در یک Migration جداگانه
 // پاک کند (این Endpoint هرگز داده را حذف نمی‌کند — فقط اضافه می‌کند).
 admin.post('/security/backfill-encryption', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireSuperAdminOnly(c);
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   if (!c.env.COLUMN_ENCRYPTION_KEY) {
     return c.json(
@@ -187,13 +210,21 @@ admin.post('/security/backfill-encryption', async (c) => {
 });
 
 admin.patch('/users/:id/toggle-suspend', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_users');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
-  const u = await c.env.DB.prepare('SELECT status FROM users WHERE id = ?')
+  const u = await c.env.DB.prepare('SELECT status, role FROM users WHERE id = ?')
     .bind(id)
-    .first<{ status: string }>();
+    .first<{ status: string; role: string }>();
   if (!u) return c.json(fail('NOT_FOUND', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 404);
+  // یک مدیر زیرمجموعه (حتی با دسترسی manage_users) هرگز نباید بتواند حساب
+  // یک مدیر دیگر (admin/super_admin) را تعلیق/فعال کند — فقط Super Admin.
+  if ((u.role === 'admin' || u.role === 'super_admin')) {
+    const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+    if (payload?.['role'] !== 'super_admin') {
+      return c.json(fail('FORBIDDEN', 'فقط سوپر ادمین می‌تواند حساب مدیران را تغییر دهد', 'Only super admin can modify admin accounts', 'یوازې سوپر اډمین کولی شي د اډمینانو حساب بدل کړي', 'Seul le super admin peut modifier les comptes admin'), 403);
+    }
+  }
   const next = u.status === 'active' ? 'suspended' : 'active';
   await c.env.DB.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(next, id)
@@ -214,12 +245,23 @@ admin.patch('/users/:id/toggle-suspend', async (c) => {
 });
 
 admin.patch('/users/:id', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_users');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = b?.status;
   if (!status || !['active', 'suspended', 'deleted'].includes(status)) {
     return c.json(fail('BAD_REQUEST', 'وضعیت نامعتبر', 'Invalid status', 'ناسمه وضعیت', 'Statut invalide'), 400);
+  }
+  // همان محافظت «فقط سوپر ادمین می‌تواند حساب مدیران را تغییر دهد» — رجوع
+  // به توضیح در /users/:id/toggle-suspend بالا.
+  const targetRole = await c.env.DB.prepare('SELECT role FROM users WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ role: string }>();
+  if (targetRole && (targetRole.role === 'admin' || targetRole.role === 'super_admin')) {
+    const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+    if (payload?.['role'] !== 'super_admin') {
+      return c.json(fail('FORBIDDEN', 'فقط سوپر ادمین می‌تواند حساب مدیران را تغییر دهد', 'Only super admin can modify admin accounts', 'یوازې سوپر اډمین کولی شي د اډمینانو حساب بدل کړي', 'Seul le super admin peut modifier les comptes admin'), 403);
+    }
   }
   await c.env.DB.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(status, c.req.param('id'))
@@ -238,10 +280,166 @@ admin.patch('/users/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// ═══════════════════════ مدیریت مدیران (بخش تازه — دسترسی‌بندی) ════════════
+// «مدیر زیرمجموعه» (role='admin') فقط با یک یا چند دسته از ADMIN_PERMISSIONS
+// (lib/permissions.ts) کار می‌کند — تخصیص/لغو/ساخت فقط با Super Admin است؛
+// هیچ endpoint این بخش با requireAdmin(permission) باز نمی‌شود، همیشه
+// requireSuperAdminOnly — تا یک مدیر زیرمجموعه هرگز نتواند مدیر دیگری بسازد
+// یا دسترسی خودش/دیگران را بالا ببرد.
+
+admin.get('/admins', async (c) => {
+  const adminId = await requireSuperAdminOnly(c);
+  if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, email, first_name, last_name, status, created_at FROM users WHERE role = 'admin' ORDER BY created_at DESC`,
+  ).all<any>();
+  const admins = await Promise.all(
+    results.map(async (u) => ({
+      id: u.id,
+      name: `${u.first_name} ${u.last_name}`.trim(),
+      email: u.email,
+      suspended: u.status !== 'active',
+      createdAt: u.created_at,
+      permissions: await getAdminPermissions(c.env.DB, u.id),
+    })),
+  );
+  return c.json({ admins, availablePermissions: ADMIN_PERMISSIONS });
+});
+
+admin.post('/admins', async (c) => {
+  const superId = await requireSuperAdminOnly(c);
+  if (!superId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const body = await c.req
+    .json<{ email?: string; password?: string; firstName?: string; lastName?: string; permissions?: string[] }>()
+    .catch(() => null);
+  if (!body) return c.json(fail('BAD_REQUEST', 'داده نامعتبر', 'Invalid body', 'ناسم ډاټا', 'Données invalides'), 400);
+  const email = String(body.email ?? '').trim().toLowerCase();
+  const password = String(body.password ?? '');
+  const firstName = String(body.firstName ?? '').trim();
+  const lastName = String(body.lastName ?? '').trim();
+  const permissions = Array.isArray(body.permissions) ? body.permissions : [];
+
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return c.json(fail('INVALID_EMAIL', 'ایمیل نامعتبر است', 'Invalid email', 'بریښنالیک نامعتبر دی', 'E-mail invalide'), 400);
+  }
+  if (password.length < 8) {
+    return c.json(fail('WEAK_PASSWORD', 'رمز عبور باید حداقل ۸ کاراکتر باشد', 'Password too short', 'پټنوم باید لږترلږه ۸ توري ولري', 'Le mot de passe doit comporter au moins 8 caractères'), 400);
+  }
+  if (!firstName) {
+    return c.json(fail('BAD_REQUEST', 'نام الزامی است', 'First name required', 'لومړی نوم اړین دی', 'Le prénom est requis'), 400);
+  }
+  const invalidPermission = permissions.find((p) => !isValidPermission(p));
+  if (invalidPermission) {
+    return c.json(fail('INVALID_PERMISSION', 'دستهٔ دسترسی نامعتبر است', 'Invalid permission', 'ناسمه اجازه', 'Permission invalide'), 400);
+  }
+
+  const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+  if (existing) {
+    return c.json(fail('EMAIL_TAKEN', 'این ایمیل قبلاً ثبت شده است', 'Email already registered', 'دا بریښنالیک دمخه ثبت شوی دی', 'Cette adresse e-mail est déjà enregistrée'), 409);
+  }
+
+  const id = uid();
+  const passwordHash = await hashPassword(password);
+  const stmts = [
+    c.env.DB.prepare(
+      `INSERT INTO users (id, email, password_hash, first_name, last_name, role, status, email_verified, preferred_language)
+       VALUES (?, ?, ?, ?, ?, 'admin', 'active', 1, 'fa')`,
+    ).bind(id, email, passwordHash, firstName, lastName),
+    ...permissions.map((perm) =>
+      c.env.DB.prepare(
+        `INSERT OR IGNORE INTO admin_permissions (id, user_id, permission, granted_by) VALUES (?, ?, ?, ?)`,
+      ).bind(uid(), id, perm, superId),
+    ),
+  ];
+  await c.env.DB.batch(stmts);
+
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: superId,
+      actorRole: 'super_admin',
+      actionType: 'admin_create',
+      targetTable: 'users',
+      targetId: id,
+      afterValue: { email, permissions },
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
+  return c.json({ success: true, admin: { id, email, name: `${firstName} ${lastName}`.trim(), permissions, suspended: false } }, 201);
+});
+
+admin.patch('/admins/:id/permissions', async (c) => {
+  const superId = await requireSuperAdminOnly(c);
+  if (!superId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  const target = await c.env.DB.prepare("SELECT role FROM users WHERE id = ?").bind(id).first<{ role: string }>();
+  if (!target || target.role !== 'admin') {
+    return c.json(fail('NOT_FOUND', 'مدیر یافت نشد', 'Admin not found', 'اډمین ونه موندل شو', 'Administrateur introuvable'), 404);
+  }
+  const body = await c.req.json<{ permissions?: string[] }>().catch(() => null);
+  const permissions = Array.isArray(body?.permissions) ? body!.permissions! : [];
+  const invalidPermission = permissions.find((p) => !isValidPermission(p));
+  if (invalidPermission) {
+    return c.json(fail('INVALID_PERMISSION', 'دستهٔ دسترسی نامعتبر است', 'Invalid permission', 'ناسمه اجازه', 'Permission invalide'), 400);
+  }
+  const before = await getAdminPermissions(c.env.DB, id);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM admin_permissions WHERE user_id = ?').bind(id),
+    ...permissions.map((perm) =>
+      c.env.DB.prepare(
+        `INSERT OR IGNORE INTO admin_permissions (id, user_id, permission, granted_by) VALUES (?, ?, ?, ?)`,
+      ).bind(uid(), id, perm, superId),
+    ),
+  ]);
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: superId,
+      actorRole: 'super_admin',
+      actionType: 'admin_permissions_update',
+      targetTable: 'admin_permissions',
+      targetId: id,
+      beforeValue: { permissions: before },
+      afterValue: { permissions },
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
+  return c.json({ success: true, permissions });
+});
+
+admin.patch('/admins/:id/toggle-suspend', async (c) => {
+  const superId = await requireSuperAdminOnly(c);
+  if (!superId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  if (id === superId) {
+    return c.json(fail('BAD_REQUEST', 'نمی‌توانید حساب خودتان را تعلیق کنید', 'Cannot suspend your own account', 'تاسو نشئ کولی خپل حساب معلق کړئ', 'Vous ne pouvez pas suspendre votre propre compte'), 400);
+  }
+  const u = await c.env.DB.prepare("SELECT status, role FROM users WHERE id = ?").bind(id).first<{ status: string; role: string }>();
+  if (!u || u.role !== 'admin') {
+    return c.json(fail('NOT_FOUND', 'مدیر یافت نشد', 'Admin not found', 'اډمین ونه موندل شو', 'Administrateur introuvable'), 404);
+  }
+  const next = u.status === 'active' ? 'suspended' : 'active';
+  await c.env.DB.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?").bind(next, id).run();
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: superId,
+      actorRole: 'super_admin',
+      actionType: 'admin_status_change',
+      targetTable: 'users',
+      targetId: id,
+      beforeValue: { status: u.status },
+      afterValue: { status: next },
+      ipAddress: clientIp(c),
+      priority: 'high',
+    }),
+  );
+  return c.json({ success: true, status: next });
+});
+
 // ─────────────────────────── کدهای دعوت (بخش ۳ب.۳) ──────────────────────────
 
 admin.get('/invite-codes', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_invite_codes'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const type = c.req.query('type');
   const status = c.req.query('status');
   const clauses: string[] = ['1=1'];
@@ -263,7 +461,7 @@ admin.get('/invite-codes', async (c) => {
 });
 
 admin.post('/invite-codes/bulk-generate', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_invite_codes');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ type?: string; count?: number; batchLabel?: string }>().catch(() => null);
   const type = b?.type === 'instructor' ? 'instructor' : 'student';
@@ -299,7 +497,7 @@ admin.post('/invite-codes/bulk-generate', async (c) => {
 });
 
 admin.patch('/invite-codes/:id/revoke', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_invite_codes');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   await c.env.DB.prepare("UPDATE invite_codes SET status = 'revoked' WHERE id = ? AND status = 'unused'")
     .bind(c.req.param('id'))
@@ -336,7 +534,7 @@ function codeJson(r: any) {
 // جدول خودش Append-only است (Trigger در Migration 0026)؛ این Endpoint فقط
 // خواندن/فیلتر است — هیچ مسیر ویرایش/حذفی عمداً وجود ندارد.
 admin.get('/audit-logs', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'view_reports_audit'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const clauses: string[] = ['1=1'];
   const binds: any[] = [];
   const actionType = c.req.query('actionType');
@@ -650,7 +848,7 @@ admin.get('/system-health', async (c) => {
 // همهٔ اعداد از دادهٔ واقعی D1 محاسبه می‌شوند (نه مقادیر ثابت).
 
 admin.get('/reports/summary', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'view_reports_audit'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
 
   const one = async (sql: string, ...binds: any[]) => {
     const r = await c.env.DB.prepare(sql).bind(...binds).first<{ n: number }>();
@@ -694,7 +892,7 @@ admin.get('/reports/summary', async (c) => {
 // موارد ذخیره‌شده + موارد at-risk سنتزشده از فعالیت واقعی.
 
 admin.get('/safety-queue', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_safety_chat'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
 
   const { results: stored } = await c.env.DB.prepare(
     'SELECT * FROM safety_events ORDER BY detected_at DESC',
@@ -731,7 +929,7 @@ admin.get('/safety-queue', async (c) => {
 });
 
 admin.patch('/safety-queue/:id/resolve', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_safety_chat');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = b?.status ?? 'reviewed';
@@ -854,7 +1052,7 @@ async function studentSummary(db: D1Database, u: any): Promise<Record<string, un
 }
 
 admin.get('/students', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const q = (c.req.query('q') ?? '').trim();
   const grade = c.req.query('grade');
   const province = c.req.query('province');
@@ -905,7 +1103,7 @@ admin.get('/students', async (c) => {
 // تا با داشبورد خود شاگرد و داشبورد والد دقیقاً یکسان باشد؛ فقط میانگین
 // کوییز/امتحان و وضعیت تفصیلی (قبول/مردود) مختص این گزارش مدیریتی است.
 admin.get('/students/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
   if (!u || u.role !== 'student') {
@@ -1052,7 +1250,7 @@ admin.get('/students/:id', async (c) => {
 // ۱۵.۲). رفع اشکال: قبلاً این اقدام فقط در ProgressionStore محلی روی
 // گوشی مدیر انجام می‌شد و هرگز روی دیتابیس واقعی اثر نمی‌گذاشت.
 admin.post('/students/:id/promote', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare("SELECT current_grade FROM users WHERE id = ? AND role='student'")
     .bind(id)
@@ -1066,7 +1264,7 @@ admin.post('/students/:id/promote', async (c) => {
 });
 
 admin.post('/students/:id/demote', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare("SELECT current_grade FROM users WHERE id = ? AND role='student'")
     .bind(id)
@@ -1080,7 +1278,7 @@ admin.post('/students/:id/demote', async (c) => {
 });
 
 admin.get('/students/:id/ai-report', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare('SELECT current_grade FROM users WHERE id = ?').bind(id).first<any>();
   if (!u) return c.json(fail('NOT_FOUND', 'شاگرد یافت نشد', 'Student not found', 'زده‌کوونکی ونه موندل شو', 'Élève introuvable'), 404);
@@ -1146,7 +1344,7 @@ admin.get('/students/:id/ai-report', async (c) => {
 });
 
 admin.patch('/students/:id/status', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_users');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string; reason?: string }>().catch(() => null);
   const status = b?.status;
@@ -1183,7 +1381,7 @@ admin.patch('/students/:id/status', async (c) => {
 });
 
 admin.post('/students/:id/password-reset-link', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireAdmin(c, 'manage_users');
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare('SELECT id, email, first_name FROM users WHERE id = ?')
@@ -1229,7 +1427,7 @@ admin.post('/students/:id/password-reset-link', async (c) => {
 // والد در داشبورد خودشان می‌بینند).
 
 admin.get('/parents', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const q = (c.req.query('q') ?? '').trim();
   const status = c.req.query('status');
   const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
@@ -1283,7 +1481,7 @@ admin.get('/parents', async (c) => {
 });
 
 admin.get('/parents/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_users'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const u = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first<any>();
   if (!u || u.role !== 'parent') {
@@ -1437,7 +1635,7 @@ async function applyChapterPublish(
 }
 
 admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const subjectId = c.req.param('subjectId');
   const b = await c.req
     .json<{
@@ -1493,7 +1691,7 @@ admin.post('/curriculum/subjects/:subjectId/publish-chapters', async (c) => {
 // (اگر کلاینت فصلی تشخیص نداد) و هم بعداً به‌صورت دستی («بازسازی نصاب») از
 // همان ردیف کتاب در «مدیریت معلم هوشمند».
 admin.post('/curriculum-library/books/:id/auto-structure', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const bookId = c.req.param('id');
   const book = await c.env.DB.prepare('SELECT * FROM curriculum_library_books WHERE id = ?')
     .bind(bookId)
@@ -1645,7 +1843,7 @@ async function fixBookRtlText(
 
 /** رفع اصلاحیِ متن یک کتاب مشخص — دکمهٔ «رفع متن نامنظم» روی هر ردیف کتاب در «مدیریت معلم هوشمند». */
 admin.post('/curriculum-library/books/:id/fix-rtl-text', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const bookId = c.req.param('id');
   const book = await c.env.DB.prepare('SELECT * FROM curriculum_library_books WHERE id = ?')
     .bind(bookId)
@@ -1663,7 +1861,7 @@ admin.post('/curriculum-library/books/:id/fix-rtl-text', async (c) => {
  * خطای یک کتاب مانع رسیدگی به بقیه نمی‌شود.
  */
 admin.post('/curriculum-library/books/fix-rtl-text-all', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results: books } = await c.env.DB.prepare('SELECT * FROM curriculum_library_books')
     .all<{ id: string; subject_id: string; title: string; grade_id: number; extracted_text: string }>();
 
@@ -1717,7 +1915,7 @@ async function wipeAllLearningData(db: D1Database) {
 }
 
 admin.post('/curriculum-library/wipe-all', async (c) => {
-  const adminId = await requireAdmin(c);
+  const adminId = await requireSuperAdminOnly(c);
   if (!adminId) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const body = await c.req.json<{ confirm?: string; resetLearningData?: boolean }>().catch(() => null);
   if (body?.confirm !== 'WIPE_ALL_CURRICULUM') {
@@ -1803,7 +2001,7 @@ function estimateMinutes(content: string): number {
 
 /** ویرایش دستی عنوان/محتوای یک درس — ویرایشگر متن کامل «مدیریت معلم هوشمند». */
 admin.patch('/curriculum-library/lessons/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const lessonId = c.req.param('id');
   const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
     .bind(lessonId)
@@ -1843,7 +2041,7 @@ admin.patch('/curriculum-library/lessons/:id', async (c) => {
 
 /** حذف یک درس مشخص (و بازدیدهای وابسته به آن). */
 admin.delete('/curriculum-library/lessons/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const lessonId = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM student_lesson_views WHERE lesson_id = ?').bind(lessonId).run();
   try {
@@ -1860,7 +2058,7 @@ admin.delete('/curriculum-library/lessons/:id', async (c) => {
  * دقیقاً همان‌ها را هدف بگیرد.
  */
 admin.post('/curriculum-library/lessons/:id/rebuild', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const lessonId = c.req.param('id');
   const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
     .bind(lessonId)
@@ -1880,7 +2078,7 @@ admin.post('/curriculum-library/lessons/:id/rebuild', async (c) => {
 
 /** جابجایی یک درس به فصل دیگر (همان کتاب یا حتی فصل دیگر) — انتهای فصل مقصد قرار می‌گیرد. */
 admin.post('/curriculum-library/lessons/:id/move', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const lessonId = c.req.param('id');
   const body = await c.req.json<{ targetChapterId?: string }>().catch(() => null);
   const targetChapterId = String(body?.targetChapterId ?? '').trim();
@@ -1904,7 +2102,7 @@ admin.post('/curriculum-library/lessons/:id/move', async (c) => {
 
 /** ادغام یک فصل در فصل دیگر — همهٔ درس‌های فصل مبدأ به انتهای فصل مقصد منتقل و فصل مبدأ حذف می‌شود. */
 admin.post('/curriculum-library/chapters/:id/merge-into/:targetId', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const sourceId = c.req.param('id');
   const targetId = c.req.param('targetId');
   if (sourceId === targetId) {
@@ -1939,7 +2137,7 @@ admin.post('/curriculum-library/chapters/:id/merge-into/:targetId', async (c) =>
 
 /** ویرایش عنوان یک فصل — طبق درخواست کاربر: مدیر باید بعد از ساختاربندی خودکار هوش مصنوعی، اختیار کامل اصلاح داشته باشد. */
 admin.patch('/curriculum-library/chapters/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const chapterId = c.req.param('id');
   const chapter = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(chapterId).first();
   if (!chapter) return c.json(fail('NOT_FOUND', 'فصل یافت نشد', 'Chapter not found', 'فصل ونه موندل شو', 'Chapitre introuvable'), 404);
@@ -1955,7 +2153,7 @@ admin.patch('/curriculum-library/chapters/:id', async (c) => {
  * برای فصل‌های اشتباهی/تکراری که هوش مصنوعی یا آپلود قبلی ساخته است.
  */
 admin.delete('/curriculum-library/chapters/:id', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const chapterId = c.req.param('id');
   const chapter = await c.env.DB.prepare('SELECT id FROM chapters WHERE id = ?').bind(chapterId).first();
   if (!chapter) return c.json(fail('NOT_FOUND', 'فصل یافت نشد', 'Chapter not found', 'فصل ونه موندل شو', 'Chapitre introuvable'), 404);
@@ -1986,7 +2184,7 @@ admin.delete('/curriculum-library/chapters/:id', async (c) => {
  * می‌دارد، یک درس تازه بلافاصله بعد از آن (همان فصل) با بخش دوم ساخته می‌شود.
  */
 admin.post('/curriculum-library/lessons/:id/split', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const lessonId = c.req.param('id');
   const lesson = await c.env.DB.prepare('SELECT * FROM lessons WHERE id = ?')
     .bind(lessonId)
@@ -2032,7 +2230,7 @@ admin.post('/curriculum-library/lessons/:id/split', async (c) => {
  * `curriculum_library_books` وجود ندارد) را پیدا و حذف می‌کند.
  */
 admin.post('/curriculum-library/cleanup-orphaned-chapters', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
 
   const { results: orphaned } = await c.env.DB.prepare(
     `SELECT ch.id FROM chapters ch
@@ -2099,7 +2297,7 @@ async function embedLessonsBatch(
 // دلیلی ناموفق مانده، مدیر می‌تواند از این‌جا برای *همهٔ* صنوف و مضامین یک‌جا
 // نمایه‌سازی را کامل کند.
 admin.get('/ai-teacher/embeddings/status', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   try {
     const total = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM lessons WHERE status='published'").first<{
       n: number;
@@ -2112,7 +2310,7 @@ admin.get('/ai-teacher/embeddings/status', async (c) => {
 });
 
 admin.post('/ai-teacher/embeddings/backfill', async (c) => {
-  if (!(await requireAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!(await requireAdmin(c, 'manage_content'))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   if (!c.env.AI_PROVIDER_KEY) {
     return c.json(fail('AI_NOT_CONFIGURED', 'کلید هوش مصنوعی تنظیم نشده است', 'AI provider not configured', 'د مصنوعي هوښیارتیا کیلي تنظیم شوې نه ده', 'La clé d\'intelligence artificielle n\'est pas configurée'), 503);
   }

@@ -28,6 +28,7 @@ import { verifyBearer } from '../lib/auth';
 import { awardPoints, POINTS_PER_HOMEWORK_GRADED } from '../lib/progress';
 import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -214,7 +215,11 @@ homework.get('/homework/:id', async (c) => {
 
 homework.post('/homework', async (c) => {
   const actor = await me(c);
-  if (!actor || actor.role !== 'super_admin') {
+  const canAssign =
+    !!actor &&
+    (actor.role === 'super_admin' ||
+      (actor.role === 'admin' && (await hasAdminPermission(c.env.DB, actor.sub, 'manage_content'))));
+  if (!canAssign) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const b = await c.req.json<Record<string, any>>().catch(() => null);

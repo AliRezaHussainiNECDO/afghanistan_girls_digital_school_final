@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/academy_entities.dart';
 import '../academy_providers.dart';
 import '../widgets/academy_shared.dart';
@@ -29,7 +30,7 @@ class _AdminSubmissionsScreenState extends ConsumerState<AdminSubmissionsScreen>
     final scheme = Theme.of(context).colorScheme;
     return AppScaffold(
       title: context.tr('academy.submissionsListTitle'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: async.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(

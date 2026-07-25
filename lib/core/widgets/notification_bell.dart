@@ -51,6 +51,7 @@ class _NotificationBellState extends ConsumerState<NotificationBell> {
   String get _targetRoute {
     switch (widget.role) {
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
         return AppRoutes.adminNotifications;
       case AppUserRole.parent:
         return AppRoutes.parentNotifications;

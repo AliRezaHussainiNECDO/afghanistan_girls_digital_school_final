@@ -10,17 +10,18 @@ import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
 import { gradeEssaysWithAi } from '../lib/essayGrading';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
   BUCKET: R2Bucket;
   JWT_SECRET: string;
-  // هوش مصنوعی — برای نمره‌دهی سمت سرور سؤالات تشریحیِ تمرین مضامین (همان
-  // پیکربندی exams.ts؛ اختیاری — در نبود کلید، تشریحی‌ها از مخرج نمره حذف
-  // می‌شوند، نه اینکه ظالمانه صفر بگیرند).
-  AI_PROVIDER_KEY?: string;
-  AI_PROVIDER_URL?: string;
-  AI_MODEL?: string;
+  // هوش مصنوعی — برای نمره‌دهی سمت سرور سؤالات تشریحیِ تمرین مضامین، از
+  // Gemini استفاده می‌شود (همان GEMINI_API_KEY نصاب درسی/exams.ts؛ اختیاری —
+  // در نبود کلید، تشریحی‌ها از مخرج نمره حذف می‌شوند، نه اینکه ظالمانه صفر
+  // بگیرند).
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
 };
 
 const academy = new Hono<{ Bindings: Bindings }>();
@@ -34,6 +35,16 @@ async function me(c: any): Promise<{ sub: string; role: string } | null> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!p?.['sub']) return null;
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
+}
+
+/**
+ * آیا کاربر مدیریت محتوای آکادمی را می‌تواند بنویسد؟ Super Admin همیشه؛
+ * مدیر زیرمجموعه فقط با دسترسی 'manage_content' (بخش «مدیریت مدیران»).
+ */
+async function canManageContent(c: any, u: { sub: string; role: string }): Promise<boolean> {
+  if (u.role === 'super_admin') return true;
+  if (u.role === 'admin') return hasAdminPermission(c.env.DB, u.sub, 'manage_content');
+  return false;
 }
 
 // ─────────────────────────────── Books ──────────────────────────────────────
@@ -71,17 +82,16 @@ academy.get('/academy/books', async (c) => {
   // می‌دیدند چون این Route فقط احراز هویت را چک می‌کرد، نه نقش. اکنون فقط
   // مدیر (که نمای کامل مدیریت محتوا را می‌بیند) پیش‌نویس‌ها را هم می‌بیند؛
   // بقیهٔ نقش‌ها فقط کتاب‌های منتشرشده را.
-  const stmt =
-    u.role === 'super_admin'
-      ? c.env.DB.prepare('SELECT * FROM academy_books ORDER BY updated_at DESC')
-      : c.env.DB.prepare("SELECT * FROM academy_books WHERE status = 'published' ORDER BY updated_at DESC");
+  const stmt = (await canManageContent(c, u))
+    ? c.env.DB.prepare('SELECT * FROM academy_books ORDER BY updated_at DESC')
+    : c.env.DB.prepare("SELECT * FROM academy_books WHERE status = 'published' ORDER BY updated_at DESC");
   const { results } = await stmt.all<any>();
   return c.json({ books: results.map(bookJson) });
 });
 
 academy.post('/academy/books', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!u || !(await canManageContent(c, u))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<Record<string, any>>().catch(() => null);
   if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
   const id = String(b.id ?? '').trim() || `lb_${Date.now()}`;
@@ -125,7 +135,7 @@ academy.post('/academy/books', async (c) => {
 
 academy.delete('/academy/books/:id', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!u || !(await canManageContent(c, u))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const row = await c.env.DB.prepare('SELECT pdf_key FROM academy_books WHERE id = ?').bind(id).first<{ pdf_key: string }>();
   if (row?.pdf_key) await c.env.BUCKET.delete(row.pdf_key);
@@ -151,7 +161,7 @@ academy.delete('/academy/books/:id', async (c) => {
 // می‌توانستند واقعاً دانلود کنند.
 academy.post('/academy/books/:id/pdf', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!u || !(await canManageContent(c, u))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const exists = await c.env.DB.prepare('SELECT id FROM academy_books WHERE id = ?').bind(id).first();
   if (!exists) return c.json(fail('NOT_FOUND', 'کتاب یافت نشد', 'Book not found', 'کتاب ونه موندل شو', 'Livre introuvable'), 404);
@@ -211,7 +221,7 @@ academy.get('/academy/questions', async (c) => {
 
 academy.post('/academy/questions', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!u || !(await canManageContent(c, u))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<Record<string, any>>().catch(() => null);
   if (!b) return c.json(fail('BAD_REQUEST', 'بدنه نامعتبر', 'Invalid body', 'ناسم متن', 'Contenu invalide'), 400);
   const id = String(b.id ?? '').trim() || `bq_${Date.now()}`;
@@ -247,7 +257,7 @@ academy.post('/academy/questions', async (c) => {
 
 academy.delete('/academy/questions/:id', async (c) => {
   const u = await me(c);
-  if (!u || u.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!u || !(await canManageContent(c, u))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM academy_questions WHERE id = ?').bind(id).run();
   c.executionCtx.waitUntil(

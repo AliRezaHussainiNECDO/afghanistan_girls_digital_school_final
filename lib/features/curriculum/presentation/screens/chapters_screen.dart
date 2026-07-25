@@ -112,6 +112,12 @@ class _ChapterCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final locked = !chapter.unlocked;
     final completed = chapter.completed;
+    // رفع اشکال: قبلاً وقتی همهٔ درس‌های فصل دیده می‌شد ولی «آزمون فصل»
+    // (خودکار با AI) هنوز ارسال نشده بود، این حالت هیچ نمایش/دکمهٔ جداگانه‌ای
+    // نداشت — کارت مثل «در حال انجام معمولی» با نوار پیشرفت ۱۰۰٪ می‌ماند و
+    // شاگرد هیچ راهی برای رسیدن به صفحهٔ آزمون (که از قبل ساخته شده بود)
+    // نمی‌دید. حالا حالت جداگانه و برجسته دارد.
+    final quizPending = !locked && !completed && chapter.quizPending;
 
     Color iconBg;
     Widget iconChild;
@@ -121,11 +127,21 @@ class _ChapterCard extends StatelessWidget {
     } else if (completed) {
       iconBg = AppColors.green600;
       iconChild = const Icon(Icons.check_rounded, color: Colors.white, size: 22);
+    } else if (quizPending) {
+      iconBg = AppColors.orange600;
+      iconChild = const Icon(Icons.quiz_rounded, color: Colors.white, size: 20);
     } else {
       iconBg = scheme.primary;
       iconChild = Text('${chapter.orderIndex}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800));
     }
+
+    final iconAvatar = Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+      child: Center(child: iconChild),
+    );
 
     return Material(
       color: locked ? scheme.surfaceContainerLowest.withValues(alpha: 0.55) : scheme.surfaceContainerLowest,
@@ -141,25 +157,34 @@ class _ChapterCard extends StatelessWidget {
             );
             return;
           }
+          if (quizPending) {
+            context.push(AppRoutes.chapterQuiz(subjectId, chapter.id));
+            return;
+          }
           context.push(AppRoutes.curriculumLessons(subjectId, chapter.id));
         },
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.lg),
+            color: quizPending ? AppColors.orange600.withValues(alpha: 0.07) : null,
             border: Border.all(
-              color: completed ? AppColors.green600.withValues(alpha: 0.4) : scheme.outlineVariant,
+              color: completed
+                  ? AppColors.green600.withValues(alpha: 0.4)
+                  : quizPending
+                      ? AppColors.orange600.withValues(alpha: 0.45)
+                      : scheme.outlineVariant,
+              width: quizPending ? 1.4 : 1,
             ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-                child: Center(child: iconChild),
-              ),
+              quizPending
+                  ? iconAvatar
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scaleXY(begin: 1.0, end: 1.08, duration: 900.ms, curve: Curves.easeInOut)
+                  : iconAvatar,
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -172,6 +197,16 @@ class _ChapterCard extends StatelessWidget {
                         color: locked ? scheme.onSurfaceVariant : scheme.onSurface,
                       ),
                     ),
+                    // نصاب چندزبانه: وقتی زبان اپ غیر دری است ولی این فصل هنوز
+                    // ترجمه نشده، متن دری Fallback با یک نشان کوچک مشخص می‌شود
+                    // (طبق درخواست صاحب پروژه) — نه صفحهٔ خالی، نه گمراه‌کننده.
+                    if (!chapter.translated) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        context.tr('curriculum.notYetTranslated'),
+                        style: TextStyle(fontSize: 9.5, fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant),
+                      ),
+                    ],
                     const SizedBox(height: 3),
                     Text(
                       locked
@@ -179,13 +214,34 @@ class _ChapterCard extends StatelessWidget {
                           : (completed
                               ? context.tr('curriculum.chapterCompletedLessons',
                                   {'count': '${chapter.lessonCount}'})
-                              : context.tr('curriculum.lessonsViewedCount',
-                                  {'viewed': '${chapter.viewedCount}', 'total': '${chapter.lessonCount}'})),
-                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                              : (quizPending
+                                  ? context.tr('curriculum.chapterQuizPendingHint')
+                                  : context.tr('curriculum.lessonsViewedCount',
+                                      {'viewed': '${chapter.viewedCount}', 'total': '${chapter.lessonCount}'}))),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: quizPending ? FontWeight.w700 : FontWeight.w400,
+                        color: quizPending ? AppColors.orange700 : scheme.onSurfaceVariant,
+                      ),
                     ),
-                    if (!locked && !completed) ...[
+                    if (!locked && !completed && !quizPending) ...[
                       const SizedBox(height: 8),
                       SubjectProgressBar(percent: chapter.progressPercent, compact: true),
+                    ],
+                    if (quizPending) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.orange600,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          onPressed: () => context.push(AppRoutes.chapterQuiz(subjectId, chapter.id)),
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          label: Text(context.tr('curriculum.chapterQuizPendingCta')),
+                        ),
+                      ),
                     ],
                   ],
                 ),
@@ -193,7 +249,7 @@ class _ChapterCard extends StatelessWidget {
               const SizedBox(width: 6),
               if (completed)
                 const Icon(Icons.emoji_events_rounded, color: AppColors.green600, size: 20)
-              else if (!locked)
+              else if (!locked && !quizPending)
                 Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
             ],
           ),

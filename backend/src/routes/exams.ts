@@ -29,6 +29,7 @@ import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
 import { gradeEssaysWithAi, callAiJsonArrayLenient } from '../lib/essayGrading';
 import { signCertificate, verifyCertificateSignature } from '../lib/certSigning';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -36,12 +37,12 @@ type Bindings = {
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;
-  // هوش مصنوعی — همان پیکربندی ai.ts (سازگار با Chat Completions استاندارد):
-  // برای «تولید سؤال با AI» و «نمره‌دهی سؤالات تشریحی». اختیاری — در نبود
-  // کلید، تولید سؤال 503 برمی‌گرداند و تشریحی‌ها از مخرج نمره حذف می‌شوند.
-  AI_PROVIDER_KEY?: string;
-  AI_PROVIDER_URL?: string;
-  AI_MODEL?: string;
+  // هوش مصنوعی — برای «تولید سؤال با AI» و «نمره‌دهی سؤالات تشریحی» از
+  // Gemini استفاده می‌شود (نگاه کنید به essayGrading.ts؛ همان GEMINI_API_KEY
+  // که برای نصاب درسی پیکربندی شده). اختیاری — در نبود کلید، تولید سؤال
+  // 503 برمی‌گرداند و تشریحی‌ها از مخرج نمره حذف می‌شوند.
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
   // امضای دیجیتال گواهی‌نامه (ECDSA P-256) — `wrangler secret put
   // CERT_SIGNING_PRIVATE_KEY`؛ در نبودش گواهی بدون امضا صادر می‌شود.
   CERT_SIGNING_PRIVATE_KEY?: string;
@@ -58,6 +59,17 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!p?.['sub']) return null;
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
+}
+
+/**
+ * آیا کاربر مدیریت آزمون‌ها/گواهی‌نامه‌ها را می‌تواند انجام دهد؟ Super Admin
+ * همیشه؛ مدیر زیرمجموعه فقط با دسترسی 'manage_exams' (بخش «مدیریت مدیران»).
+ */
+async function canManageExams(c: any, u: { sub: string; role: string } | null): Promise<boolean> {
+  if (!u) return false;
+  if (u.role === 'super_admin') return true;
+  if (u.role === 'admin') return hasAdminPermission(c.env.DB, u.sub, 'manage_exams');
+  return false;
 }
 
 const TYPE_MAP: Record<string, string> = {
@@ -523,7 +535,7 @@ exams.post('/admin/certificates', async (c) => {
   // باشد (بدون بررسی نقش) — یعنی هر شاگرد/والد/استاد می‌توانست برای خودش یا
   // هر studentId دلخواه گواهی‌نامهٔ فارغ‌التحصیلی صادر کند. مثل بقیهٔ
   // Endpointهای `/admin/*` این بخش، باید فقط مدیر ارشد مجاز باشد.
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<any>().catch(() => null);
   if (!b?.studentId) return c.json(fail('BAD_REQUEST', 'ورودی ناقص', 'Missing fields', 'نیمګړی ننوت', 'Entrée incomplète'), 400);
   const id = uid();
@@ -588,7 +600,7 @@ exams.delete('/admin/certificates/:id', async (c) => {
   const me = await auth(c);
   // رفع اشکال امنیتی: مثل بالا، ابطال گواهی هم قبلاً فقط به ورود‌شدن نیاز
   // داشت، نه به نقش مدیر.
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   const before = await c.env.DB.prepare('SELECT student_id, serial FROM certificates WHERE id = ?').bind(id).first<{ student_id: string; serial: string }>();
   await c.env.DB.prepare('DELETE FROM certificates WHERE id = ?').bind(id).run();
@@ -760,14 +772,14 @@ const ADMIN_EXAM_SELECT = `
 
 exams.get('/admin/exams', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(`${ADMIN_EXAM_SELECT} ORDER BY e.grade_number, e.created_at DESC`).all<any>();
   return c.json({ exams: results.map(adminExamJson) });
 });
 
 exams.post('/admin/exams', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req
     .json<{
       id?: string;
@@ -812,7 +824,7 @@ exams.post('/admin/exams', async (c) => {
 
 exams.patch('/admin/exams/:id/status', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const b = await c.req.json<{ status?: string }>().catch(() => null);
   const status = EXAM_STATUSES.has(String(b?.status)) ? String(b!.status) : 'draft';
   await c.env.DB.prepare('UPDATE exams SET status = ? WHERE id = ?').bind(status, c.req.param('id')).run();
@@ -821,7 +833,7 @@ exams.patch('/admin/exams/:id/status', async (c) => {
 
 exams.delete('/admin/exams/:id', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const examId = c.req.param('id');
   const before = await c.env.DB.prepare('SELECT title, subject_id, grade_number FROM exams WHERE id = ?').bind(examId).first<any>();
   await c.env.DB.prepare('DELETE FROM exam_attempts WHERE exam_id = ?').bind(examId).run();
@@ -846,7 +858,7 @@ exams.delete('/admin/exams/:id', async (c) => {
 
 exams.get('/admin/exams/:examId/questions', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const { results } = await c.env.DB.prepare(
     'SELECT id, exam_id, text, options, correct_index, order_index, q_type, answer_text FROM questions WHERE exam_id = ? ORDER BY order_index',
   )
@@ -867,7 +879,7 @@ exams.get('/admin/exams/:examId/questions', async (c) => {
 
 exams.post('/admin/exams/:examId/questions', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const examId = c.req.param('examId');
   const examExists = await c.env.DB.prepare('SELECT id FROM exams WHERE id = ?').bind(examId).first();
   if (!examExists) return c.json(fail('NOT_FOUND', 'امتحان یافت نشد', 'Exam not found', 'ازموینه ونه موندل شوه', 'Examen introuvable'), 404);
@@ -943,8 +955,8 @@ exams.post('/admin/exams/:examId/questions', async (c) => {
 // جدول `questions` ذخیره می‌کند (در ادامهٔ order_index موجود).
 exams.post('/admin/exams/:examId/generate-questions', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
-  if (!c.env.AI_PROVIDER_KEY) {
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!c.env.GEMINI_API_KEY) {
     return c.json(fail('AI_NOT_CONFIGURED', 'موتور هوش مصنوعی سرور پیکربندی نشده است', 'AI provider not configured', 'د سرور د مصنوعي هوښیارتیا انجن تنظیم شوی نه دی', 'Le moteur d\'IA du serveur n\'est pas configuré'), 503);
   }
   const examId = c.req.param('examId');
@@ -1053,7 +1065,7 @@ exams.post('/admin/exams/:examId/generate-questions', async (c) => {
 
 exams.delete('/admin/questions/:id', async (c) => {
   const me = await auth(c);
-  if (!me || me.role !== 'super_admin') return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  if (!me || !(await canManageExams(c, me))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM questions WHERE id = ?').bind(id).run();
   c.executionCtx.waitUntil(

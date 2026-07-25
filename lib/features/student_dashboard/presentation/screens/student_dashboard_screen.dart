@@ -101,12 +101,23 @@ class StudentDashboardScreen extends ConsumerWidget {
                 .slideY(begin: 0.12, end: 0, duration: 420.ms, curve: Curves.easeOutCubic),
             const SizedBox(height: 18),
 
+            // ── تقسیم اوقات هوشمند امروز — به بالای صفحه منتقل شد ──
+            // قبلاً این کارت (شخصی‌سازی‌شده و ساختهٔ هوش مصنوعی) پایین صفحه،
+            // بعد از انتخاب صنف، دفن شده بود. طبق تصمیم: مهم‌ترین محتوای
+            // شخصی باید اولین چیزی باشد که شاگرد می‌بیند.
+            const TodayScheduleCard()
+                .animate()
+                .fadeIn(delay: 60.ms, duration: 400.ms)
+                .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 18),
+
             // ── بخش‌های اصلی برنامه — هماهنگ با مینوی کشویی شاگرد ──
-            // طبق درخواست صاحب پروژه: صفحهٔ اول شاگرد باید با بخش‌های اصلی
-            // مینوی شاگردان (منبع حقیقت: `_studentItems` در `app_drawer.dart`)
-            // هماهنگ باشد تا هر بخش، بدون باز کردن منو، مستقیماً از خانه
-            // قابل دسترس باشد. عنوان‌ها از همان کلیدهای ترجمهٔ `nav.*` مینو
-            // خوانده می‌شوند تا هرگز بین منو و خانه ناهماهنگی پیش نیاید.
+            // نسخهٔ فشرده‌شده: آیتم‌هایی که پایین‌تر در همین صفحه با کارت
+            // اختصاصی و اطلاعات بیشتر (درصد پیشرفت، زیرنویس، تاریخ) نشان
+            // داده می‌شوند — برنامهٔ درسی، مشق، امتحانات، سمینارها — از این
+            // گرید حذف شدند تا تکرار نشوند. فقط بخش‌هایی که در جای دیگرِ
+            // صفحهٔ اول نمایانده نمی‌شوند این‌جا باقی مانده‌اند (منبع حقیقت
+            // کامل هنوز مینوی کشویی است: `_studentItems` در `app_drawer.dart`).
             Row(
               children: [
                 Icon(Icons.apps_rounded, size: 18, color: scheme.primary),
@@ -118,8 +129,8 @@ class StudentDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             const _MainSectionsGrid()
                 .animate()
-                .fadeIn(delay: 60.ms, duration: 400.ms)
-                .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
+                .fadeIn(delay: 80.ms, duration: 400.ms)
+                .slideY(begin: 0.10, end: 0, delay: 80.ms, duration: 400.ms, curve: Curves.easeOutCubic),
             const SizedBox(height: 18),
 
             // ── انتخاب صنف + مضامین همان صنف ──
@@ -140,18 +151,6 @@ class StudentDashboardScreen extends ConsumerWidget {
             const SizedBox(height: 10),
             const GradeSubjectsGrid(),
             const SizedBox(height: 20),
-
-            // ── تقسیم اوقات هوشمند امروز (ساخته‌شده توسط هوش مصنوعی) ──
-            const TodayScheduleCard()
-                .animate()
-                .fadeIn(delay: 80.ms, duration: 400.ms)
-                .slideY(
-                    begin: 0.12,
-                    end: 0,
-                    delay: 80.ms,
-                    duration: 400.ms,
-                    curve: Curves.easeOutCubic),
-            const SizedBox(height: 16),
 
             // ── ادامهٔ یادگیری: چند مضمون «در حال انجام» (نه فقط یکی) ──
             // رفع اشکال قبلی: همیشه فقط اولین مضمون برنامهٔ درسی نشان داده
@@ -288,13 +287,9 @@ class _MainSectionsGrid extends StatelessWidget {
 
   static const _sections = [
     _SectionItem(Icons.map_rounded, 'nav.gradeMap', AppRoutes.gradeMap, AppColors.info),
-    _SectionItem(Icons.menu_book_rounded, 'nav.curriculum', AppRoutes.curriculum, AppColors.orange600),
-    _SectionItem(Icons.assignment_turned_in_rounded, 'nav.homework', AppRoutes.homework, AppColors.orange500),
     _SectionItem(Icons.volunteer_activism_rounded, 'nav.advisor', AppRoutes.advisor, AppColors.danger),
-    _SectionItem(Icons.assignment_rounded, 'nav.exams', AppRoutes.exams, AppColors.green600),
     _SectionItem(Icons.event_available_rounded, 'nav.attendance', AppRoutes.attendance, AppColors.green500),
     _SectionItem(Icons.local_library_rounded, 'nav.library', AppRoutes.library, AppColors.gold600),
-    _SectionItem(Icons.groups_rounded, 'nav.seminars', AppRoutes.seminars, AppColors.info),
     _SectionItem(Icons.chat_bubble_rounded, 'nav.chat', AppRoutes.chat, AppColors.orange400),
     _SectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
     _SectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.notifications, AppColors.gold500),

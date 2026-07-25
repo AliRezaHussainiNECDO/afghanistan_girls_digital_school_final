@@ -85,6 +85,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (user == null) return;
     switch (user.role) {
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
         context.go(AppRoutes.adminDashboard);
         break;
       case AppUserRole.student:

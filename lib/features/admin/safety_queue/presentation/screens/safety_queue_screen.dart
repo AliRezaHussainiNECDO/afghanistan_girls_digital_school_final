@@ -7,6 +7,7 @@ import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/safety_queue_item.dart';
 import '../../domain/usecases/safety_queue_usecases.dart';
 import '../providers/safety_queue_providers.dart';
@@ -77,7 +78,7 @@ class SafetyQueueScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: context.tr('admin.safetyQueue'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: queueAsync.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(

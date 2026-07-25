@@ -3,12 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../../app/router/app_routes.dart';
 import '../../../../../app/theme/design_tokens.dart';
+import '../../../../../core/instructor/instructor_directory.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/user_avatar.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
+import '../../../parent_management/presentation/providers/parent_management_providers.dart';
 import '../providers/user_management_providers.dart';
 
 class UserManagementScreen extends ConsumerWidget {
@@ -21,7 +24,7 @@ class UserManagementScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: context.tr('admin.users'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: Column(
         children: [
           Padding(
@@ -195,6 +198,19 @@ class UserManagementScreen extends ConsumerWidget {
                           value: !u.suspended,
                           onChanged: (_) async {
                             await ref.read(toggleSuspendUseCaseProvider).call(u.id);
+                            // رفع اشکال: این لیست عمومی (همهٔ نقش‌ها) قبلاً فقط
+                            // خودش را تازه می‌کرد؛ کش اختصاصی «مدیریت استادان»
+                            // (Singleton درون‌حافظه‌ای `InstructorDirectory`) و
+                            // «مدیریت والدین» (`parentsProvider`/`parentDetailProvider`)
+                            // هرگز آگاه نمی‌شدند — نتیجه: مسدود/فعال‌سازی یک
+                            // استاد یا والد از اینجا، در صفحهٔ اختصاصی او وضعیت
+                            // قدیمی/ناهماهنگ نشان می‌داد تا وقتی اپ بسته می‌شد.
+                            if (u.role == 'seminar_instructor') {
+                              InstructorDirectory.instance.setSuspended(u.id, !u.suspended);
+                            } else if (u.role == 'parent') {
+                              ref.invalidate(parentsProvider);
+                              ref.invalidate(parentDetailProvider(u.id));
+                            }
                             ref.invalidate(adminUsersProvider);
                           },
                         ),

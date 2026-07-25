@@ -112,9 +112,14 @@ class ParentMockDataSource implements ParentDataSource {
       achievements: achievements,
       certificates: certificateTitles,
       // سمینارها صفحهٔ اختصاصی خود را دارند (ParentSeminarsScreen)؛ اینجا
-      // فقط عنوان‌های نمونهٔ پیش رو نمایش داده می‌شود (بخش ۱۳ب.۳: فقط
-      // عنوان/تاریخ، نه محتوای سمینار).
-      upcomingSeminarTitles: const ['مهارت‌های مطالعهٔ مؤثر'],
+      // فقط یک نمونهٔ ثبت‌نامِ پیش رو برای دمو نشان داده می‌شود.
+      seminarParticipation: [
+        ChildSeminarParticipation(
+          title: 'مهارت‌های مطالعهٔ مؤثر',
+          scheduledStart: DateTime.now().add(const Duration(days: 1)),
+          status: 'registered',
+        ),
+      ],
       pointsTotal: mockPointsTotal,
       pointsLevel: mockPointsLevel,
       pointsLevelTitleFa: mockPointsLevelTitleFa,

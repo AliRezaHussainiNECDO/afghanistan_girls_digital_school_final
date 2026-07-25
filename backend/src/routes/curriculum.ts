@@ -32,9 +32,32 @@ import {
 import { autoAssignLessonHomework } from '../lib/lessonHomework';
 import { logAudit, clientIp } from '../lib/audit';
 import { rateLimitFailBody } from '../lib/gemini';
+import { hasAdminPermission } from '../lib/permissions';
 import { ensureLessonContent, isPendingAiContent } from '../lib/aiLessonContent';
+import { ensureChapterQuiz } from '../lib/chapterQuiz';
+import {
+  type EntityType,
+  type TranslationRow,
+  getPublishedTranslation,
+  getPublishedTranslationsMap,
+  listTranslations,
+  translateWithAi,
+  updateTranslationFields,
+  deleteTranslation,
+  upsertTranslation,
+} from '../lib/contentTranslation';
 
-type Bindings = { DB: D1Database; JWT_SECRET: string; GEMINI_API_KEY?: string; GEMINI_VISION_MODEL?: string; };
+type Bindings = {
+  DB: D1Database;
+  JWT_SECRET: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_VISION_MODEL?: string;
+  // «آزمون فصل» خودکار (lib/chapterQuiz.ts) — همان env سراسری AI که
+  // routes/exams.ts هم استفاده می‌کند (envهای Worker مشترک بین همهٔ روت‌ها).
+  AI_PROVIDER_KEY?: string;
+  AI_PROVIDER_URL?: string;
+  AI_MODEL?: string;
+};
 const c11m = new Hono<{ Bindings: Bindings }>();
 
 function fail(code: string, fa: string, en: string, ps?: string, fr?: string) {
@@ -62,14 +85,66 @@ function lessonLockedBody() {
     "Cette leçon est verrouillée. Terminez d'abord la leçon précédente.",
   );
 }
+/** Super Admin همیشه؛ مدیر زیرمجموعه فقط با دسترسی 'manage_content'. */
 async function isAdmin(c: any): Promise<boolean> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
-  return payload?.['role'] === 'super_admin';
+  if (payload?.['role'] === 'super_admin') return true;
+  if (payload?.['role'] === 'admin') {
+    return hasAdminPermission(c.env.DB, payload['sub'] as string, 'manage_content');
+  }
+  return false;
 }
 /** شناسهٔ مدیر جاری — برای audit_logs (بخش ۲۰.۳). null یعنی مجاز نیست. */
 async function adminId(c: any): Promise<string | null> {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
-  return payload?.['role'] === 'super_admin' ? ((payload['sub'] as string) ?? null) : null;
+  if (!payload?.['sub']) return null;
+  if (payload['role'] === 'super_admin') return payload['sub'] as string;
+  if (payload['role'] === 'admin' && (await hasAdminPermission(c.env.DB, payload['sub'] as string, 'manage_content'))) {
+    return payload['sub'] as string;
+  }
+  return null;
+}
+
+// ─────────────────── چندزبانه‌سازی نصاب (fa اصلی + ترجمه) ─────────────────
+// طبق درخواست صاحب پروژه: شاگردی که `?lang=ps` بفرستد، عنوان/متن ترجمه‌شدهٔ
+// **منتشرشده** را می‌بیند؛ اگر ترجمه‌ای موجود/منتشر نباشد، همان دری اصلی با
+// `translated:false` برمی‌گردد (هرگز صفحهٔ خالی — Fallback امن). بدون
+// `?lang` یا `lang=fa`، رفتار دقیقاً مثل قبل است (سازگاری کامل با اپ‌های
+// نصب‌شدهٔ قبلی که این پارامتر را نمی‌فرستند).
+async function applyLanguage<T extends Record<string, any>>(
+  c: any,
+  entityType: EntityType,
+  rows: T[],
+  idOf: (r: T) => string,
+  withTitle: (r: T, title: string) => T,
+): Promise<any[]> {
+  const lang = (c.req.query('lang') ?? 'fa').trim();
+  if (!lang || lang === 'fa' || rows.length === 0) {
+    return rows.map((r) => ({ ...r, translated: false }));
+  }
+  const map = await getPublishedTranslationsMap(c.env.DB, entityType, rows.map(idOf), lang);
+  return rows.map((r) => {
+    const t = map.get(idOf(r));
+    return t ? { ...withTitle(r, t.title), translated: true } : { ...r, translated: false };
+  });
+}
+
+/** مثل [applyLanguage] ولی برای درس‌ها که متن کامل (`body`) هم ترجمه دارند. */
+async function applyLanguageLesson<T extends Record<string, any>>(
+  c: any,
+  rows: T[],
+  idOf: (r: T) => string,
+  withTitleBody: (r: T, title: string, body: string) => T,
+): Promise<any[]> {
+  const lang = (c.req.query('lang') ?? 'fa').trim();
+  if (!lang || lang === 'fa' || rows.length === 0) {
+    return rows.map((r) => ({ ...r, translated: false }));
+  }
+  const map = await getPublishedTranslationsMap(c.env.DB, 'lesson', rows.map(idOf), lang);
+  return rows.map((r) => {
+    const t = map.get(idOf(r));
+    return t ? { ...withTitleBody(r, t.title, t.body), translated: true } : { ...r, translated: false };
+  });
 }
 
 // ─────────────────────────────── Grades ───────────────────────────────────
@@ -93,8 +168,8 @@ c11m.get('/subjects', async (c) => {
      FROM subjects s ORDER BY s.order_index`,
   )
     .bind(grade)
-    .all();
-  return c.json({ subjects: results });
+    .all<any>();
+  return c.json({ subjects: await applyLanguage(c, 'subject', results, (r) => r.id, (r, title) => ({ ...r, name_fa: title })) });
 });
 
 // ────────────────────────────── Chapters ──────────────────────────────────
@@ -106,18 +181,20 @@ c11m.get('/subjects/:subjectId/chapters', async (c) => {
   const grade = Number(c.req.query('grade') ?? '0');
   const uid = await userId(c); // اختیاری — بدون ورود، فقط فصل اول باز نمایش داده می‌شود.
   const chapters = await getChapterList(c.env.DB, subjectId, grade, uid);
+  const rows = chapters.map((ch) => ({
+    id: ch.id,
+    title_fa: ch.titleFa,
+    order_index: ch.orderIndex,
+    lesson_count: ch.lessonCount,
+    viewed_count: ch.viewedCount,
+    progress_percent: ch.percent,
+    completed: ch.completed,
+    unlocked: ch.unlocked,
+    source_book_id: ch.sourceBookId,
+    quiz_pending: ch.quizPending,
+  }));
   return c.json({
-    chapters: chapters.map((ch) => ({
-      id: ch.id,
-      title_fa: ch.titleFa,
-      order_index: ch.orderIndex,
-      lesson_count: ch.lessonCount,
-      viewed_count: ch.viewedCount,
-      progress_percent: ch.percent,
-      completed: ch.completed,
-      unlocked: ch.unlocked,
-      source_book_id: ch.sourceBookId,
-    })),
+    chapters: await applyLanguage(c, 'chapter', rows, (r) => r.id, (r, title) => ({ ...r, title_fa: title })),
   });
 });
 
@@ -151,18 +228,25 @@ c11m.get('/chapters/:chapterId/lessons', async (c) => {
   const locks = await getLessonLockList(c.env.DB, chapterId, uid, chapterUnlocked);
   const lockById = new Map(locks.map((l) => [l.id, l]));
 
+  const rows = results.map((r: any) => {
+    const lock = lockById.get(r.id);
+    return {
+      ...r,
+      // متن درس‌های Lazy (تولید هوشمند) در «فهرست» ارسال نمی‌شود — متن
+      // کامل هنگام باز کردن خود درس (GET /lessons/:id) تولید/برگردانده می‌شود.
+      content_body: isPendingAiContent(r.content_body) ? '' : r.content_body,
+      unlocked: lock ? (lock.unlocked ? 1 : 0) : 1,
+      completed: lock ? (lock.completed ? 1 : 0) : 0,
+    };
+  });
   return c.json({
-    lessons: results.map((r: any) => {
-      const lock = lockById.get(r.id);
-      return {
-        ...r,
-        // متن درس‌های Lazy (تولید هوشمند) در «فهرست» ارسال نمی‌شود — متن
-        // کامل هنگام باز کردن خود درس (GET /lessons/:id) تولید/برگردانده می‌شود.
-        content_body: isPendingAiContent(r.content_body) ? '' : r.content_body,
-        unlocked: lock ? (lock.unlocked ? 1 : 0) : 1,
-        completed: lock ? (lock.completed ? 1 : 0) : 0,
-      };
-    }),
+    lessons: await applyLanguageLesson(c, rows, (r) => r.id, (r, title, body) => ({
+      ...r,
+      title_fa: title,
+      // اگر ترجمهٔ متن کامل موجود نیست ولی عنوان ترجمه شده (مثلاً درس هنوز
+      // Lazy است)، content_body دری (اینجا خالی) دست‌نخورده می‌ماند.
+      content_body: body || r.content_body,
+    })),
   });
 });
 
@@ -214,7 +298,20 @@ c11m.get('/lessons/:lessonId', async (c) => {
   }
 
   const { chapter_title_fa, grade_number, subject_name_fa, ...lesson } = row;
-  return c.json({ lesson });
+
+  // ── ترجمه (فقط منتشرشده) — پس از تولید Lazy متن دری بالا، تا ترجمه‌ای که
+  // قبلاً روی محتوای دری ساخته شده هنوز با همان متن هماهنگ بماند. ──
+  const lang = (c.req.query('lang') ?? 'fa').trim();
+  if (lang && lang !== 'fa') {
+    const t = await getPublishedTranslation(c.env.DB, 'lesson', lessonId, lang);
+    if (t) {
+      return c.json({
+        lesson: { ...lesson, title_fa: t.title, content_body: t.body || lesson.content_body, translated: true },
+      });
+    }
+    return c.json({ lesson: { ...lesson, translated: false } });
+  }
+  return c.json({ lesson: { ...lesson, translated: false } });
 });
 
 // ثبت بازدید درس — ورودی منطق C1 (بخش ۶.۲) + اهدای امتیاز فعالیت (Gamification)
@@ -233,6 +330,15 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
 
   const result = await recordLessonView(c.env.DB, uid, lessonId);
   if (!result.found) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  // «آزمون فصل» خودکار (طبق درخواست صاحب پروژه، lib/chapterQuiz.ts): همین
+  // لحظه که فصل تکمیل شد (همهٔ درس‌هایش دیده شد)، در پس‌زمینه با AI ساخته
+  // می‌شود تا وقتی شاگرد به فهرست فصل‌ها برگردد، آزمون آماده باشد. کاملاً
+  // fail-safe و غیرمسدودکننده — اگر AI پیکربندی نشده/خطا بدهد، هیچ اتفاقی
+  // برای این پاسخ نمی‌افتد (نگاه کنید به کامنت‌های ensureChapterQuiz).
+  if (result.chapterJustCompleted && result.chapterId) {
+    c.executionCtx.waitUntil(ensureChapterQuiz(c.env, result.chapterId));
+  }
 
   // رفع اشکال (طبق درخواست کاربر): قبلاً با همین بازدیدِ اول، کار خانگی
   // خودکار ساخته و ارسال می‌شد — یعنی شاگرد هنوز درس را نخوانده، کار خانگی
@@ -849,6 +955,199 @@ c11m.delete('/admin/curriculum/lessons/:id', async (c) => {
       targetId: id,
       ipAddress: clientIp(c),
       priority: 'high',
+    }),
+  );
+  return c.json({ success: true });
+});
+
+// ═══════════════ ترجمهٔ نصاب (زبان دوم — اول پشتو) ═══════════════════════
+// طبق درخواست صاحب پروژه: شاگردانی که پشتو را ترجیح می‌دهند بتوانند کل نصاب
+// را به پشتو ببینند. معماری: AI فقط پیش‌نویس (`status='draft'`) می‌سازد —
+// تا مدیر با PATCH آن را منتشر (`status='published'`) نکند، هیچ شاگردی
+// نمی‌بیند و Endpointهای عمومی به‌جای آن همان دری اصلی را با پرچم
+// `translated:false` برمی‌گردانند (نگاه کنید به تابع `applyLanguage`
+// پایین‌تر که تمام GET Endpointهای عمومی نصاب از آن استفاده می‌کنند).
+
+function translationJson(t: TranslationRow) {
+  return {
+    id: t.id,
+    entityType: t.entityType,
+    entityId: t.entityId,
+    language: t.language,
+    title: t.title,
+    body: t.body,
+    status: t.status,
+    source: t.source,
+    translatedBy: t.translatedBy,
+    updatedAt: t.updatedAt,
+  };
+}
+
+c11m.post('/admin/curriculum/translate', async (c) => {
+  const admin = await adminId(c);
+  if (!admin) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+
+  const b = await c.req.json<{ entityType?: string; entityId?: string; language?: string }>().catch(() => null);
+  const entityType = b?.entityType;
+  const entityId = String(b?.entityId ?? '').trim();
+  const language = String(b?.language ?? 'ps').trim() || 'ps';
+  if (entityType !== 'subject' && entityType !== 'chapter' && entityType !== 'lesson') {
+    return c.json(fail('BAD_REQUEST', 'نوع محتوا نامعتبر است', 'Invalid entity type', 'د منځپانګې ډول ناسم دی', 'Type de contenu invalide'), 400);
+  }
+  if (!entityId) {
+    return c.json(fail('BAD_REQUEST', 'شناسه لازم است', 'Missing entityId', 'پېژندنه اړینه ده', 'Identifiant manquant'), 400);
+  }
+
+  let sourceTitle = '';
+  let sourceBody = '';
+  let contextLabel = '';
+
+  if (entityType === 'subject') {
+    const row = await c.env.DB.prepare('SELECT name_fa FROM subjects WHERE id=?').bind(entityId).first<{ name_fa: string }>();
+    if (!row) return c.json(fail('NOT_FOUND', 'یافت نشد', 'Not found', 'ونه موندل شو', 'Introuvable'), 404);
+    sourceTitle = row.name_fa;
+    contextLabel = 'عنوان یک مضمون درسی';
+  } else if (entityType === 'chapter') {
+    const row = await c.env.DB.prepare('SELECT title_fa FROM chapters WHERE id=?').bind(entityId).first<{ title_fa: string }>();
+    if (!row) return c.json(fail('NOT_FOUND', 'یافت نشد', 'Not found', 'ونه موندل شو', 'Introuvable'), 404);
+    sourceTitle = row.title_fa;
+    contextLabel = 'عنوان یک فصل نصاب درسی';
+  } else {
+    const row = await c.env.DB.prepare(
+      `SELECT l.title_fa, l.content_body, ch.title_fa AS chapter_title_fa, ch.grade_number, s.name_fa AS subject_name_fa
+         FROM lessons l JOIN chapters ch ON ch.id=l.chapter_id LEFT JOIN subjects s ON s.id=ch.subject_id
+        WHERE l.id=?`,
+    )
+      .bind(entityId)
+      .first<{
+        title_fa: string;
+        content_body: string;
+        chapter_title_fa: string;
+        grade_number: number;
+        subject_name_fa: string | null;
+      }>();
+    if (!row) return c.json(fail('NOT_FOUND', 'یافت نشد', 'Not found', 'ونه موندل شو', 'Introuvable'), 404);
+
+    let contentBody = row.content_body;
+    if (isPendingAiContent(contentBody)) {
+      // اول باید متن دری کامل درس ساخته شود (Lazy) — بدون آن چیزی برای ترجمه نیست.
+      const gen = await ensureLessonContent(
+        c.env,
+        {
+          id: entityId,
+          titleFa: row.title_fa,
+          contentBody,
+          chapterTitleFa: row.chapter_title_fa,
+          subjectNameFa: row.subject_name_fa ?? '',
+          gradeNumber: row.grade_number,
+        },
+        new URL(c.req.url).origin,
+      );
+      if (gen.status === 'rate_limited') return c.json(rateLimitFailBody(), 429);
+      if (gen.status === 'failed') {
+        return c.json(
+          fail('AI_CONTENT_FAILED', 'اول باید متن دری این درس ساخته شود؛ لطفاً دوباره تلاش کنید', 'Dari content must be generated first', 'لومړی د دې درس دري متن باید جوړ شي', "Le contenu en dari doit d'abord être généré"),
+          503,
+        );
+      }
+      contentBody = gen.content;
+    }
+    sourceTitle = row.title_fa;
+    sourceBody = contentBody;
+    contextLabel = 'عنوان و متن کامل یک درس نصاب';
+  }
+
+  const result = await translateWithAi(c.env, {
+    language,
+    sourceTitle,
+    sourceBody: sourceBody || undefined,
+    contextLabel,
+  });
+  if (result.status === 'rate_limited') return c.json(rateLimitFailBody(), 429);
+  if (result.status === 'failed') {
+    return c.json(
+      fail('AI_TRANSLATE_FAILED', 'ترجمه با هوش مصنوعی ممکن نشد؛ لطفاً دوباره تلاش کنید', 'AI translation failed', 'د AI ژباړه ناکامه شوه', "La traduction par IA a échoué"),
+      503,
+    );
+  }
+
+  const translation = await upsertTranslation(c.env.DB, {
+    entityType: entityType as EntityType,
+    entityId,
+    language,
+    title: result.title,
+    body: result.body,
+    status: 'draft',
+    source: 'ai',
+    translatedBy: admin,
+  });
+
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: admin,
+      actorRole: 'admin',
+      actionType: 'content_translate',
+      targetTable: 'content_translations',
+      targetId: translation.id,
+      afterValue: { entityType, entityId, language },
+      ipAddress: clientIp(c),
+    }),
+  );
+
+  return c.json({ translation: translationJson(translation) });
+});
+
+c11m.get('/admin/curriculum/translations', async (c) => {
+  if (!(await isAdmin(c))) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const entityType = c.req.query('entityType') as EntityType | undefined;
+  const entityId = c.req.query('entityId') ?? undefined;
+  const language = c.req.query('language') ?? 'ps';
+  const translations = await listTranslations(c.env.DB, { entityType, entityId, language });
+  return c.json({ translations: translations.map(translationJson) });
+});
+
+c11m.patch('/admin/curriculum/translations/:id', async (c) => {
+  const admin = await adminId(c);
+  if (!admin) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  const b = await c.req.json<{ title?: string; body?: string; status?: string }>().catch(() => null);
+  const status = b?.status === 'published' ? 'published' : b?.status === 'draft' ? 'draft' : undefined;
+  const translation = await updateTranslationFields(c.env.DB, id, {
+    title: b?.title !== undefined ? String(b.title) : undefined,
+    body: b?.body !== undefined ? String(b.body) : undefined,
+    status,
+    translatedBy: admin,
+  });
+  if (!translation) return c.json(fail('NOT_FOUND', 'یافت نشد', 'Not found', 'ونه موندل شو', 'Introuvable'), 404);
+
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: admin,
+      actorRole: 'admin',
+      actionType: 'content_translate_review',
+      targetTable: 'content_translations',
+      targetId: translation.id,
+      afterValue: { status: translation.status },
+      ipAddress: clientIp(c),
+    }),
+  );
+  return c.json({ translation: translationJson(translation) });
+});
+
+c11m.delete('/admin/curriculum/translations/:id', async (c) => {
+  const admin = await adminId(c);
+  if (!admin) return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
+  const id = c.req.param('id');
+  const ok = await deleteTranslation(c.env.DB, id);
+  if (!ok) return c.json(fail('NOT_FOUND', 'یافت نشد', 'Not found', 'ونه موندل شو', 'Introuvable'), 404);
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: admin,
+      actorRole: 'admin',
+      actionType: 'content_translate_delete',
+      targetTable: 'content_translations',
+      targetId: id,
+      ipAddress: clientIp(c),
     }),
   );
   return c.json({ success: true });

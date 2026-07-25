@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/network/network_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/curriculum_mock_datasource.dart';
@@ -9,10 +10,17 @@ import '../../domain/repositories/curriculum_repository.dart';
 import '../../domain/usecases/curriculum_usecases.dart';
 
 /// Mock (فاز ۱) یا Backend واقعی — طبق سوییچ `kUseLiveBackend`.
+///
+/// نصاب چندزبانه: با `ref.watch(localeProvider)`، وقتی کاربر زبان اپ را
+/// عوض می‌کند (مثلاً به پشتو)، این Provider دوباره ساخته می‌شود و تمام
+/// Providerهای `autoDispose.family` پایین‌دست (فصل‌ها/درس‌ها) خودکار باطل و
+/// از سرور با `lang` تازه دوباره خوانده می‌شوند — بدون نیاز به بستن/باز
+/// کردن برنامه.
 final curriculumDataSourceProvider = Provider<CurriculumDataSource>((ref) {
   if (kUseLiveBackend) {
     final grade = ref.watch(authSessionProvider)?.currentGrade ?? 7;
-    return CurriculumRemoteDataSource(ref.watch(apiClientProvider), grade);
+    final lang = ref.watch(localeProvider).languageCode;
+    return CurriculumRemoteDataSource(ref.watch(apiClientProvider), grade, lang);
   }
   return CurriculumMockDataSource();
 });

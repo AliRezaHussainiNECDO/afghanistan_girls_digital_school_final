@@ -725,6 +725,7 @@ class _ProfileStatsRow extends ConsumerWidget {
         );
 
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
         final statsAsync = ref.watch(adminStatsProvider);
         return statsAsync.when(
           loading: () => const Wrap(

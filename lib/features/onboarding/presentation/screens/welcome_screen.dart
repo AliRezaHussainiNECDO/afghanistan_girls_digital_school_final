@@ -28,10 +28,12 @@ class _Slide {
   });
 }
 
-/// پنج صحنهٔ خوش‌آمدگویی — هرکدام با یک احساس متفاوت: خوش‌آمدگویی گرم،
-/// معرفی امکانات یادگیری، انگیزهٔ امتیاز/سطح/گواهی‌نامه (بخش تازه‌اضافه‌شده
-/// — چون این‌ها واقعاً در اپ وجود دارند اما قبلاً هرگز در معرفی اولیه تبلیغ
-/// نمی‌شدند)، راهنمای شروع، و در نهایت دعوت به ساخت حساب.
+/// هشت صحنهٔ خوش‌آمدگویی — هرکدام با یک احساس متفاوت: خوش‌آمدگویی گرم،
+/// معرفی امکانات یادگیری، انگیزهٔ امتیاز/سطح/گواهی‌نامه، آزمون فصل و
+/// امتحان فاینل هوشمند، سمینارهای زندهٔ ویدیویی، داشبورد اختصاصی والدین
+/// (سه صحنهٔ تازه — چون این بخش‌ها واقعاً در اپ وجود دارند اما قبلاً هرگز
+/// در معرفی اولیه تبلیغ نمی‌شدند)، راهنمای شروع، و در نهایت دعوت به ساخت
+/// حساب.
 const _slides = [
   _Slide(
     icon: Icons.auto_stories_rounded,
@@ -58,20 +60,44 @@ const _slides = [
     bodyKey: 'welcome.slide3Body',
   ),
   _Slide(
-    icon: Icons.map_rounded,
-    gradient: AppColors.successGradient,
-    sparkleIcon: Icons.route_rounded,
+    icon: Icons.fact_check_rounded,
+    gradient: AppColors.heroGradient,
+    sparkleIcon: Icons.psychology_rounded,
     eyebrowKey: 'welcome.slide4Eyebrow',
     titleKey: 'welcome.slide4Title',
     bodyKey: 'welcome.slide4Body',
   ),
   _Slide(
-    icon: Icons.person_add_alt_1_rounded,
-    gradient: AppColors.heroGradientWarm,
-    sparkleIcon: Icons.rocket_launch_rounded,
+    icon: Icons.videocam_rounded,
+    gradient: AppColors.goldCelebrationGradient,
+    sparkleIcon: Icons.sensors_rounded,
     eyebrowKey: 'welcome.slide5Eyebrow',
     titleKey: 'welcome.slide5Title',
     bodyKey: 'welcome.slide5Body',
+  ),
+  _Slide(
+    icon: Icons.family_restroom_rounded,
+    gradient: AppColors.successGradient,
+    sparkleIcon: Icons.favorite_rounded,
+    eyebrowKey: 'welcome.slide6Eyebrow',
+    titleKey: 'welcome.slide6Title',
+    bodyKey: 'welcome.slide6Body',
+  ),
+  _Slide(
+    icon: Icons.map_rounded,
+    gradient: AppColors.successGradient,
+    sparkleIcon: Icons.route_rounded,
+    eyebrowKey: 'welcome.slide7Eyebrow',
+    titleKey: 'welcome.slide7Title',
+    bodyKey: 'welcome.slide7Body',
+  ),
+  _Slide(
+    icon: Icons.person_add_alt_1_rounded,
+    gradient: AppColors.heroGradientWarm,
+    sparkleIcon: Icons.rocket_launch_rounded,
+    eyebrowKey: 'welcome.slide8Eyebrow',
+    titleKey: 'welcome.slide8Title',
+    bodyKey: 'welcome.slide8Body',
   ),
 ];
 

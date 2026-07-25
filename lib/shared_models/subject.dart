@@ -22,6 +22,25 @@ class Subject extends Equatable {
   List<Object?> get props => [id];
 }
 
+/// نام نمایشی مضمون به زبان انتخابی کاربر — رفع اشکال: قبلاً همه‌جا فقط
+/// [Subject.nameFa] نشان داده می‌شد، با اینکه [namePs]/[nameEn] از قبل روی
+/// خودِ مدل موجود بودند (طبق درخواست صاحب پروژه: نصاب/UI باید با زبان
+/// انتخابی، مثلاً پشتو، هماهنگ باشد).
+extension SubjectDisplayName on Subject {
+  String displayName(String languageCode) {
+    switch (languageCode) {
+      case 'ps':
+        return namePs;
+      case 'en':
+      case 'fr':
+        // فرانسوی جداگانه ترجمه نشده؛ انگلیسی برای این کاربران خواناتر از دری است.
+        return nameEn;
+      default:
+        return nameFa;
+    }
+  }
+}
+
 /// ۱۰ مضمون ثابت هر صنف (بخش ۶.۱ سند) — دادهٔ Mock مشترک بین چند Feature.
 const List<Subject> mockSubjects = [
   Subject(id: 'math', nameFa: 'ریاضی', nameEn: 'Mathematics', namePs: 'ریاضي', icon: 'calculate', colorValue: 0xFF3F51B5),

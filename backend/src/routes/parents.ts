@@ -283,14 +283,24 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
   const displayName = student ? `${student.first_name} ${student.last_name}`.trim() : 'فرزند';
 
   // پیشرفت هر مضمون (منبع واحد — همان محاسبهٔ داشبورد شاگرد) + میانگین امتحان جداگانه.
+  // رفع اشکال (این نشست): قبلاً این میانگین فقط از جدول قدیمی `exam_attempts`
+  // (کوییز/کارخانگی/ماهانه) می‌آمد — نمرات «آزمون فصل» (chapter_quiz_attempts،
+  // migration 0041) که مستقیماً با هر مضمون مرتبط‌اند، هیچ‌وقت به این عدد
+  // اضافه نمی‌شدند؛ یعنی نمرهٔ نهایی هر مضمون برای والدین ناقص بود. حالا
+  // میانگین از هر دو منبع با هم گرفته می‌شود.
   const subjectsProgress = await getSubjectProgressList(c.env.DB, studentId, grade);
   const { results: examAvgRows } = await c.env.DB.prepare(
     `SELECT s.id,
-       (SELECT AVG(a.score_percent) FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
-          WHERE a.user_id=? AND e.subject_id=s.id AND e.grade_number=?) AS avg_score
+       (SELECT AVG(score) FROM (
+          SELECT a.score_percent AS score FROM exam_attempts a JOIN exams e ON e.id=a.exam_id
+            WHERE a.user_id=? AND e.subject_id=s.id AND e.grade_number=?
+          UNION ALL
+          SELECT qa.score_percent AS score FROM chapter_quiz_attempts qa JOIN chapters ch ON ch.id=qa.chapter_id
+            WHERE qa.user_id=? AND ch.subject_id=s.id AND ch.grade_number=?
+        )) AS avg_score
      FROM subjects s ORDER BY s.order_index`,
   )
-    .bind(studentId, grade)
+    .bind(studentId, grade, studentId, grade)
     .all<{ id: string; avg_score: number | null }>();
   const examAvgMap = new Map(examAvgRows.map((r) => [r.id, r.avg_score]));
 
@@ -315,13 +325,19 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
   });
   const gradeCompletion = averagePercent(subjectsProgress);
 
-  // حاضری از فعالیت واقعی ۱۴ روز اخیر (بخش ۹.۱).
+  // حاضری از فعالیت واقعی ۱۴ روز اخیر (بخش ۹.۱). رفع اشکال (این نشست): قبلاً
+  // فقط دیدن درس و امتحانات رسمیِ قدیمی را «فعالیت» حساب می‌کرد؛ آزمون فصل و
+  // امتحان فاینل (migration 0041) هم اکنون فعالیت‌های واقعی شاگرد هستند و
+  // باید در همین محاسبه احتساب شوند، وگرنه درصد حاضری برای والدین کمتر از
+  // واقعیت نشان داده می‌شد.
   const { results: actDays } = await c.env.DB.prepare(
     `SELECT DISTINCT d FROM (
         SELECT date(viewed_at) AS d FROM student_lesson_views WHERE user_id=? AND viewed_at>=date('now','-13 days')
-        UNION SELECT date(submitted_at) AS d FROM exam_attempts WHERE user_id=? AND submitted_at>=date('now','-13 days'))`,
+        UNION SELECT date(submitted_at) AS d FROM exam_attempts WHERE user_id=? AND submitted_at>=date('now','-13 days')
+        UNION SELECT date(submitted_at) AS d FROM chapter_quiz_attempts WHERE user_id=? AND submitted_at>=date('now','-13 days')
+        UNION SELECT date(submitted_at) AS d FROM final_exam_attempts WHERE user_id=? AND submitted_at>=date('now','-13 days'))`,
   )
-    .bind(studentId, studentId)
+    .bind(studentId, studentId, studentId, studentId)
     .all<{ d: string }>();
   const attendanceRate = Math.round((actDays.length / 14) * 1000) / 10;
 
@@ -335,10 +351,19 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
     (ct) => `گواهی‌نامهٔ ختم صنف ${ct.grade}${ct.year_label ? ' — ' + ct.year_label : ''}${ct.honor ? ' (' + ct.honor + ')' : ''}`,
   );
 
-  // سمینارهای پیش رو (عنوان).
+  // رفع اشکال (این نشست): قبلاً اینجا فقط «۳ سمینار آیندهٔ همهٔ شاگردان»
+  // نشان داده می‌شد — هیچ ربطی به اینکه همین فرزند واقعاً در آن ثبت‌نام کرده
+  // یا نه نداشت. طبق درخواست کاربر («اشتراک فرزندشان در سمینارها»)، حالا
+  // مستقیماً از `seminar_registrations` همین شاگرد خوانده می‌شود — شامل
+  // وضعیت واقعی هرکدام (ثبت‌نام‌شده/لیست انتظار/حاضر شده/غایب).
   const { results: sems } = await c.env.DB.prepare(
-    "SELECT title FROM seminars WHERE audience='students' AND status IN ('published','registrationClosed','live') ORDER BY scheduled_start LIMIT 3",
-  ).all<{ title: string }>();
+    `SELECT s.title, s.scheduled_start, r.status
+       FROM seminar_registrations r JOIN seminars s ON s.id = r.seminar_id
+      WHERE r.user_id = ?
+      ORDER BY s.scheduled_start DESC LIMIT 10`,
+  )
+    .bind(studentId)
+    .all<{ title: string; scheduled_start: string; status: string }>();
 
   // امتیاز فعالیت (Gamification) — همان امتیازی که در خانهٔ شاگرد نمایش داده می‌شود.
   const points = await getPointsSummary(c.env.DB, studentId);
@@ -359,7 +384,11 @@ parents.get('/parents/me/children/:sid/summary', async (c) => {
     subjects: subjectSummaries,
     achievements,
     certificates: certificateTitles,
-    upcomingSeminarTitles: sems.map((s) => s.title),
+    seminarParticipation: sems.map((s) => ({
+      title: s.title,
+      scheduledStart: s.scheduled_start,
+      status: s.status,
+    })),
     pointsTotal: points.totalPoints,
     pointsLevel: points.level,
     pointsLevelTitleFa: points.levelTitleFa,

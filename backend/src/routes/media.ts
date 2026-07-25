@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { sendPushToUser, sendPushToUsers } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -41,9 +42,13 @@ async function me(c: any): Promise<{ sub: string; role: string } | null> {
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
 }
 
+/** دسترسی «نظارت بر چت» — Super Admin همیشه؛ مدیر زیرمجموعه با 'manage_safety_chat'. */
 async function isAdmin(c: any): Promise<boolean> {
   const u = await me(c);
-  return u?.role === 'super_admin';
+  if (!u) return false;
+  if (u.role === 'super_admin') return true;
+  if (u.role === 'admin') return hasAdminPermission(c.env.DB, u.sub, 'manage_safety_chat');
+  return false;
 }
 
 // رفع اشکال امنیتی/حریم‌خصوصی مهم: قبلاً چند Endpoint چت هیچ بررسی
@@ -428,7 +433,7 @@ media.get('/admin/conversations/:id/messages', async (c) => {
 
 media.post('/admin/messages/:id/review', async (c) => {
   const actor = await me(c);
-  if (actor?.role !== 'super_admin') return forbid(c);
+  if (!actor || !(await isAdmin(c))) return forbid(c);
   const messageId = c.req.param('id');
   const body = await c.req.json<{ approve: boolean }>();
   const newStatus = body.approve ? 'approved' : 'rejected';

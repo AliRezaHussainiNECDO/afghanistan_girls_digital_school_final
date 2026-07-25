@@ -16,6 +16,7 @@ import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
 import '../../../system_health/presentation/widgets/system_health_section.dart';
 import '../../domain/entities/admin_stats.dart';
 import '../providers/admin_dashboard_providers.dart';
+import '../widgets/recent_activity_card.dart';
 
 /// صفحهٔ اول داشبورد مدیر — «نبض زندهٔ مکتب»:
 ///   • هدر زنده با شمار آنلاین‌های همین حالا (ضربان حضور — migration 0032)
@@ -61,10 +62,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final adminName = (admin?.firstName.trim().isNotEmpty ?? false)
         ? admin!.firstName.trim()
         : ((admin?.displayName.trim().isNotEmpty ?? false) ? admin!.displayName.trim() : '');
+    // مدیر زیرمجموعه (role='admin') به‌جای آمار کلی مکتب/پایش سیستم — که
+    // برایش چندان مربوط نیست — «فعالیت اخیر من» را می‌بیند (پیشنهاد تأییدشده:
+    // شخصی‌تر و متمرکزتر روی همان کاری که واقعاً انجام می‌دهد).
+    final isSuperAdmin = admin?.role == AppUserRole.superAdmin;
 
     return AppScaffold(
       title: context.tr('admin.dashboard'),
-      role: AppUserRole.superAdmin,
+      role: admin?.role ?? AppUserRole.superAdmin,
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(adminLiveStatsProvider);
@@ -100,7 +105,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  const _AdminQuickSectionsGrid()
+                  _AdminQuickSectionsGrid(role: admin?.role, permissions: admin?.permissions ?? const [])
                       .animate()
                       .fadeIn(delay: 60.ms, duration: 400.ms)
                       .slideY(begin: 0.10, end: 0, delay: 60.ms, duration: 400.ms, curve: Curves.easeOutCubic),
@@ -116,71 +121,74 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(context.tr('adminLive.overviewTitle'),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            const SizedBox(height: 10),
-            statsAsync.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: LoadingView(),
-              ),
-              error: (e, st) => ErrorView(
-                error: e,
-                onRetry: () => ref.invalidate(adminStatsProvider),
-              ),
-              data: (stats) => Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 1.25,
-                    children: [
-                      _KpiCard(
-                        icon: Icons.today_rounded,
-                        label: context.tr('admin.activeToday'),
-                        value: '${stats.activeToday}',
-                        gradient: AppColors.successGradient,
-                      ),
-                      _KpiCard(
-                        icon: Icons.warning_amber_rounded,
-                        label: context.tr('admin.atRisk'),
-                        value: '${stats.atRiskCount}',
-                        gradient: const LinearGradient(colors: [AppColors.danger, Color(0xFFB4232A)]),
-                      ),
-                      // رفع اشکال هماهنگی داده: این کارت قبلاً با همان برچسبِ
-                      // «پیشرفت کلی» که در داشبورد شاگرد/والد یعنی درصد
-                      // تکمیل دروس (`getSubjectProgressList`/`averagePercent`)
-                      // نشان داده می‌شد، در واقع مقدار کاملاً متفاوتی
-                      // (میانگین نمرات امتحانات، `AVG(score_percent)`) را
-                      // نشان می‌داد — یعنی مدیر می‌توانست دو معیار متفاوت را
-                      // یکی فرض کند. اکنون برچسب دقیق و مجزا دارد.
-                      _KpiCard(
-                        icon: Icons.grade_rounded,
-                        label: context.tr('admin.avgExamScore'),
-                        value: '${stats.avgScorePercent.toStringAsFixed(1)}%',
-                        gradient: AppColors.heroGradientWarm,
-                      ),
-                      _KpiCard(
-                        icon: Icons.groups_rounded,
-                        label: context.tr('admin.totalStudents'),
-                        value: '${stats.totalStudents}',
-                        gradient: AppColors.heroGradient,
-                      ),
+            if (isSuperAdmin) ...[
+              Text(context.tr('adminLive.overviewTitle'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 10),
+              statsAsync.when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: LoadingView(),
+                ),
+                error: (e, st) => ErrorView(
+                  error: e,
+                  onRetry: () => ref.invalidate(adminStatsProvider),
+                ),
+                data: (stats) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 14,
+                      crossAxisSpacing: 14,
+                      childAspectRatio: 1.25,
+                      children: [
+                        _KpiCard(
+                          icon: Icons.today_rounded,
+                          label: context.tr('admin.activeToday'),
+                          value: '${stats.activeToday}',
+                          gradient: AppColors.successGradient,
+                        ),
+                        _KpiCard(
+                          icon: Icons.warning_amber_rounded,
+                          label: context.tr('admin.atRisk'),
+                          value: '${stats.atRiskCount}',
+                          gradient: const LinearGradient(colors: [AppColors.danger, Color(0xFFB4232A)]),
+                        ),
+                        // رفع اشکال هماهنگی داده: این کارت قبلاً با همان برچسبِ
+                        // «پیشرفت کلی» که در داشبورد شاگرد/والد یعنی درصد
+                        // تکمیل دروس (`getSubjectProgressList`/`averagePercent`)
+                        // نشان داده می‌شد، در واقع مقدار کاملاً متفاوتی
+                        // (میانگین نمرات امتحانات، `AVG(score_percent)`) را
+                        // نشان می‌داد — یعنی مدیر می‌توانست دو معیار متفاوت را
+                        // یکی فرض کند. اکنون برچسب دقیق و مجزا دارد.
+                        _KpiCard(
+                          icon: Icons.grade_rounded,
+                          label: context.tr('admin.avgExamScore'),
+                          value: '${stats.avgScorePercent.toStringAsFixed(1)}%',
+                          gradient: AppColors.heroGradientWarm,
+                        ),
+                        _KpiCard(
+                          icon: Icons.groups_rounded,
+                          label: context.tr('admin.totalStudents'),
+                          value: '${stats.totalStudents}',
+                          gradient: AppColors.heroGradient,
+                        ),
+                      ],
+                    ),
+                    if (stats.gradeDistribution.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      _GradeDistributionCard(distribution: stats.gradeDistribution),
                     ],
-                  ),
-                  if (stats.gradeDistribution.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    _GradeDistributionCard(distribution: stats.gradeDistribution),
                   ],
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const SystemHealthSection(),
+              const SizedBox(height: 16),
+              const SystemHealthSection(),
+            ] else if (admin != null)
+              RecentActivityCard(adminId: admin.id),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
           ],
         ),
@@ -783,7 +791,11 @@ class _AdminSectionItem {
   final String labelKey;
   final String route;
   final Color color;
-  const _AdminSectionItem(this.icon, this.labelKey, this.route, this.color);
+  // دستهٔ دسترسی لازم برای مدیر زیرمجموعه (role='admin') — null یعنی
+  // Super Admin-only (مثل «مدیریت مدیران») و در گرید مدیر زیرمجموعه هرگز
+  // نمایش داده نمی‌شود (نگاه کنید به فیلتر در build() بالا).
+  final String? requiredPermission;
+  const _AdminSectionItem(this.icon, this.labelKey, this.route, this.color, this.requiredPermission);
 }
 
 /// گرید «دسترسی سریع» مدیر — دقیقاً همان بخش‌های مینوی کشویی مدیر (منهای
@@ -791,26 +803,39 @@ class _AdminSectionItem {
 /// از خانه به هر بخش دسترسی داشته باشد؛ هماهنگ با الگوی همین گرید در
 /// داشبورد شاگرد (`_MainSectionsGrid`).
 class _AdminQuickSectionsGrid extends StatelessWidget {
-  const _AdminQuickSectionsGrid();
+  final AppUserRole? role;
+  final List<String> permissions;
+  const _AdminQuickSectionsGrid({this.role, this.permissions = const []});
 
   static const _sections = [
-    _AdminSectionItem(Icons.people_rounded, 'admin.users', AppRoutes.adminUsers, AppColors.orange600),
-    _AdminSectionItem(Icons.edit_note_rounded, 'admin.cms', AppRoutes.adminCms, AppColors.gold600),
-    _AdminSectionItem(Icons.quiz_rounded, 'admin.examsManagement', AppRoutes.adminExamsManagement, AppColors.green600),
-    _AdminSectionItem(Icons.smart_toy_rounded, 'admin.aiTeacherManagement', AppRoutes.adminAiTeacher, AppColors.info),
-    _AdminSectionItem(Icons.forum_rounded, 'admin.chatMonitoring', AppRoutes.adminChats, AppColors.orange500),
-    _AdminSectionItem(Icons.shield_rounded, 'admin.safetyQueue', AppRoutes.adminSafetyQueue, AppColors.danger),
-    _AdminSectionItem(Icons.radar_rounded, 'admin.auditLogs', AppRoutes.adminAuditLogs, AppColors.ink500),
-    _AdminSectionItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions, AppColors.green500),
-    _AdminSectionItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars, AppColors.gold500),
-    _AdminSectionItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports, AppColors.orange700),
-    _AdminSectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700),
-    _AdminSectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications, AppColors.green700),
+    _AdminSectionItem(Icons.people_rounded, 'admin.users', AppRoutes.adminUsers, AppColors.orange600, 'manage_users'),
+    _AdminSectionItem(Icons.edit_note_rounded, 'admin.cms', AppRoutes.adminCms, AppColors.gold600, 'manage_content'),
+    _AdminSectionItem(Icons.quiz_rounded, 'admin.examsManagement', AppRoutes.adminExamsManagement, AppColors.green600, 'manage_exams'),
+    _AdminSectionItem(Icons.smart_toy_rounded, 'admin.aiTeacherManagement', AppRoutes.adminAiTeacher, AppColors.info, 'manage_content'),
+    _AdminSectionItem(Icons.forum_rounded, 'admin.chatMonitoring', AppRoutes.adminChats, AppColors.orange500, 'manage_safety_chat'),
+    _AdminSectionItem(Icons.shield_rounded, 'admin.safetyQueue', AppRoutes.adminSafetyQueue, AppColors.danger, 'manage_safety_chat'),
+    _AdminSectionItem(Icons.radar_rounded, 'admin.auditLogs', AppRoutes.adminAuditLogs, AppColors.ink500, 'view_reports_audit'),
+    _AdminSectionItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions, AppColors.green500, 'manage_exams'),
+    _AdminSectionItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars, AppColors.gold500, 'manage_seminars'),
+    _AdminSectionItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports, AppColors.orange700, 'view_reports_audit'),
+    _AdminSectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700, 'manage_content'),
+    _AdminSectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications, AppColors.green700, 'manage_notifications'),
   ];
+
+  // «مدیریت مدیران» فقط برای Super Admin — هرگز به مدیر زیرمجموعه نشان داده نمی‌شود.
+  static const _managementSection = _AdminSectionItem(
+      Icons.admin_panel_settings_rounded, 'admin.management', AppRoutes.adminManagement, AppColors.ink900, null);
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final isSuperAdmin = role == AppUserRole.superAdmin;
+    final visibleSections = [
+      for (final s in _sections)
+        if (isSuperAdmin || s.requiredPermission == null || permissions.contains(s.requiredPermission))
+          s,
+      if (isSuperAdmin) _managementSection,
+    ];
     return GridView.count(
       crossAxisCount: 4,
       shrinkWrap: true,
@@ -819,7 +844,7 @@ class _AdminQuickSectionsGrid extends StatelessWidget {
       crossAxisSpacing: 10,
       childAspectRatio: 0.86,
       children: [
-        for (final s in _sections)
+        for (final s in visibleSections)
           Material(
             color: scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(AppRadii.lg),

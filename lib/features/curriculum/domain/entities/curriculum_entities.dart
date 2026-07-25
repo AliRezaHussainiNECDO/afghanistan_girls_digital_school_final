@@ -17,6 +17,20 @@ class Chapter extends Equatable {
   final bool unlocked;
   final String? sourceBookId;
 
+  /// رفع اشکال: قبلاً شاگرد بعد از دیدن همهٔ درس‌های یک فصلی که «آزمون
+  /// فصل» با AI برایش ساخته شده بود، هیچ نشانه/دکمه‌ای برای رفتن به همان
+  /// آزمون نمی‌دید — فصل با پیشرفت ۱۰۰٪ برای همیشه «در حال انجام» می‌ماند
+  /// (backend/src/lib/progress.ts::getChapterList این را محاسبه می‌کرد ولی
+  /// هرگز به کلاینت نمی‌فرستاد). این پرچم دقیقاً همان حالت را مشخص می‌کند.
+  final bool quizPending;
+
+  /// نصاب چندزبانه (اول پشتو): وقتی کاربر زبانی غیر از دری انتخاب کرده و
+  /// سرور با `?lang=` صدا زده شده، این پرچم نشان می‌دهد آیا [titleFa] واقعاً
+  /// ترجمهٔ منتشرشدهٔ همان زبان است یا (چون هنوز ترجمه نشده) دری اصلی به‌عنوان
+  /// Fallback برگشته — تا UI بتواند نشان کوچک «هنوز ترجمه نشده» نمایش دهد.
+  /// وقتی زبان دری است یا اصلاً `lang` فرستاده نشده، همیشه true است (بدون نشان).
+  final bool translated;
+
   const Chapter({
     required this.id,
     required this.titleFa,
@@ -27,10 +41,12 @@ class Chapter extends Equatable {
     this.completed = false,
     this.unlocked = true,
     this.sourceBookId,
+    this.quizPending = false,
+    this.translated = true,
   });
 
   @override
-  List<Object?> get props => [id, viewedCount, completed, unlocked];
+  List<Object?> get props => [id, viewedCount, completed, unlocked, quizPending, translated];
 }
 
 class Lesson extends Equatable {
@@ -49,6 +65,10 @@ class Lesson extends Equatable {
   final bool completed;
   final String contentBody;
 
+  /// مثل [Chapter.translated] — نشان می‌دهد آیا عنوان/متن این درس ترجمهٔ
+  /// منتشرشدهٔ زبان انتخابی است یا دری اصلی (Fallback).
+  final bool translated;
+
   const Lesson({
     required this.id,
     required this.chapterId,
@@ -58,10 +78,11 @@ class Lesson extends Equatable {
     required this.contentBody,
     this.unlocked = true,
     this.completed = false,
+    this.translated = true,
   });
 
   @override
-  List<Object?> get props => [id, viewed, unlocked, completed];
+  List<Object?> get props => [id, viewed, unlocked, completed, translated];
 }
 
 /// نتیجهٔ ثبت بازدید یک درس — برای بازخورد فوری در UI (امتیاز/جشن تکمیل

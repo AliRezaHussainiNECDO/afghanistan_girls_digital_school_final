@@ -9,6 +9,7 @@ import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../chat/presentation/providers/chat_providers.dart';
 import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
 
@@ -28,7 +29,7 @@ class AdminClassChatsScreen extends ConsumerWidget {
         data: (list) => list.isEmpty ? context.tr('classChats.title') : list.first.className,
         orElse: () => context.tr('classChats.title'),
       ),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(classConversationsProvider(classId)),
         child: conversationsAsync.when(

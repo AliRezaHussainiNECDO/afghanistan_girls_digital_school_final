@@ -11,6 +11,8 @@ import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../exams/domain/entities/exam_entities.dart';
 import '../../../exams/presentation/providers/exams_providers.dart';
+import '../../../final_exam/domain/entities/final_exam_entities.dart';
+import '../../../final_exam/presentation/providers/final_exam_providers.dart';
 import '../../domain/academy_entities.dart';
 import '../academy_providers.dart';
 import '../widgets/academy_shared.dart';
@@ -35,6 +37,11 @@ class ChildExamScoresScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final subsAsync = ref.watch(submissionsByStudentProvider(studentId));
     final officialResultsAsync = ref.watch(myExamResultsProvider(studentId));
+    // رفع اشکال (این نشست): امتحان فاینل — دروازهٔ واقعی ارتقای فرزند به صنف
+    // بالاتر — قبلاً هیچ‌جا برای والدین نمایش داده نمی‌شد، با اینکه سرور
+    // (`GET /final-exam/my-results?studentId=`) از قبل دسترسی والدِ لینک‌شده
+    // را می‌پذیرفت؛ فقط هیچ صفحه‌ای در فلاتر این را صدا نمی‌زد.
+    final finalExamResultsAsync = ref.watch(myFinalExamResultsProvider(studentId));
     final scheme = Theme.of(context).colorScheme;
 
     return AppScaffold(
@@ -69,7 +76,17 @@ class ChildExamScoresScreen extends ConsumerWidget {
                     .slideY(begin: 0.06, curve: Curves.easeOutCubic),
                 const SizedBox(height: 18),
               ],
-              // ── امتحانات رسمی (کوییز/کارخانگی/ماهانه/نهایی) — همان دادهٔ
+              // ── امتحان فاینل صنف — دروازهٔ واقعی ارتقا؛ همیشه بالاترین
+              // اولویت برای والدین (حتی وقتی هنوز تلاشی ثبت نشده، تا معلوم
+              // شود این بخش وجود دارد و در انتظار است).
+              finalExamResultsAsync.maybeWhen(
+                data: (results) => Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: _FinalExamSectionForChild(displayName: displayName, results: results),
+                ),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              // ── امتحانات رسمی (کوییز/کارخانگی/ماهانه) — همان دادهٔ
               // دقیقِ داشبورد خودِ شاگرد (`/exams/my-results`)، نه یک محاسبهٔ
               // جداگانه؛ طبق درخواست کاربر برای هماهنگی کامل بین داشبوردها.
               officialResultsAsync.maybeWhen(
@@ -213,6 +230,208 @@ class _ChildResultCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// «امتحان فاینل صنف» فرزند — دروازهٔ واقعی ارتقا به صنف بالاتر. والدین باید
+/// همیشه دقیقاً بدانند فرزندشان کامیاب شده یا نه و اگر نه، چه زمانی دوباره
+/// مجاز به تلاش است — دقیقاً همان اطلاعاتی که خودِ شاگرد در `FinalExamScreen`
+/// می‌بیند، بدون هیچ ناهماهنگی.
+class _FinalExamSectionForChild extends StatelessWidget {
+  final String displayName;
+  final List<FinalExamResultSummary> results;
+  const _FinalExamSectionForChild({required this.displayName, required this.results});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final header = Row(
+      children: [
+        Icon(Icons.workspace_premium_rounded, size: 16, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Text(context.tr('academy.finalExamSectionTitle'),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: scheme.onSurface)),
+      ],
+    );
+
+    if (results.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.hourglass_empty_rounded, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(context.tr('academy.finalExamNoAttemptYet', {'name': displayName}),
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant, height: 1.5)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // جدیدترین تلاش (سرور خودش هم مرتب‌شده برمی‌گرداند، ولی برای اطمینان).
+    final sorted = [...results]..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
+    final latest = sorted.first;
+    final older = sorted.skip(1).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: latest.passed ? AppColors.successGradient : AppColors.goldCelebrationGradient,
+            borderRadius: BorderRadius.circular(AppRadii.xl),
+            boxShadow: AppShadows.warm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.25), shape: BoxShape.circle),
+                    child: Icon(latest.passed ? Icons.emoji_events_rounded : Icons.workspace_premium_rounded,
+                        color: Colors.white, size: 26),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${latest.scorePercent.toStringAsFixed(0)}٪',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24)),
+                        Text(
+                          context.tr('finalExam.reviewSummary', {
+                            'correct': '${latest.correctCount}',
+                            'total': '${latest.totalCount}',
+                            'percent': latest.scorePercent.toStringAsFixed(0),
+                          }),
+                          style: const TextStyle(color: Colors.white, fontSize: 11.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                    ),
+                    child: Text(
+                      latest.passed ? context.tr('academy.passedShort') : context.tr('academy.failedShort'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11.5),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
+                child: Row(
+                  children: [
+                    Icon(latest.passed ? Icons.check_circle_outline_rounded : Icons.info_outline_rounded,
+                        color: Colors.white, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        latest.passed
+                            ? context.tr('academy.finalExamPassedGateOpen')
+                            : (latest.retakeAvailableAt != null
+                                ? context.tr('finalExam.cooldownWithDate', {'date': formatDate(latest.retakeAvailableAt!)})
+                                : context.tr('finalExam.cooldownSoon')),
+                        style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (older.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          // تلاش‌های قبلی — فقط‌خواندنی (بدون جزئیات سؤال‌به‌سؤال؛ صفحهٔ مرور
+          // امتحان فاینل هنوز برای هیچ‌کس ساخته نشده، نه فقط والدین).
+          ...older.map((r) => Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: _FinalExamOldAttemptRow(r: r),
+              )),
+        ],
+      ],
+    );
+  }
+}
+
+/// یک تلاش قدیمی‌ترِ امتحان فاینل — فقط‌خواندنی، بدون کلیک (نگاه کنید به
+/// کامنت بالای محل فراخوانی).
+class _FinalExamOldAttemptRow extends StatelessWidget {
+  final FinalExamResultSummary r;
+  const _FinalExamOldAttemptRow({required this.r});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = r.passed ? AppColors.green600 : AppColors.orange600;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.14), shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Text('${r.scorePercent.toStringAsFixed(0)}٪',
+                style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 11.5)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(context.tr('finalExam.attemptNumber', {'number': '${r.attemptNumber}'}),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(formatDate(r.submittedAt), style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadii.pill)),
+            child: Text(r.passed ? context.tr('academy.passedShort') : context.tr('academy.failedShort'),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
+          ),
+        ],
       ),
     );
   }

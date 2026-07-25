@@ -40,11 +40,38 @@ class LiveStreamException implements Exception {
   String toString() => 'LiveStreamException($code, $message)';
 }
 
+/// نتیجهٔ درخواست توکن ویدیوکنفرانس (JaaS) برای اتاق داخلی سمینار.
+///
+/// اگر [configured] نادرست باشد یعنی سرور هنوز JaaS را تنظیم نکرده — در این
+/// حالت اتاق باید (به‌طور فال‌بک، نه شکست) بدون `serverURL`/`token` به سرور
+/// عمومی پیش‌فرض Jitsi وصل شود، دقیقاً مثل رفتار قبلی.
+class SeminarVideoToken {
+  final bool configured;
+  final String appId;
+  final String room;
+  final String serverUrl;
+  final String token;
+  final bool isHost;
+
+  const SeminarVideoToken({
+    required this.configured,
+    this.appId = '',
+    this.room = '',
+    this.serverUrl = '',
+    this.token = '',
+    this.isHost = false,
+  });
+
+  factory SeminarVideoToken.notConfigured({bool isHost = false}) =>
+      SeminarVideoToken(configured: false, isHost: isHost);
+}
+
 /// سرویس پخش زندهٔ سمینار روی Cloudflare Stream.
 ///
 /// مسیرهای سرور:
-///   • POST /seminars/:id/go-live  → ساخت/بازیابی Live Input و رفتن به وضعیت live
-///   • POST /seminars/:id/end-live → پایان پخش (status = ended)
+///   • POST /seminars/:id/go-live     → ساخت/بازیابی Live Input و رفتن به وضعیت live
+///   • POST /seminars/:id/end-live    → پایان پخش (status = ended)
+///   • GET  /seminars/:id/video-token → توکن JWT برای اتاق ویدیوکنفرانس واقعی (JaaS)
 class SeminarLiveService {
   final ApiClient _api;
   const SeminarLiveService(this._api);
@@ -72,6 +99,31 @@ class SeminarLiveService {
       await _api.post('/seminars/$seminarId/end-live');
     } on ApiException catch (e) {
       throw LiveStreamException(e.message, code: e.code);
+    }
+  }
+
+  /// توکن اتاق ویدیوکنفرانس واقعی (JaaS) — رفع اشکال ریشه‌ای «اتاق سمینار
+  /// قابل‌اتکا نیست»: اگر سرور JaaS را تنظیم کرده باشد، یک JWT کوتاه‌مدت و
+  /// محدود به همین سمینار/کاربر برمی‌گرداند؛ در غیر این صورت (یا هر خطای
+  /// شبکه) به‌جای شکستن جریان پیوستن، «تنظیم‌نشده» برمی‌گرداند تا صفحهٔ اتاق
+  /// با رفتار قبلی (سرور عمومی، بدون توکن) ادامه دهد — پیوستن به کلاس هرگز
+  /// نباید فقط به‌خاطر این توکن اختیاری متوقف شود.
+  Future<SeminarVideoToken> fetchVideoToken(String seminarId) async {
+    try {
+      final data = await _api.get('/seminars/$seminarId/video-token');
+      final m = (data as Map);
+      final configured = m['configured'] == true;
+      if (!configured) return const SeminarVideoToken(configured: false);
+      return SeminarVideoToken(
+        configured: true,
+        appId: m['appId']?.toString() ?? '',
+        room: m['room']?.toString() ?? '',
+        serverUrl: m['serverUrl']?.toString() ?? '',
+        token: m['token']?.toString() ?? '',
+        isHost: m['isHost'] == true,
+      );
+    } catch (_) {
+      return const SeminarVideoToken(configured: false);
     }
   }
 }

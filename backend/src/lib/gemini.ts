@@ -35,6 +35,12 @@ export type GeminiResult = GeminiOk | GeminiErr;
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
 
+// همان رفع اشکالِ «تولید با AI هیچ‌وقت تمام نمی‌شود» که در essayGrading.ts
+// انجام شد، اینجا هم لازم است: از امروز تولید سؤال امتحانات رسمی/آزمون
+// فصل/امتحان فاینل هم از همین تابع عبور می‌کند (نگاه کنید به essayGrading.ts)،
+// پس این fetch دیگر نباید بدون سقف زمانی بماند.
+const GEMINI_FETCH_TIMEOUT_MS = 25_000;
+
 /**
  * قواعد سخت‌گیرانهٔ کیفیت متن دری/پشتو — ضد بریدگی و جابجایی کلمات.
  *
@@ -135,7 +141,12 @@ export async function geminiGenerate(
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(GEMINI_FETCH_TIMEOUT_MS),
+      },
     );
     if (!res.ok) {
       const detail = (await res.text().catch(() => '')).slice(0, 500);

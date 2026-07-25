@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/error_view.dart';
@@ -55,7 +57,22 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
         ref.invalidate(dashboardSummaryProvider(studentId));
         ref.invalidate(gradeMapProvider);
       }
-      if (mounted) result.fold((_) {}, _showPointsFeedback);
+      if (mounted) {
+        result.fold((_) {}, (r) {
+          _showPointsFeedback(r);
+          // «آزمون فصل» خودکار (طبق درخواست صاحب پروژه): وقتی همین درس فصل را
+          // تکمیل کرد، بعد از چند لحظه (تا جشن امتیاز دیده شود) شاگرد را به
+          // آزمون فصل هدایت می‌کنیم — سرور در پس‌زمینه همین الان با AI سؤالات
+          // را می‌سازد (backend/src/routes/curriculum.ts::/lessons/:id/view).
+          if (r.chapterJustCompleted) {
+            Future.delayed(const Duration(milliseconds: 1400), () {
+              if (mounted) {
+                context.push(AppRoutes.chapterQuiz(widget.subjectId, lesson.chapterId));
+              }
+            });
+          }
+        });
+      }
     });
   }
 
@@ -220,11 +237,39 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
         maxChildSize: 0.95,
         builder: (context, scrollController) => Directionality(
           textDirection: TextDirection.rtl,
-          child: Markdown(
-            controller: scrollController,
-            data: lesson.contentBody,
-            padding: const EdgeInsets.all(18),
-            selectable: false,
+          child: Column(
+            children: [
+              // نصاب چندزبانه: وقتی زبان اپ غیر دری است ولی متن این درس هنوز
+              // ترجمه نشده، یک نوار کوچک بالای متن دری Fallback را مشخص می‌کند
+              // (طبق درخواست صاحب پروژه — به‌جای صفحهٔ خالی یا گیج‌کننده).
+              if (!lesson.translated)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.translate_rounded, size: 15, color: scheme.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          context.tr('curriculum.notYetTranslated'),
+                          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: Markdown(
+                  controller: scrollController,
+                  data: lesson.contentBody,
+                  padding: const EdgeInsets.all(18),
+                  selectable: false,
             styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
               p: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     height: 2.0,
@@ -247,6 +292,9 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
                 ),
               ),
             ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

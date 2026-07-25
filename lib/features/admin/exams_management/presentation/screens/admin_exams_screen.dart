@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../../app/router/app_routes.dart';
@@ -10,15 +9,20 @@ import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/language_theme_menu.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/admin_exam_entities.dart';
 import '../../domain/usecases/admin_exams_usecases.dart';
 import '../providers/admin_exams_providers.dart';
 import '../widgets/admin_exam_forms.dart';
 import 'admin_exam_questions_screen.dart';
+import '../../../../final_exam/presentation/screens/admin_final_exam_screen.dart';
 
-/// مدیریت امتحانات و سؤالات (فقط مدیر) — رفع اشکال: قبلاً هیچ راهی برای
-/// ساخت امتحان/سؤال از داخل برنامه وجود نداشت، پس امتحان «نهایی» برای هیچ
-/// صنفی هرگز وجود نداشت و سیستم ارتقا عملاً غیرقابل‌دسترس بود.
+/// مدیریت امتحانات معمولی (کوییز روزانه/تکلیف/ماهانه) و بانک سؤالاتشان
+/// (فقط مدیر). توجه: نوع «امتحان نهایی» در این صفحه دیگر اثری روی ارتقای
+/// صنف ندارد — ارتقای واقعی از این پس منحصراً از طریق «امتحانات فاینل»
+/// چندمضمونه (آیکن جداگانه در بالای صفحه، `AdminFinalExamScreen`) محاسبه
+/// می‌شود؛ به همین دلیل کارت آماری/هشدارِ قدیمیِ «پوشش امتحان نهایی» که
+/// بر اساس این جدول محاسبه می‌شد حذف شد تا مدیر را گمراه نکند.
 class AdminExamsScreen extends ConsumerStatefulWidget {
   const AdminExamsScreen({super.key});
   @override
@@ -34,7 +38,7 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      drawer: const AppDrawer(role: AppUserRole.superAdmin),
+      drawer: AppDrawer(role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin),
       backgroundColor: scheme.surface,
       appBar: AppBar(
         toolbarHeight: 72,
@@ -103,9 +107,12 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
       ),
       body: Column(
         children: [
-          examsAsync.maybeWhen(
-            data: (exams) => _ExamsHeroStats(exams: exams),
-            orElse: () => const SizedBox.shrink(),
+          // رفع اشکال قابلیت کشف: قبلاً ورودیِ «امتحانات فاینل» فقط یک آیکن
+          // کوچکِ بدون برچسب در نوار بالا بود که در میان آیکن‌های زبان/تم
+          // گم می‌شد و مدیر اصلاً پیدایش نمی‌کرد. حالا یک بنر واضح و برچسب‌دار
+          // بالای فهرست قرار دارد که مستقیم به AdminFinalExamScreen می‌رود.
+          _FinalExamManagementBanner(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminFinalExamScreen())),
           ),
           _GradeFilterBar(
             selected: _gradeFilter,
@@ -134,25 +141,11 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
                     ),
                   );
                 }
-                // هشدار: اگر برای این فیلترِ صنف هیچ امتحان «نهایی» منتشرشده
-                // وجود نداشته باشد، شاگردان این صنف عملاً نمی‌توانند ارتقا
-                // یابند — این پیام مدیر را مستقیماً متوجه این نکته می‌کند.
-                final missingFinal = _gradeFilter != null &&
-                    !exams.any((e) =>
-                        e.gradeNumber == _gradeFilter &&
-                        e.type.name == 'finalExam' &&
-                        e.status == ExamAdminStatus.published);
                 return ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-                  itemCount: filtered.length + (missingFinal ? 1 : 0),
+                  itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) {
-                    if (missingFinal && i == 0) {
-                      return _MissingFinalWarning(grade: _gradeFilter!);
-                    }
-                    final e = filtered[i - (missingFinal ? 1 : 0)];
-                    return _ExamCard(exam: e);
-                  },
+                  itemBuilder: (context, i) => _ExamCard(exam: filtered[i]),
                 );
               },
             ),
@@ -163,84 +156,48 @@ class _AdminExamsScreenState extends ConsumerState<AdminExamsScreen> {
   }
 }
 
-/// سربرگ گرادیانیِ آماری — به‌ویژه «پوششِ امتحان نهایی» را برجسته می‌کند،
-/// چون این دقیقاً همان چیزی است که ارتقای واقعیِ صنف به آن وابسته است: اگر
-/// برای یک صنف هیچ امتحان «نهایی» منتشرشده‌ای نباشد، هیچ شاگردی در آن صنف
-/// نمی‌تواند ارتقا یابد — این عدد به مدیر یک نمای کلی و فوری از سلامتِ کل
-/// سیستم ارتقا در تمام صنوف می‌دهد (نه فقط صنفِ فیلترشدهٔ فعلی).
-class _ExamsHeroStats extends StatelessWidget {
-  final List<AdminExamRow> exams;
-  const _ExamsHeroStats({required this.exams});
+/// بنرِ واضح و برچسب‌دار برای ورود به «امتحانات فاینل» چندمضمونهٔ صنف —
+/// جایگزین آیکن گمشدهٔ قبلی در نوار بالا.
+class _FinalExamManagementBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _FinalExamManagementBanner({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final published = exams.where((e) => e.status == ExamAdminStatus.published).length;
-    final gradesWithFinal = kExamGrades
-        .where((g) => exams.any((e) =>
-            e.gradeNumber == g && e.type.name == 'finalExam' && e.status == ExamAdminStatus.published))
-        .length;
-    final fullCoverage = gradesWithFinal == kExamGrades.length;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppColors.sunriseGradient,
-        borderRadius: BorderRadius.circular(AppRadii.xl),
-        boxShadow: AppShadows.warm,
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(child: _stat(context.tr('examAdmin.totalExamsLabel'), '${exams.length}')),
-              _divider(),
-              Expanded(child: _stat(context.tr('cms.publishedLabel'), '$published')),
-              _divider(),
-              Expanded(child: _stat(context.tr('examAdmin.finalExamCoverageLabel'),
-                  context.tr('examAdmin.finalExamCoverageValue', {'covered': '$gradesWithFinal', 'total': '${kExamGrades.length}'}))),
-            ],
-          ),
-          if (!fullCoverage) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(AppRadii.md),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, color: Colors.white, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      context.tr('examAdmin.coverageWarning'),
-                      style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
-                    ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.lg),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(gradient: AppColors.goldCelebrationGradient, borderRadius: BorderRadius.circular(AppRadii.lg)),
+            child: Row(
+              children: [
+                const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 30),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(context.tr('finalExamAdmin.listTitle'),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                      const SizedBox(height: 2),
+                      Text(context.tr('finalExamAdmin.bannerSubtitle'),
+                          style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+              ],
             ),
-          ],
-        ],
+          ),
+        ),
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05);
+    );
   }
-
-  Widget _stat(String label, String value) => Column(
-        children: [
-          Text(value,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white),
-              textAlign: TextAlign.center),
-          const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w500),
-              textAlign: TextAlign.center),
-        ],
-      );
-
-  Widget _divider() => Container(width: 1, height: 32, color: Colors.white.withValues(alpha: 0.35));
 }
 
 class _GradeFilterBar extends StatelessWidget {
@@ -272,35 +229,6 @@ class _GradeFilterBar extends StatelessWidget {
                   onSelected: (_) => onSelect(g),
                 ),
               )),
-        ],
-      ),
-    );
-  }
-}
-
-class _MissingFinalWarning extends StatelessWidget {
-  final int grade;
-  const _MissingFinalWarning({required this.grade});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.danger.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: AppColors.danger, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              context.tr('examAdmin.missingFinalWarning', {'grade': '$grade'}),
-              style: const TextStyle(fontSize: 12, color: AppColors.danger, fontWeight: FontWeight.w600),
-            ),
-          ),
         ],
       ),
     );

@@ -55,6 +55,37 @@ const _adminItems = [
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.adminProfile),
 ];
 
+/// نگاشت هر مسیر پنل مدیر به دستهٔ دسترسیِ لازم (سمت سرور: lib/permissions.ts)
+/// — برای فیلتر منوی «مدیر زیرمجموعه» (role='admin') بر اساس permissions او.
+/// مسیرهایی که در این نگاشت نیستند (داشبورد/پروفایل) برای هر مدیری همیشه
+/// نمایش داده می‌شوند. Super Admin هرگز فیلتر نمی‌شود.
+const Map<String, String> _adminRoutePermission = {
+  AppRoutes.adminUsers: 'manage_users',
+  AppRoutes.adminCms: 'manage_content',
+  AppRoutes.adminExamsManagement: 'manage_exams',
+  AppRoutes.adminAiTeacher: 'manage_content',
+  AppRoutes.collectiveMemory: 'manage_content',
+  AppRoutes.adminChats: 'manage_safety_chat',
+  AppRoutes.adminSafetyQueue: 'manage_safety_chat',
+  AppRoutes.adminAuditLogs: 'view_reports_audit',
+  AppRoutes.adminSubmissions: 'manage_exams',
+  AppRoutes.adminSeminars: 'manage_seminars',
+  AppRoutes.adminReports: 'view_reports_audit',
+  AppRoutes.adminNotifications: 'manage_notifications',
+};
+
+/// آیتم منوی «مدیریت مدیران» — فقط برای Super Admin به `_adminItems` افزوده
+/// می‌شود (build())، هرگز برای مدیر زیرمجموعه (حتی نباید بداند این بخش وجود دارد).
+const _adminManagementItem =
+    _DrawerItem(Icons.admin_panel_settings_rounded, 'admin.management', AppRoutes.adminManagement);
+
+List<_DrawerItem> _filterAdminItemsByPermission(List<String> permissions) {
+  return _adminItems.where((item) {
+    final required = _adminRoutePermission[item.route];
+    return required == null || permissions.contains(required);
+  }).toList();
+}
+
 const _parentItems = [
   _DrawerItem(Icons.family_restroom_rounded, 'nav.parentDashboard', AppRoutes.parentDashboard),
   _DrawerItem(Icons.grade_rounded, 'parent.scores', AppRoutes.parentScores),
@@ -84,6 +115,7 @@ const _instructorItems = [
 String _roleLabel(BuildContext context, AppUserRole role) {
   switch (role) {
     case AppUserRole.superAdmin:
+    case AppUserRole.admin:
       return context.tr('admin.dashboard');
     case AppUserRole.parent:
       return context.tr('auth.roleParent');
@@ -101,23 +133,19 @@ class AppDrawer extends ConsumerWidget {
 
   const AppDrawer({super.key, required this.role});
 
-  List<_DrawerItem> get _items {
-    switch (role) {
-      case AppUserRole.superAdmin:
-        return _adminItems;
-      case AppUserRole.parent:
-        return _parentItems;
-      case AppUserRole.seminarInstructor:
-        return _instructorItems;
-      case AppUserRole.student:
-        return _studentItems;
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authSessionProvider);
     final scheme = Theme.of(context).colorScheme;
+    // «مدیریت مدیران» فقط به منوی Super Admin افزوده می‌شود؛ منوی مدیر
+    // زیرمجموعه هم بر اساس permissions او فیلتر می‌شود (بخش «مدیریت مدیران»).
+    final items = switch (role) {
+      AppUserRole.superAdmin => [..._adminItems, _adminManagementItem],
+      AppUserRole.admin => _filterAdminItemsByPermission(user?.permissions ?? const []),
+      AppUserRole.parent => _parentItems,
+      AppUserRole.seminarInstructor => _instructorItems,
+      AppUserRole.student => _studentItems,
+    };
     // صفحاتی که با Navigator.push (خارج از درخت GoRoute) باز می‌شوند،
     // GoRouterState ندارند — در آن حالت مسیر خالی می‌ماند تا Drawer بدون
     // خطای «There is no GoRouterState above the current context» کار کند.
@@ -279,7 +307,7 @@ class AppDrawer extends ConsumerWidget {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                children: _items.map((item) {
+                children: items.map((item) {
                   final selected = currentRoute == item.route;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 4),
@@ -425,6 +453,7 @@ class _RoleExtraInfo extends ConsumerWidget {
         );
 
       case AppUserRole.superAdmin:
+      case AppUserRole.admin:
         final statsAsync = ref.watch(adminStatsProvider);
         return statsAsync.when(
           loading: () => const InfoStatChipSkeleton(light: true, dense: true),

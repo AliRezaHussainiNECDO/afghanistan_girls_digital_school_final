@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { sendPushToUsers } from '../lib/push';
+import { hasAdminPermission } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -39,9 +40,13 @@ async function me(c: any): Promise<{ sub: string; role: string } | null> {
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
 }
 
+/** Super Admin همیشه؛ مدیر زیرمجموعه فقط با دسترسی 'manage_safety_chat'. */
 async function isAdmin(c: any): Promise<boolean> {
   const u = await me(c);
-  return u?.role === 'super_admin';
+  if (!u) return false;
+  if (u.role === 'super_admin') return true;
+  if (u.role === 'admin') return hasAdminPermission(c.env.DB, u.sub, 'manage_safety_chat');
+  return false;
 }
 
 function toJson(r: any) {

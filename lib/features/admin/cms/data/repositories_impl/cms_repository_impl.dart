@@ -23,22 +23,6 @@ class CmsRepositoryImpl implements CmsRepository {
       ? NetworkFailure(e.message)
       : (e.type == ApiErrorType.badRequest ? ValidationFailure(e.message) : ServerFailure(e.message, code: e.code));
 
-  // Books
-  @override
-  Future<Either<Failure, List<CmsBookRow>>> getBooks() => _guard(dataSource.getBooks);
-  @override
-  Future<Either<Failure, CmsBookRow>> saveBook(CmsBookRow row) => _guard(() => dataSource.saveBook(row));
-  @override
-  Future<Either<Failure, Unit>> deleteBook(String id) => _guard(() async {
-        await dataSource.deleteBook(id);
-        return unit;
-      });
-  @override
-  Future<Either<Failure, Unit>> setBookStatus(String id, ContentStatus status) => _guard(() async {
-        await dataSource.setBookStatus(id, status);
-        return unit;
-      });
-
   // Lessons
   @override
   Future<Either<Failure, List<CmsLessonRow>>> getLessons() => _guard(dataSource.getLessons);
@@ -52,23 +36,6 @@ class CmsRepositoryImpl implements CmsRepository {
   @override
   Future<Either<Failure, Unit>> setLessonStatus(String id, ContentStatus status) => _guard(() async {
         await dataSource.setLessonStatus(id, status);
-        return unit;
-      });
-
-  // Questions
-  @override
-  Future<Either<Failure, List<CmsQuestionRow>>> getQuestions() => _guard(dataSource.getQuestions);
-  @override
-  Future<Either<Failure, CmsQuestionRow>> saveQuestion(CmsQuestionRow row) =>
-      _guard(() => dataSource.saveQuestion(row));
-  @override
-  Future<Either<Failure, Unit>> deleteQuestion(String id) => _guard(() async {
-        await dataSource.deleteQuestion(id);
-        return unit;
-      });
-  @override
-  Future<Either<Failure, Unit>> setQuestionStatus(String id, ContentStatus status) => _guard(() async {
-        await dataSource.setQuestionStatus(id, status);
         return unit;
       });
 

@@ -19,21 +19,10 @@ final cmsDataSourceProvider = Provider<CmsDataSource>((ref) {
 final cmsRepositoryProvider = Provider<CmsRepository>((ref) => CmsRepositoryImpl(ref.watch(cmsDataSourceProvider)));
 
 // ── UseCase providers ──
-final getBooksUseCaseProvider = Provider((ref) => GetBooksUseCase(ref.watch(cmsRepositoryProvider)));
-final saveBookUseCaseProvider = Provider((ref) => SaveBookUseCase(ref.watch(cmsRepositoryProvider)));
-final deleteBookUseCaseProvider = Provider((ref) => DeleteBookUseCase(ref.watch(cmsRepositoryProvider)));
-final setBookStatusUseCaseProvider = Provider((ref) => SetBookStatusUseCase(ref.watch(cmsRepositoryProvider)));
-
 final getLessonsUseCaseProvider = Provider((ref) => GetLessonsUseCase(ref.watch(cmsRepositoryProvider)));
 final saveLessonUseCaseProvider = Provider((ref) => SaveLessonUseCase(ref.watch(cmsRepositoryProvider)));
 final deleteLessonUseCaseProvider = Provider((ref) => DeleteLessonUseCase(ref.watch(cmsRepositoryProvider)));
 final setLessonStatusUseCaseProvider = Provider((ref) => SetLessonStatusUseCase(ref.watch(cmsRepositoryProvider)));
-
-final getQuestionsUseCaseProvider = Provider((ref) => GetQuestionsUseCase(ref.watch(cmsRepositoryProvider)));
-final saveQuestionUseCaseProvider = Provider((ref) => SaveQuestionUseCase(ref.watch(cmsRepositoryProvider)));
-final deleteQuestionUseCaseProvider = Provider((ref) => DeleteQuestionUseCase(ref.watch(cmsRepositoryProvider)));
-final setQuestionStatusUseCaseProvider =
-    Provider((ref) => SetQuestionStatusUseCase(ref.watch(cmsRepositoryProvider)));
 
 final getInviteCodesUseCaseProvider =
     Provider((ref) => GetInviteCodesUseCase(ref.watch(cmsRepositoryProvider)));
@@ -43,18 +32,8 @@ final revokeInviteCodeUseCaseProvider =
     Provider((ref) => RevokeInviteCodeUseCase(ref.watch(cmsRepositoryProvider)));
 
 // ── List providers (خوانده‌شده و قابل invalidate پس از هر تغییر) ──
-final cmsBooksProvider = FutureProvider<List<CmsBookRow>>((ref) async {
-  final result = await ref.read(getBooksUseCaseProvider).call(const NoParams());
-  return result.fold((f) => throw f, (v) => v);
-});
-
 final cmsLessonsProvider = FutureProvider<List<CmsLessonRow>>((ref) async {
   final result = await ref.read(getLessonsUseCaseProvider).call(const NoParams());
-  return result.fold((f) => throw f, (v) => v);
-});
-
-final cmsQuestionsProvider = FutureProvider<List<CmsQuestionRow>>((ref) async {
-  final result = await ref.read(getQuestionsUseCaseProvider).call(const NoParams());
   return result.fold((f) => throw f, (v) => v);
 });
 

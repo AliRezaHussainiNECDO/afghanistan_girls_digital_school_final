@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/router/app_routes.dart';
 import '../../app/theme/design_tokens.dart';
 import '../localization/app_localizations.dart';
+import '../localization/locale_provider.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 import '../../features/grade_map/domain/entities/grade_map.dart';
 import '../../features/grade_map/presentation/providers/grade_map_providers.dart';
@@ -236,15 +237,19 @@ class _GridErrorCard extends StatelessWidget {
   }
 }
 
-class _SubjectCard extends StatelessWidget {
+class _SubjectCard extends ConsumerWidget {
   final Subject subject;
   final int grade;
   final double? completion;
   const _SubjectCard({required this.subject, required this.grade, this.completion});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final color = Color(subject.colorValue);
+    // رفع اشکال: قبلاً نام مضمون همیشه به دری بود، حتی وقتی کاربر پشتو
+    // انتخاب کرده بود — با اینکه `namePs`/`nameEn` از قبل روی مدل موجودند.
+    final langCode = ref.watch(localeProvider).languageCode;
+    final displayName = subject.displayName(langCode);
     final done = (completion ?? 0) >= 100;
     return Material(
       color: color.withValues(alpha: 0.10),
@@ -284,7 +289,7 @@ class _SubjectCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(subject.nameFa,
+              Text(displayName,
                   textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

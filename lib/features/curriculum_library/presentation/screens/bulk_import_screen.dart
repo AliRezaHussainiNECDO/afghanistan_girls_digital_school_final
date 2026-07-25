@@ -7,6 +7,7 @@ import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/localization/locale_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../auth/domain/entities/app_user.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../shared_models/subject.dart';
 import '../../data/services/bulk_book_importer.dart';
 import '../../data/datasources/curriculum_library_local_datasource.dart'; // اضافه شد برای کست کردن تایپ
@@ -93,7 +94,7 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
 
     return AppScaffold(
       title: context.tr('bulkImport.screenTitle'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: Column(
         children: [
           // ── سربرگ راهنما ──

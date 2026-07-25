@@ -16,6 +16,7 @@ class AppUserModel extends AppUser {
     super.awaitingParentLink,
     super.avatarUrl,
     super.emailVerified,
+    super.permissions,
   });
 
   factory AppUserModel.fromJson(Map<String, dynamic> json) => AppUserModel(
@@ -30,6 +31,7 @@ class AppUserModel extends AppUser {
         awaitingParentLink: json['awaitingParentLink'] as bool? ?? false,
         avatarUrl: json['avatarUrl'] as String?,
         emailVerified: json['emailVerified'] as bool? ?? true,
+        permissions: (json['permissions'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -44,5 +46,6 @@ class AppUserModel extends AppUser {
         'awaitingParentLink': awaitingParentLink,
         'avatarUrl': avatarUrl,
         'emailVerified': emailVerified,
+        'permissions': permissions,
       };
 }

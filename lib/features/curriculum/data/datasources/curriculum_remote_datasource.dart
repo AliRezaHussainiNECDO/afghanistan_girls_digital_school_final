@@ -14,11 +14,30 @@ abstract class CurriculumDataSource {
 class CurriculumRemoteDataSource implements CurriculumDataSource {
   final ApiClient _api;
   final int _grade;
-  CurriculumRemoteDataSource(this._api, this._grade);
+
+  /// زبان انتخابی کاربر (`localeProvider` — fa|ps|en|fr). فقط وقتی غیر از
+  /// دری باشد به سرور فرستاده می‌شود؛ سرور اگر ترجمهٔ منتشرشده‌ای برای آن
+  /// زبان داشته باشد برمی‌گرداند، وگرنه دری اصلی را با `translated:false`
+  /// Fallback می‌کند (نصاب چندزبانه — طبق درخواست صاحب پروژه).
+  final String? _lang;
+
+  CurriculumRemoteDataSource(this._api, this._grade, [this._lang]);
+
+  Map<String, dynamic> _langQuery([Map<String, dynamic>? extra]) => {
+        ...?extra,
+        if (_lang != null && _lang != 'fa') 'lang': _lang,
+      };
+
+  /// وقتی `lang` اصلاً فرستاده نشده (خودِ دری)، همیشه «ترجمه‌شده» حساب
+  /// می‌شود — نشان «هنوز ترجمه نشده» فقط برای زبان‌های غیر دری معنا دارد.
+  bool _translatedFlag(dynamic e) {
+    if (_lang == null || _lang == 'fa') return true;
+    return e['translated'] == true;
+  }
 
   @override
   Future<List<Chapter>> getChapters(String subjectId) async {
-    final data = await _api.get('/subjects/$subjectId/chapters', queryParameters: {'grade': _grade});
+    final data = await _api.get('/subjects/$subjectId/chapters', queryParameters: _langQuery({'grade': _grade}));
     final list = (data['chapters'] as List? ?? []);
     return list.map((e) => Chapter(
           id: e['id'] as String,
@@ -30,17 +49,19 @@ class CurriculumRemoteDataSource implements CurriculumDataSource {
           completed: e['completed'] == true || e['completed'] == 1,
           unlocked: e['unlocked'] == true || e['unlocked'] == 1 || (e['order_index'] as num?)?.toInt() == 1,
           sourceBookId: e['source_book_id'] as String?,
+          quizPending: e['quiz_pending'] == true || e['quiz_pending'] == 1,
+          translated: _translatedFlag(e),
         )).toList();
   }
   @override
   Future<List<Lesson>> getLessons(String chapterId) async {
-    final data = await _api.get('/chapters/$chapterId/lessons');
+    final data = await _api.get('/chapters/$chapterId/lessons', queryParameters: _langQuery());
     final list = (data['lessons'] as List? ?? []);
     return list.map(_lessonFromJson).toList();
   }
   @override
   Future<Lesson> getLesson(String lessonId) async {
-    final data = await _api.get('/lessons/$lessonId');
+    final data = await _api.get('/lessons/$lessonId', queryParameters: _langQuery());
     return _lessonFromJson(data['lesson'] as Map);
   }
   @override
@@ -72,5 +93,6 @@ class CurriculumRemoteDataSource implements CurriculumDataSource {
         unlocked: e['unlocked'] == null || (e['unlocked'] as num?)?.toInt() == 1 || e['unlocked'] == true,
         completed: (e['completed'] as num?)?.toInt() == 1 || e['completed'] == true,
         contentBody: (e['content_body'] as String?) ?? '',
+        translated: _translatedFlag(e),
       );
 }

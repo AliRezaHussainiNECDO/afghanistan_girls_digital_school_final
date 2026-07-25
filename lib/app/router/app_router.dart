@@ -7,6 +7,7 @@ import '../../features/advisor/presentation/screens/advisor_screen.dart';
 import '../../features/academy/presentation/screens/admin_submissions_screen.dart';
 import '../../features/academy/presentation/screens/parent_scores_screen.dart';
 import '../../features/admin/ai_teacher_management/presentation/screens/ai_teacher_management_screen.dart';
+import '../../features/admin/admin_management/presentation/screens/admin_management_screen.dart';
 import '../../features/admin/chat_monitoring/presentation/screens/admin_chat_monitoring_screen.dart';
 import '../../features/admin/chat_monitoring/presentation/screens/admin_chat_thread_screen.dart';
 import '../../features/admin/chat_monitoring/presentation/screens/admin_class_chats_screen.dart';
@@ -49,6 +50,8 @@ import '../../features/curriculum/presentation/screens/lessons_screen.dart';
 import '../../features/exams/presentation/screens/exam_taking_screen.dart';
 import '../../features/exams/presentation/screens/exam_result_review_screen.dart';
 import '../../features/exams/presentation/screens/exams_screen.dart';
+import '../../features/chapter_quiz/presentation/screens/chapter_quiz_screen.dart';
+import '../../features/final_exam/presentation/screens/final_exam_screen.dart';
 import '../../features/grade_map/presentation/screens/grade_map_screen.dart';
 import '../../features/instructor/presentation/screens/instructor_home_screen.dart';
 import '../../features/library/presentation/screens/library_screen.dart';
@@ -119,7 +122,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isInstructorRoute = state.matchedLocation.startsWith('/instructor');
       final isStudentRoute = state.matchedLocation.startsWith('/student');
 
-      if (isAdminRoute && user.role != AppUserRole.superAdmin) {
+      if (isAdminRoute && user.role != AppUserRole.superAdmin && user.role != AppUserRole.admin) {
+        return _homeForRole(user.role);
+      }
+      // «مدیریت مدیران» فقط برای Super Admin — یک مدیر زیرمجموعه هرگز نباید
+      // بتواند مدیر دیگری بسازد یا دسترسی‌ها را ببیند/تغییر دهد.
+      if (state.matchedLocation.startsWith(AppRoutes.adminManagement) &&
+          user.role != AppUserRole.superAdmin) {
         return _homeForRole(user.role);
       }
       if (isParentRoute && user.role != AppUserRole.parent) {
@@ -192,6 +201,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
+      GoRoute(
+        path: '/student/curriculum/:subjectId/:chapterId/quiz',
+        pageBuilder: (c, s) => fadeSlidePage(
+          s,
+          ChapterQuizScreen(
+            subjectId: s.pathParameters['subjectId']!,
+            chapterId: s.pathParameters['chapterId']!,
+          ),
+        ),
+      ),
+      GoRoute(
+          path: AppRoutes.finalExam, pageBuilder: (c, s) => fadeSlidePage(s, const FinalExamScreen())),
       GoRoute(
           path: AppRoutes.aiTeacher, pageBuilder: (c, s) => fadeSlidePage(s, const AiTeacherScreen())),
       GoRoute(
@@ -297,6 +318,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: AppRoutes.adminUsers,
           pageBuilder: (c, s) => fadeSlidePage(s, const UserManagementScreen())),
       GoRoute(
+          path: AppRoutes.adminManagement,
+          pageBuilder: (c, s) => fadeSlidePage(s, const AdminManagementScreen())),
+      GoRoute(
           path: AppRoutes.adminStudents,
           pageBuilder: (c, s) => fadeSlidePage(s, const StudentListScreen())),
       GoRoute(
@@ -370,6 +394,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 String _homeForRole(AppUserRole role) {
   switch (role) {
     case AppUserRole.superAdmin:
+    case AppUserRole.admin:
       return AppRoutes.adminDashboard;
     case AppUserRole.parent:
       return AppRoutes.parentDashboard;

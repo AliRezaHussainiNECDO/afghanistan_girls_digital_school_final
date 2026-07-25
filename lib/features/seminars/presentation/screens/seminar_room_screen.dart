@@ -121,8 +121,20 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
     }
     if (!mounted) return;
     try {
+      // رفع اشکال ریشه‌ای «اتاق سمینار قابل‌اتکا نیست»: پیش از ورود، یک توکن
+      // JaaS برای همین سمینار/کاربر می‌گیریم. اگر سرور JaaS را تنظیم کرده
+      // باشد (`configured == true`)، به‌جای سرور عمومی رایگان `meet.jit.si`
+      // (که احراز هویت/تعیین میزبانش خارج از کنترل ماست — تأییدشده توسط
+      // نگهدارندگان Jitsi) با `serverURL`/`token` واقعی به JaaS وصل می‌شویم؛
+      // در غیر این صورت (هنوز تنظیم نشده) دقیقاً رفتار قبلی ادامه می‌یابد —
+      // پیوستن به کلاس هرگز نباید فقط به‌خاطر این توکن اختیاری متوقف شود.
+      final videoToken =
+          await ref.read(seminarLiveServiceProvider).fetchVideoToken(seminar.id);
+      if (!mounted) return;
       final options = JitsiMeetConferenceOptions(
-        room: _roomNameFor(seminar.id),
+        serverURL: videoToken.configured ? videoToken.serverUrl : null,
+        room: videoToken.configured ? videoToken.room : _roomNameFor(seminar.id),
+        token: videoToken.configured ? videoToken.token : null,
         configOverrides: {
           'subject': seminar.title,
           'startWithAudioMuted': !isHost,
@@ -132,7 +144,7 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
           FeatureFlags.welcomePageEnabled: false,
           FeatureFlags.preJoinPageEnabled: true,
           // حریم خصوصی شاگردان دختر افغان در اولویت است: بدون دعوت افراد
-          // بیرونی، بدون ضبط/پخش زندهٔ ثانویه روی سرور عمومی Jitsi.
+          // بیرونی، بدون ضبط/پخش زندهٔ ثانویه.
           FeatureFlags.inviteEnabled: false,
           FeatureFlags.addPeopleEnabled: false,
           FeatureFlags.calenderEnabled: false,

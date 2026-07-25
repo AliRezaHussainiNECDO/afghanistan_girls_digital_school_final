@@ -212,7 +212,13 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
           child: DropdownButtonFormField<ExamType>(
             initialValue: _type,
             decoration: InputDecoration(label: Text(context.tr('examAdmin.examTypeField')), border: const OutlineInputBorder(), isDense: true),
+            // نوع «امتحان نهایی» (تک‌مضمونه) از این پس روی ارتقای صنف اثری
+            // ندارد — ارتقای واقعی فقط از «امتحانات فاینل» چندمضمونه محاسبه
+            // می‌شود. برای جلوگیری از سردرگمی مدیر، این نوع از فهرست ساخت
+            // امتحانِ جدید حذف شده؛ فقط اگر رکورد قدیمی‌ای با این نوع از قبل
+            // وجود داشته باشد (حالت ویرایش)، همچنان قابل نمایش/ویرایش می‌ماند.
             items: ExamType.values
+                .where((t) => t != ExamType.finalExam || _type == ExamType.finalExam)
                 .map((t) => DropdownMenuItem(value: t, child: Text(examTypeLabel(context, t))))
                 .toList(),
             onChanged: (v) => setState(() => _type = v ?? ExamType.dailyQuiz),
@@ -230,14 +236,6 @@ class _ExamFormSheetState extends ConsumerState<ExamFormSheet> {
             onChanged: (v) => setState(() => _status = v ?? ExamAdminStatus.draft),
           ),
         ),
-        if (_type == ExamType.finalExam)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              context.tr('examAdmin.finalExamNotice'),
-              style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-          ),
       ],
     );
   }

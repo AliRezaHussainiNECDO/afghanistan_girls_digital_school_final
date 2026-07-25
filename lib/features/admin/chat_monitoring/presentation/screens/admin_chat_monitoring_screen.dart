@@ -9,6 +9,7 @@ import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../chat/presentation/providers/chat_providers.dart';
 import '../../../../chat/presentation/widgets/chat_ui_helpers.dart';
 
@@ -26,7 +27,7 @@ class AdminChatMonitoringScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: context.tr('admin.chatMonitoring'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(classChatSummariesProvider);

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/network/network_providers.dart';
 import '../../../user_management/domain/entities/student_entities.dart' show AccountStatus;
+import '../../../user_management/presentation/providers/user_management_providers.dart' show adminUsersProvider;
 import '../../data/datasources/parent_management_remote_datasource.dart';
 import '../../domain/entities/parent_entities.dart';
 
@@ -35,6 +36,10 @@ class ParentActionsController extends AsyncNotifier<void> {
       state = const AsyncData(null);
       ref.invalidate(parentsProvider);
       ref.invalidate(parentDetailProvider(id));
+      // رفع اشکال: مسدود/فعال‌سازی از اینجا (صفحهٔ جزئیات یک والد) قبلاً به
+      // لیست عمومی «مدیریت کاربران» منتقل نمی‌شد — آن لیست تا رفرش دستی/بستن
+      // اپ همچنان وضعیت قدیمی این والد را نشان می‌داد.
+      ref.invalidate(adminUsersProvider);
       return null;
     } catch (e) {
       state = const AsyncData(null);

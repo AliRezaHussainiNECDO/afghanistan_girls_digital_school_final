@@ -28,6 +28,7 @@ import {
 } from '../lib/email';
 import { sendPushToUsers } from '../lib/push';
 import { encryptField } from '../lib/columnCrypto';
+import { getAdminPermissions } from '../lib/permissions';
 
 type Bindings = {
   DB: D1Database;
@@ -85,8 +86,13 @@ interface UserRow {
   avatar_url: string | null;
 }
 
-/** خروجی امن کاربر (بدون هش رمز) — کلیدها هماهنگ با AuthRemoteDataSource فلاتر. */
-function publicUser(u: UserRow) {
+/**
+ * خروجی امن کاربر (بدون هش رمز) — کلیدها هماهنگ با AuthRemoteDataSource فلاتر.
+ * برای role='admin' («مدیر زیرمجموعه» — Migration 0044) فهرست دسترسی‌های
+ * تخصیص‌داده‌شده هم پیوست می‌شود تا کلاینت بداند کدام بخش‌های پنل مدیر را
+ * نشان دهد؛ برای super_admin و بقیهٔ نقش‌ها این کلید ارسال نمی‌شود.
+ */
+async function publicUser(db: D1Database, u: UserRow) {
   return {
     id: u.id,
     email: u.email,
@@ -97,6 +103,7 @@ function publicUser(u: UserRow) {
     awaiting_parent_link: u.awaiting_parent_link === 1,
     email_verified: u.email_verified === 1,
     avatar_url: u.avatar_url,
+    permissions: u.role === 'admin' ? await getAdminPermissions(db, u.id) : undefined,
   };
 }
 
@@ -369,7 +376,7 @@ auth.post('/register', async (c) => {
   );
 
   const tokens = await issueTokens(c.env.DB, c.env.JWT_SECRET, user);
-  return c.json({ user: publicUser(user), ...tokens }, 201);
+  return c.json({ user: await publicUser(c.env.DB, user), ...tokens }, 201);
 });
 
 // ─────────────────────────── Verify Email ─────────────────────────────────
@@ -622,7 +629,7 @@ auth.post('/login', async (c) => {
       ipAddress: clientIp(c),
     }),
   );
-  return c.json({ user: publicUser(user), ...tokens });
+  return c.json({ user: await publicUser(c.env.DB, user), ...tokens });
 });
 
 // ─────────────────────────────── Refresh ──────────────────────────────────
@@ -656,7 +663,7 @@ auth.post('/refresh', async (c) => {
   // Rotation: Refresh قدیمی باطل و یک جفت جدید صادر می‌شود (بخش ۳.۳).
   await c.env.DB.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE id = ?').bind(jti).run();
   const tokens = await issueTokens(c.env.DB, c.env.JWT_SECRET, user);
-  return c.json({ user: publicUser(user), ...tokens });
+  return c.json({ user: await publicUser(c.env.DB, user), ...tokens });
 });
 
 // ──────────────────────────────── Logout ──────────────────────────────────
@@ -693,7 +700,7 @@ auth.get('/me', async (c) => {
     .bind(sub)
     .first<UserRow>();
   if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 401);
-  return c.json({ user: publicUser(user) });
+  return c.json({ user: await publicUser(c.env.DB, user) });
 });
 
 // رفع اشکال حیاتی: قبلاً دیالوگ «تغییر رمز عبور» در صفحهٔ پروفایل هیچ
@@ -742,7 +749,7 @@ auth.patch('/me', async (c) => {
     .run();
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
   if (!user) return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 401);
-  return c.json({ user: publicUser(user) });
+  return c.json({ user: await publicUser(c.env.DB, user) });
 });
 
 export default auth;

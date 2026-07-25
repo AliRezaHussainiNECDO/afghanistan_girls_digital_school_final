@@ -1,52 +1,48 @@
 /**
- * lib/essayGrading.ts — نمره‌دهی سؤالات تشریحی با هوش مصنوعی، سمت سرور.
+ * lib/essayGrading.ts — نمره‌دهی سؤالات تشریحی + تولید سؤال با هوش مصنوعی، سمت سرور.
  *
  * قبلاً این تابع فقط داخل `routes/exams.ts` (امتحانات رسمی) تعریف شده بود.
  * با اضافه‌شدن نمره‌دهی سمت سرور برای «تمرین مضامین» (`routes/academy.ts`)،
  * به یک نسخهٔ مشترک منتقل شد تا هر دو مسیر دقیقاً همان منطق (و همان
- * Prompt/قرارداد JSON) را به‌کار ببرند — مطابق درخواست هماهنگیِ کامل بین
- * امتحانات رسمی و تمرین مضامین.
+ * Prompt/قرارداد JSON) را به‌کار ببرند.
  *
- * قرارداد: خروجی OpenAI-compatible Chat Completions (همان envهای
- * AI_PROVIDER_KEY/AI_PROVIDER_URL/AI_MODEL که در ai.ts هم استفاده می‌شوند).
+ * تغییر: قبلاً این ماژول مستقیماً به یک سرویس OpenAI-compatible جداگانه
+ * (`AI_PROVIDER_KEY`) وصل می‌شد که هیچ‌وقت روی سرور زنده پیکربندی نشد
+ * («موتور هوش مصنوعی سرور پیکربندی نشده است» / AI_NOT_CONFIGURED). چون
+ * «نصاب درسی» از قبل با موفقیت از Gemini (`GEMINI_API_KEY`، در
+ * `lib/gemini.ts`) استفاده می‌کند، به تصمیم صاحب پروژه این ماژول هم به
+ * همان Gemini منتقل شد — دیگر نیازی به کلید/حساب جداگانه نیست و سؤال‌سازی
+ * امتحانات رسمی/آزمون فصل/امتحان فاینل با همان زیرساخت پایدار کار می‌کند.
  */
+import { geminiGenerate, type GeminiEnv } from './gemini';
 
-export type EssayAiBindings = {
-  AI_PROVIDER_KEY?: string;
-  AI_PROVIDER_URL?: string;
-  AI_MODEL?: string;
-};
+export type EssayAiBindings = GeminiEnv;
 
 /** فراخوانی خام سرویس AI — متن تمیزشده (بدون کدبلاک ```، بدون متن اضافه
  * قبل از اولین [ یا {) را برمی‌گرداند، بدون JSON.parse. جدا شد تا هم
  * `callAiJson` (پارس سخت‌گیرانه) و هم `callAiJsonArrayLenient` (پارس نرم،
  * برای وقتی پاسخ به دلیل محدودیت `max_tokens` بریده می‌شود) از یک منطق
- * مشترک fetch/پاک‌سازی استفاده کنند. */
+ * مشترک استفاده کنند. سقف زمانی/مهلت واقعی داخل `geminiGenerate` (لایهٔ
+ * مشترک `lib/gemini.ts`) تضمین می‌شود؛ اینجا فقط خروجی آن به فراخوان‌ها
+ * که همه از قبل try/catch دارند (fail-safe برای هر مضمون/سؤال جداگانه)
+ * پاس داده می‌شود. */
 async function fetchAiRaw(
   env: EssayAiBindings,
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number,
 ): Promise<string | null> {
-  if (!env.AI_PROVIDER_KEY) return null;
-  const url = env.AI_PROVIDER_URL ?? 'https://api.openai.com/v1/chat/completions';
-  const model = env.AI_MODEL ?? 'gpt-4o-mini';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AI_PROVIDER_KEY}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
-      max_tokens: maxTokens,
-    }),
+  if (!env.GEMINI_API_KEY) return null;
+  const result = await geminiGenerate(env, {
+    prompt: userPrompt,
+    systemInstruction: systemPrompt,
+    temperature: 0.3,
+    maxOutputTokens: maxTokens,
   });
-  if (!res.ok) throw new Error(`AI upstream ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as any;
-  let text = String(data?.choices?.[0]?.message?.content ?? '').trim();
+  if (!result.ok) {
+    throw new Error(result.rateLimited ? 'AI_RATE_LIMITED' : `AI upstream ${result.status}: ${result.detail.slice(0, 200)}`);
+  }
+  let text = result.text.trim();
   // برخی مدل‌ها JSON را داخل کدبلاک می‌فرستند — پاک‌سازی.
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   const start = text.indexOf('[') >= 0 && (text.indexOf('[') < text.indexOf('{') || text.indexOf('{') < 0)
@@ -139,7 +135,7 @@ export async function gradeEssaysWithAi(
   env: EssayAiBindings,
   items: Array<{ id: string; text: string; modelAnswer: string; studentAnswer: string }>,
 ): Promise<Map<string, { score: number; feedback: string }> | null> {
-  if (!env.AI_PROVIDER_KEY || items.length === 0) return null;
+  if (!env.GEMINI_API_KEY || items.length === 0) return null;
   try {
     const payload = items.map((q) => ({
       id: q.id,

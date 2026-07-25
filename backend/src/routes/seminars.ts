@@ -18,17 +18,25 @@
 import { Hono, type Context } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { sendPushToUsers } from '../lib/push';
+import { hasAdminPermission } from '../lib/permissions';
 import { logAudit, clientIp } from '../lib/audit';
 import { generateSeminarArchiveReport } from '../lib/seminarReport';
+import { jaasConfigured, jaasRoomName, signJaasToken } from '../lib/jaas';
 
 type Bindings = {
   DB: D1Database;
   JWT_SECRET: string;
-  // ── Cloudflare Stream (پخش زندهٔ سمینار). همه اختیاری‌اند؛ اگر تنظیم نشوند،
-  //    مسیرهای go-live با ۵۰۳ پاسخ می‌دهند و اپ به لینک دستی (meetingLink) برمی‌گردد.
+  // ── Cloudflare Stream (پخش زندهٔ یک‌طرفه/وبیناری سمینار). همه اختیاری‌اند؛
+  //    اگر تنظیم نشوند، مسیرهای go-live با ۵۰۳ پاسخ می‌دهند و اپ به لینک
+  //    دستی (meetingLink) یا اتاق ویدیوکنفرانس داخلی برمی‌گردد.
   CF_ACCOUNT_ID?: string; // شناسهٔ حساب Cloudflare
   CF_STREAM_TOKEN?: string; // توکن API با دسترسی Stream:Edit (از wrangler secret)
   CF_STREAM_CUSTOMER?: string; // زیردامنهٔ مشتری استریم (customer-XXXX)
+  // ── JaaS (Jitsi as a Service) — کنفرانس ویدیوییِ واقعیِ دوطرفهٔ سمینار
+  //    («مثل زوم/گوگل‌میت»). رجوع کنید به lib/jaas.ts برای نحوهٔ تنظیم.
+  JAAS_APP_ID?: string;
+  JAAS_API_KEY_ID?: string;
+  JAAS_PRIVATE_KEY?: string;
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;
@@ -53,6 +61,14 @@ async function auth(c: any): Promise<{ sub: string; role: string } | null> {
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
 }
 
+/** Super Admin همیشه؛ مدیر زیرمجموعه فقط با دسترسی 'manage_seminars'. */
+async function canManageSeminars(c: any, u: { sub: string; role: string } | null): Promise<boolean> {
+  if (!u) return false;
+  if (u.role === 'super_admin') return true;
+  if (u.role === 'admin') return hasAdminPermission(c.env.DB, u.sub, 'manage_seminars');
+  return false;
+}
+
 /**
  * رفع اشکال امنیتیِ کنترل دسترسی (IDOR): قبلاً PUT/DELETE/status/go-live/
  * end-live فقط نقش «استاد سمینار» را چک می‌کردند، نه مالکیت واقعیِ همان
@@ -69,7 +85,7 @@ async function loadOwnedSeminar(
   if (!row) {
     return { ok: false, response: c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404) };
   }
-  if (me.role !== 'super_admin' && row.instructor_id !== me.sub) {
+  if (!(await canManageSeminars(c, me)) && row.instructor_id !== me.sub) {
     return { ok: false, response: c.json(fail('FORBIDDEN', 'شما مالک این سمینار نیستید', 'Not the owner', 'تاسو د دې سیمینار خاوند نه یاست', 'Vous n\'êtes pas le propriétaire de ce séminaire'), 403) };
   }
   return { ok: true, row };
@@ -234,7 +250,7 @@ seminars.get('/seminars/:id', async (c) => {
 // ── فهرست ثبت‌نامی‌های یک سمینار (فقط استاد/مدیر) — همراه با نام کاربر ────────
 seminars.get('/seminars/:id/registrations', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
@@ -263,11 +279,72 @@ seminars.get('/seminars/:id/registrations', async (c) => {
   });
 });
 
+// ── توکن ویدیوکنفرانس (JaaS) — رفع اشکال ریشه‌ای «اتاق سمینار قابل‌اتکا
+// نیست»: قبلاً فلاتر مستقیم و بدون هیچ توکنی به سرور عمومی meet.jit.si وصل
+// می‌شد که احراز هویت/تعیین میزبانش در کنترل ما نیست (تأییدشده توسط
+// نگهدارندگان Jitsi). این Endpoint، اگر JaaS تنظیم شده باشد، یک JWT
+// امضاشدهٔ کوتاه‌مدت و محدود به همین اتاق/کاربر صادر می‌کند تا فلاتر با
+// سرویس JaaS (نه سرور عمومی) وارد شود. کنترل دسترسی دقیقاً همان منطق
+// «allowed» سمت فلاتر (`SeminarRoomScreen`) است تا فقط میزبان واقعی یا
+// شرکت‌کنندهٔ ثبت‌نام‌شده بتواند توکن بگیرد.
+seminars.get('/seminars/:id/video-token', async (c) => {
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const row = await c.env.DB.prepare('SELECT * FROM seminars WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<any>();
+  if (!row) return c.json(fail('NOT_FOUND', 'سمینار یافت نشد', 'Seminar not found', 'سیمینار ونه موندل شو', 'Séminaire introuvable'), 404);
+
+  const isHost = me.role === 'super_admin' || (me.role === 'seminar_instructor' && me.sub === row.instructor_id);
+  let allowed = isHost;
+  if (!allowed) {
+    const audienceForRole = me.role === 'student' ? 'students' : me.role === 'parent' ? 'parents' : row.audience;
+    if (audienceForRole === row.audience) {
+      const reg = await c.env.DB.prepare(
+        'SELECT 1 FROM seminar_registrations WHERE seminar_id = ? AND user_id = ?',
+      )
+        .bind(row.id, me.sub)
+        .first();
+      allowed = Boolean(reg);
+    }
+  }
+  if (!allowed) {
+    return c.json(fail('FORBIDDEN', 'اجازهٔ ورود به این جلسه را ندارید', 'You are not allowed to join this session', 'تاسو د دې غونډې ننوتلو اجازه نلرئ', 'Vous n\'êtes pas autorisé(e) à rejoindre cette session'), 403);
+  }
+
+  if (!jaasConfigured(c.env)) {
+    // اپ به‌طور امن به رفتار قبلی (سرور عمومی Jitsi، بدون توکن) برمی‌گردد —
+    // تا راه‌اندازیِ JaaS انجام نشده، هیچ‌چیز نمی‌شکند.
+    return c.json({ configured: false });
+  }
+
+  const u = await c.env.DB.prepare('SELECT first_name, last_name, email FROM users WHERE id = ?')
+    .bind(me.sub)
+    .first<{ first_name: string; last_name: string; email: string }>();
+  const displayName = u ? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim() : '';
+  const roomName = jaasRoomName(row.id);
+  const token = await signJaasToken(c.env, {
+    room: roomName,
+    userId: me.sub,
+    displayName: displayName || 'کاربر',
+    email: u?.email ?? '',
+    moderator: isHost,
+  });
+  return c.json({
+    configured: true,
+    appId: c.env.JAAS_APP_ID,
+    room: `${c.env.JAAS_APP_ID}/${roomName}`,
+    serverUrl: 'https://8x8.vc',
+    token,
+    isHost,
+  });
+});
+
 // ─────────────────────────────── ساخت ──────────────────────────────────────
 
 seminars.post('/seminars', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const b = await c.req.json<any>().catch(() => null);
@@ -435,7 +512,7 @@ seminars.delete('/seminars/:id/register', async (c) => {
 
 seminars.put('/seminars/:id', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
@@ -489,7 +566,7 @@ seminars.put('/seminars/:id', async (c) => {
 
 seminars.delete('/seminars/:id', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
@@ -517,7 +594,7 @@ seminars.delete('/seminars/:id', async (c) => {
 
 seminars.patch('/seminars/:id/status', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const owned = await loadOwnedSeminar(c, c.req.param('id'), me);
@@ -563,7 +640,7 @@ seminars.patch('/seminars/:id/status', async (c) => {
 // اطلاعات پخش (RTMPS + کلید) برای استاد بازگردانده می‌شود تا با OBS/موبایل پخش کند.
 seminars.post('/seminars/:id/go-live', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');
@@ -643,7 +720,7 @@ seminars.post('/seminars/:id/go-live', async (c) => {
 // ───────────────────────── پایان پخش زنده (end-live) ───────────────────────
 seminars.post('/seminars/:id/end-live', async (c) => {
   const me = await auth(c);
-  if (!me || (me.role !== 'seminar_instructor' && me.role !== 'super_admin')) {
+  if (!me || (me.role !== 'seminar_instructor' && !(await canManageSeminars(c, me)))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden', 'لاسرسی اجازه نه لري', 'Accès non autorisé'), 403);
   }
   const id = c.req.param('id');

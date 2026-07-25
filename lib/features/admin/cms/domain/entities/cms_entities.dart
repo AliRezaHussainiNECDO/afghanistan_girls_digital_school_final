@@ -41,58 +41,6 @@ extension ContentStatusX on ContentStatus {
   }
 }
 
-/// نوع محتوا — برای منطق مشترک UI/آمار.
-enum CmsContentType { book, lesson, question }
-
-class CmsBookRow extends Equatable {
-  final String id;
-  final String title;
-  final String category;
-  final String author;
-  final String grade; // مثلاً «صنف نهم»
-  final int chaptersCount;
-  final String description;
-  final ContentStatus status;
-  final DateTime updatedAt;
-
-  const CmsBookRow({
-    required this.id,
-    required this.title,
-    required this.category,
-    this.author = '',
-    this.grade = '',
-    this.chaptersCount = 0,
-    this.description = '',
-    this.status = ContentStatus.draft,
-    required this.updatedAt,
-  });
-
-  CmsBookRow copyWith({
-    String? title,
-    String? category,
-    String? author,
-    String? grade,
-    int? chaptersCount,
-    String? description,
-    ContentStatus? status,
-    DateTime? updatedAt,
-  }) =>
-      CmsBookRow(
-        id: id,
-        title: title ?? this.title,
-        category: category ?? this.category,
-        author: author ?? this.author,
-        grade: grade ?? this.grade,
-        chaptersCount: chaptersCount ?? this.chaptersCount,
-        description: description ?? this.description,
-        status: status ?? this.status,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
-
-  @override
-  List<Object?> get props => [id, title, category, author, grade, chaptersCount, description, status, updatedAt];
-}
-
 /// درسِ واقعیِ نصاب — بخش ۶ سند (جدول‌های `lessons`/`chapters`).
 ///
 /// رفع اشکال: قبلاً این ردیف فقط برای جدول جداگانه و بی‌اثر `cms_lessons`
@@ -149,56 +97,6 @@ class CmsLessonRow extends Equatable {
   @override
   List<Object?> get props =>
       [id, title, gradeNumber, subjectId, chapterTitle, durationMinutes, content, status, updatedAt];
-}
-
-class CmsQuestionRow extends Equatable {
-  final String id;
-  final String text;
-  final String difficulty; // easy | medium | hard
-  final String subject; // مضمون
-  final String type; // mcq | essay
-  final List<String> options;
-  final String answer;
-  final ContentStatus status;
-  final DateTime updatedAt;
-
-  const CmsQuestionRow({
-    required this.id,
-    required this.text,
-    required this.difficulty,
-    this.subject = '',
-    this.type = 'mcq',
-    this.options = const [],
-    this.answer = '',
-    this.status = ContentStatus.draft,
-    required this.updatedAt,
-  });
-
-  CmsQuestionRow copyWith({
-    String? text,
-    String? difficulty,
-    String? subject,
-    String? type,
-    List<String>? options,
-    String? answer,
-    ContentStatus? status,
-    DateTime? updatedAt,
-  }) =>
-      CmsQuestionRow(
-        id: id,
-        text: text ?? this.text,
-        difficulty: difficulty ?? this.difficulty,
-        subject: subject ?? this.subject,
-        type: type ?? this.type,
-        options: options ?? this.options,
-        answer: answer ?? this.answer,
-        status: status ?? this.status,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
-
-  @override
-  List<Object?> get props =>
-      [id, text, difficulty, subject, type, options, answer, status, updatedAt];
 }
 
 /// طبق بخش ۳ب.۳ سند: مدیریت Invite Code توسط Admin (صدور دسته‌ای/ردیابی/ابطال).

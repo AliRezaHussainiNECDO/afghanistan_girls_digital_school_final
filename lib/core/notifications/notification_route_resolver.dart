@@ -20,7 +20,7 @@ String? resolveNotificationRoute(NotificationKind kind, String? relatedId, AppUs
     case NotificationKind.chat:
       if (rid == null) return null;
       return switch (role) {
-        AppUserRole.superAdmin => AppRoutes.adminChatThread(rid),
+        AppUserRole.superAdmin || AppUserRole.admin => AppRoutes.adminChatThread(rid),
         AppUserRole.student => AppRoutes.chatThread(rid),
         AppUserRole.parent => AppRoutes.parentContactAdmin,
         AppUserRole.seminarInstructor => AppRoutes.instructorContactAdmin,
@@ -37,7 +37,7 @@ String? resolveNotificationRoute(NotificationKind kind, String? relatedId, AppUs
       return switch (role) {
         AppUserRole.student => AppRoutes.seminars,
         AppUserRole.parent => AppRoutes.parentSeminars,
-        AppUserRole.superAdmin => AppRoutes.adminSeminars,
+        AppUserRole.superAdmin || AppUserRole.admin => AppRoutes.adminSeminars,
         AppUserRole.seminarInstructor => AppRoutes.instructorHome,
       };
     case NotificationKind.safety:

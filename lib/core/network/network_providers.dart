@@ -63,6 +63,17 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final tokens = ref.watch(tokenStoreProvider);
   return ApiClient(
     tokenProvider: () => tokens.accessToken,
+    // رفع اشکال «قطع نشست بعد از چند دقیقه»: قبلاً Refresh Token فقط یک‌بار
+    // هنگام باز کردن اپ استفاده می‌شد؛ حالا ApiClient خودش هر ۴۰۱ میان‌کاری
+    // را با همین Refresh Token تمدید می‌کند — بدون این دو Callback، آن تمدید
+    // خاموش اصلاً امکان‌پذیر نیست.
+    refreshTokenProvider: () => tokens.refreshToken,
+    onTokensRefreshed: (access, refresh) {
+      // به‌روزرسانیِ درون‌حافظه‌ای بلافاصله (همگام) اتفاق می‌افتد؛ نوشتن
+      // روی دیسک به‌صورت ناهمگام در پس‌زمینه ادامه می‌یابد — تا هیچ تأخیری
+      // در تکمیل درخواستِ در حال تلاش‌مجدد ایجاد نشود.
+      tokens.saveTokens(access: access, refresh: refresh ?? tokens.refreshToken);
+    },
     onUnauthorized: () {
       // پاک‌سازی Token منقضی/نامعتبر؛ هدایت به صفحهٔ ورود در لایهٔ UI
       // (Router) بر اساس خالی‌شدن نشست انجام می‌شود.

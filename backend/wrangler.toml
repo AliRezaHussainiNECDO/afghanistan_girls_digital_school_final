@@ -31,6 +31,13 @@ binding = "DB"
 database_name = "afghan_girls_school_db"
 database_id = "76b6e211-eecd-4464-ae0f-8fb65a21eebe"
 
+# Cron روزانه — پوش نوتیفیکیشن «فرصت تلاش دوبارهٔ امتحان فاینل» وقتی ۱۵ روز
+# از تلاش ناکام گذشت (index.ts::scheduled + lib/finalExamRetakeNotify.ts).
+# ساعت ۳ صبح UTC (~۷:۳۰ صبح کابل) — زمانی که تقریباً هیچ شاگردی بیدار
+# نیست، تا وقتی چند دقیقه بعد اپ را باز کند، اعلان از قبل رسیده باشد.
+[triggers]
+crons = ["0 3 * * *"]
+
 # R2 — فضای ذخیرهٔ فایل‌های صوتی چت و PDF کتابخانه.
 [[r2_buckets]]
 binding = "BUCKET"
@@ -52,6 +59,16 @@ ALLOWED_ORIGIN = "https://afghanistangirlsdigitalschool.org,http://afghanistangi
 # جلسهٔ دستی» (meetingLink) یا اتاق داخلی برمی‌گردد؛ پس اپ همیشه کار می‌کند.
 CF_ACCOUNT_ID = "3276f5f2f9915da134fc398e98b6539d"
 CF_STREAM_CUSTOMER = "3xsnqty4gq6f5bah"
+
+# ── کنفرانس ویدیویی واقعی سمینار («مثل زوم/گوگل‌میت») با JaaS ────────────────
+# Cloudflare Stream بالا فقط پخش یک‌طرفه (وبیناری) است؛ اتاق دوطرفهٔ سمینار از
+# Jitsi استفاده می‌کند. بدون این سه راز، اتاق به سرور عمومی رایگان meet.jit.si
+# فال‌بک می‌کند (کار می‌کند، ولی احراز هویت/تعیین میزبانش خارج از کنترل ماست).
+# راهنمای کامل راه‌اندازی در backend/SECRETS.md:
+# wrangler secret put JAAS_APP_ID
+# wrangler secret put JAAS_API_KEY_ID
+# wrangler secret put JAAS_PRIVATE_KEY
+
 # معلم هوشمند (LLM) — کلید را با `wrangler secret put AI_PROVIDER_KEY` بگذارید.
 # URL و مدل را می‌توانید برای هر ارائه‌دهندهٔ سازگار با OpenAI تغییر دهید.
 AI_PROVIDER_URL = "https://api.openai.com/v1/chat/completions"

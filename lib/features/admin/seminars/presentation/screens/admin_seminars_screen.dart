@@ -11,7 +11,7 @@ import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../../shared_models/seminar.dart';
 import '../../../../auth/domain/entities/app_user.dart';
-import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
+import '../../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend, authSessionProvider;
 import '../../../../seminars/presentation/providers/seminars_providers.dart';
 import '../../../../seminars/presentation/widgets/go_live_flow.dart';
 import '../../../../seminars/presentation/widgets/seminar_editor_dialog.dart';
@@ -49,7 +49,7 @@ class _AdminSeminarsScreenState extends ConsumerState<AdminSeminarsScreen> {
 
     return AppScaffold(
       title: context.tr('admin.seminars'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _create(context, ref),
         icon: const Icon(Icons.add_rounded),

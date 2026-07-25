@@ -4,20 +4,10 @@ import '../../domain/entities/cms_entities.dart';
 /// قرارداد مشترک DataSource مدیریت محتوا (CMS) — Mock و Remote هر دو آن را
 /// پیاده می‌کنند تا با سوییچ `kUseLiveBackend` تعویض شوند.
 abstract class CmsDataSource {
-  Future<List<CmsBookRow>> getBooks();
-  Future<CmsBookRow> saveBook(CmsBookRow row);
-  Future<void> deleteBook(String id);
-  Future<void> setBookStatus(String id, ContentStatus status);
-
   Future<List<CmsLessonRow>> getLessons();
   Future<CmsLessonRow> saveLesson(CmsLessonRow row);
   Future<void> deleteLesson(String id);
   Future<void> setLessonStatus(String id, ContentStatus status);
-
-  Future<List<CmsQuestionRow>> getQuestions();
-  Future<CmsQuestionRow> saveQuestion(CmsQuestionRow row);
-  Future<void> deleteQuestion(String id);
-  Future<void> setQuestionStatus(String id, ContentStatus status);
 
   Future<List<CmsInviteCodeRow>> getInviteCodes({String type = 'student'});
   Future<void> generateInviteCodes(int count, String batchLabel, {String type = 'student'});
@@ -29,36 +19,6 @@ abstract class CmsDataSource {
 class CmsRemoteDataSource implements CmsDataSource {
   final ApiClient _api;
   CmsRemoteDataSource(this._api);
-
-  // ───────────────────────────── کتاب‌ها ─────────────────────────────
-
-  @override
-  Future<List<CmsBookRow>> getBooks() async {
-    final data = await _api.get('/admin/cms/books');
-    return ((data['books'] as List?) ?? []).map(_bookFrom).toList();
-  }
-
-  @override
-  Future<CmsBookRow> saveBook(CmsBookRow row) async {
-    final data = await _api.post('/admin/cms/books', data: {
-      'id': row.id,
-      'title': row.title,
-      'category': row.category,
-      'author': row.author,
-      'grade': row.grade,
-      'chaptersCount': row.chaptersCount,
-      'description': row.description,
-      'status': row.status.key,
-    });
-    return _bookFrom(data['book']);
-  }
-
-  @override
-  Future<void> deleteBook(String id) => _api.delete('/admin/cms/books/$id');
-
-  @override
-  Future<void> setBookStatus(String id, ContentStatus status) =>
-      _api.patch('/admin/cms/books/$id/status', data: {'status': status.key});
 
   // ────────────────────────────── دروس ───────────────────────────────
   // رفع اشکال: قبلاً این متدها `/admin/cms/lessons` را صدا می‌زدند که به
@@ -94,36 +54,6 @@ class CmsRemoteDataSource implements CmsDataSource {
   Future<void> setLessonStatus(String id, ContentStatus status) =>
       _api.patch('/admin/curriculum/lessons/$id/status', data: {'status': status.key});
 
-  // ────────────────────────────── سؤالات ─────────────────────────────
-
-  @override
-  Future<List<CmsQuestionRow>> getQuestions() async {
-    final data = await _api.get('/admin/cms/questions');
-    return ((data['questions'] as List?) ?? []).map(_questionFrom).toList();
-  }
-
-  @override
-  Future<CmsQuestionRow> saveQuestion(CmsQuestionRow row) async {
-    final data = await _api.post('/admin/cms/questions', data: {
-      'id': row.id,
-      'text': row.text,
-      'difficulty': row.difficulty,
-      'subject': row.subject,
-      'type': row.type,
-      'options': row.options,
-      'answer': row.answer,
-      'status': row.status.key,
-    });
-    return _questionFrom(data['question']);
-  }
-
-  @override
-  Future<void> deleteQuestion(String id) => _api.delete('/admin/cms/questions/$id');
-
-  @override
-  Future<void> setQuestionStatus(String id, ContentStatus status) =>
-      _api.patch('/admin/cms/questions/$id/status', data: {'status': status.key});
-
   // ──────────────────── کدهای دعوت (روتر admin موجود) ─────────────────
   // رفع اشکال: قبلاً `type` همیشه به‌صورت ثابت 'student' فرستاده می‌شد —
   // یعنی تب «کدهای استادان» اصلاً به این DataSource وصل نبود (کد دیگری
@@ -149,18 +79,6 @@ class CmsRemoteDataSource implements CmsDataSource {
 
   // ─────────────────────────── نگاشت JSON ────────────────────────────
 
-  CmsBookRow _bookFrom(dynamic e) => CmsBookRow(
-        id: e['id'] as String,
-        title: e['title'] as String? ?? '',
-        category: e['category'] as String? ?? '',
-        author: e['author'] as String? ?? '',
-        grade: e['grade'] as String? ?? '',
-        chaptersCount: (e['chaptersCount'] as num?)?.toInt() ?? 0,
-        description: e['description'] as String? ?? '',
-        status: ContentStatusX.fromKey(e['status'] as String? ?? 'draft'),
-        updatedAt: DateTime.tryParse(e['updatedAt'] as String? ?? '') ?? DateTime.now(),
-      );
-
   CmsLessonRow _lessonFrom(dynamic e) => CmsLessonRow(
         id: e['id'] as String,
         title: e['title'] as String? ?? '',
@@ -169,18 +87,6 @@ class CmsRemoteDataSource implements CmsDataSource {
         chapterTitle: e['chapterTitle'] as String? ?? '',
         durationMinutes: (e['durationMinutes'] as num?)?.toInt() ?? 0,
         content: e['content'] as String? ?? '',
-        status: ContentStatusX.fromKey(e['status'] as String? ?? 'draft'),
-        updatedAt: DateTime.tryParse(e['updatedAt'] as String? ?? '') ?? DateTime.now(),
-      );
-
-  CmsQuestionRow _questionFrom(dynamic e) => CmsQuestionRow(
-        id: e['id'] as String,
-        text: e['text'] as String? ?? '',
-        difficulty: e['difficulty'] as String? ?? 'medium',
-        subject: e['subject'] as String? ?? '',
-        type: e['type'] as String? ?? 'mcq',
-        options: ((e['options'] as List?) ?? []).map((o) => o.toString()).toList(),
-        answer: e['answer'] as String? ?? '',
         status: ContentStatusX.fromKey(e['status'] as String? ?? 'draft'),
         updatedAt: DateTime.tryParse(e['updatedAt'] as String? ?? '') ?? DateTime.now(),
       );

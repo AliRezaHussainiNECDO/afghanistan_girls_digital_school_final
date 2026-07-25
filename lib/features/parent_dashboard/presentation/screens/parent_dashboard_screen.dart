@@ -12,6 +12,7 @@ import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../academy/presentation/widgets/academy_shared.dart' show formatDate;
 import '../../../certificates/presentation/screens/my_certificates_screen.dart';
 import '../../../curriculum/presentation/widgets/points_badge.dart';
 import '../../../curriculum/presentation/widgets/subject_progress_bar.dart';
@@ -581,11 +582,10 @@ class _ChildSummaryView extends ConsumerWidget {
                 )),
           const SizedBox(height: 16),
           _SectionLabel(text: context.tr('parent.upcomingSeminars')),
-          ...s.upcomingSeminarTitles.map((t) => ListTile(
-                dense: true,
-                leading: Icon(Icons.groups_rounded, color: scheme.secondary),
-                title: Text(t),
-              )),
+          if (s.seminarParticipation.isEmpty)
+            _EmptyHint(text: context.tr('parent.noSeminarParticipationHint'))
+          else
+            ...s.seminarParticipation.map((p) => _SeminarParticipationRow(p: p)),
         ],
       ),
     );
@@ -767,6 +767,72 @@ class _HomeworkSummaryCard extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// یک ردیف اشتراک واقعیِ فرزند در یک سمینار — رفع اشکال: قبلاً اینجا فقط
+/// عنوان خام «۳ سمینار آیندهٔ همهٔ شاگردان» نشان داده می‌شد؛ حالا وضعیت واقعیِ
+/// همین فرزند (ثبت‌نام‌شده/لیست انتظار/حاضرشده/غایب) + تاریخ با رنگ‌بندی
+/// روشن دیده می‌شود.
+class _SeminarParticipationRow extends StatelessWidget {
+  final ChildSeminarParticipation p;
+  const _SeminarParticipationRow({required this.p});
+
+  (String, Color, IconData) _statusInfo(BuildContext context) {
+    switch (p.status) {
+      case 'attended':
+        return (context.tr('parent.seminarStatusAttended'), AppColors.green600, Icons.check_circle_rounded);
+      case 'no_show':
+        return (context.tr('parent.seminarStatusNoShow'), AppColors.danger, Icons.cancel_rounded);
+      case 'waitlisted':
+        return (context.tr('parent.seminarStatusWaitlisted'), AppColors.orange600, Icons.hourglass_top_rounded);
+      case 'registered':
+      default:
+        return p.isUpcoming
+            ? (context.tr('parent.seminarStatusRegistered'), AppColors.info, Icons.event_available_rounded)
+            : (context.tr('parent.seminarStatusAttended'), AppColors.green600, Icons.check_circle_rounded);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (label, color, icon) = _statusInfo(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.14), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 17),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(formatDate(p.scheduledStart), style: TextStyle(fontSize: 10.5, color: scheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadii.pill)),
+            child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
+          ),
+        ],
       ),
     );
   }

@@ -1,7 +1,10 @@
 import 'package:equatable/equatable.dart';
 
 /// نقش کاربر واردشده — طبق بخش ۲.۱ سند.
-enum AppUserRole { superAdmin, student, seminarInstructor, parent }
+/// `admin` («مدیر زیرمجموعه» — بخش «مدیریت مدیران») فقط دسترسی‌های صریحاً
+/// تخصیص‌داده‌شده در [AppUser.permissions] را دارد؛ برخلاف `superAdmin` که
+/// همیشه دسترسی کامل دارد.
+enum AppUserRole { superAdmin, admin, student, seminarInstructor, parent }
 
 /// نمایندهٔ کاربر واردشده به سیستم (بخش ۱۷.۱: جدول `users`).
 class AppUser extends Equatable {
@@ -16,6 +19,10 @@ class AppUser extends Equatable {
   final bool awaitingParentLink; // فقط برای Parent — بخش ۳.۶/۱۳ب.۲
   final String? avatarUrl; // آدرس کامل عکس پروفایل روی سرور (null = بدون عکس)
   final bool emailVerified; // آیا ایمیل با لینک تأیید شده است؟
+  // فقط برای role == admin («مدیر زیرمجموعه») معنا دارد — دسته‌های دسترسی
+  // تخصیص‌داده‌شده توسط Super Admin (بخش «مدیریت مدیران»)؛ برای بقیهٔ نقش‌ها
+  // همیشه خالی است (super_admin نیازی به این فهرست ندارد — دسترسی کامل دارد).
+  final List<String> permissions;
 
   const AppUser({
     required this.id,
@@ -29,6 +36,7 @@ class AppUser extends Equatable {
     this.awaitingParentLink = false,
     this.avatarUrl,
     this.emailVerified = true,
+    this.permissions = const [],
   });
 
   /// نام کامل «نام + تخلص»؛ اگر جداگانه موجود نبود، displayName برمی‌گردد.
@@ -40,6 +48,11 @@ class AppUser extends Equatable {
   /// حرف اول نام برای آواتار (fallback در نبود عکس پروفایل).
   String get initial => fullName.isNotEmpty ? fullName.substring(0, 1) : '?';
 
+  /// آیا این کاربر (هر نقشی) دستهٔ دسترسی مشخصی را دارد؟ super_admin همیشه؛
+  /// admin فقط اگر آن دسته در [permissions] باشد؛ بقیهٔ نقش‌ها هرگز.
+  bool hasPermission(String permission) =>
+      role == AppUserRole.superAdmin || (role == AppUserRole.admin && permissions.contains(permission));
+
   AppUser copyWith({
     String? displayName,
     String? firstName,
@@ -49,6 +62,7 @@ class AppUser extends Equatable {
     bool? awaitingParentLink,
     String? avatarUrl,
     bool? emailVerified,
+    List<String>? permissions,
   }) {
     return AppUser(
       id: id,
@@ -62,10 +76,21 @@ class AppUser extends Equatable {
       awaitingParentLink: awaitingParentLink ?? this.awaitingParentLink,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       emailVerified: emailVerified ?? this.emailVerified,
+      permissions: permissions ?? this.permissions,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, email, role, displayName, firstName, lastName, currentGrade, avatarUrl, emailVerified];
+  List<Object?> get props => [
+        id,
+        email,
+        role,
+        displayName,
+        firstName,
+        lastName,
+        currentGrade,
+        avatarUrl,
+        emailVerified,
+        permissions,
+      ];
 }

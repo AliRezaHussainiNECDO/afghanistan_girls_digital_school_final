@@ -48,8 +48,13 @@ class ParentRemoteDataSource implements ParentDataSource {
       subjects: subjects,
       achievements: (m['achievements'] as List? ?? []).map((x) => x.toString()).toList(),
       certificates: (m['certificates'] as List? ?? []).map((x) => x.toString()).toList(),
-      upcomingSeminarTitles:
-          (m['upcomingSeminarTitles'] as List? ?? []).map((x) => x.toString()).toList(),
+      seminarParticipation: (m['seminarParticipation'] as List? ?? [])
+          .map((x) => ChildSeminarParticipation(
+                title: x['title'] as String? ?? '',
+                scheduledStart: DateTime.tryParse(x['scheduledStart'] as String? ?? '') ?? DateTime.now(),
+                status: x['status'] as String? ?? 'registered',
+              ))
+          .toList(),
       pointsTotal: (m['pointsTotal'] as num?)?.toInt() ?? 0,
       pointsLevel: (m['pointsLevel'] as num?)?.toInt() ?? 1,
       pointsLevelTitleFa: m['pointsLevelTitleFa'] as String? ?? 'نوآموز',

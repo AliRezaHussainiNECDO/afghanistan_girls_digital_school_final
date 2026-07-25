@@ -6,6 +6,7 @@ import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/reports_providers.dart';
 
 const _iconPalette = [
@@ -25,7 +26,7 @@ class ReportsScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: context.tr('admin.reports'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: reportAsync.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(

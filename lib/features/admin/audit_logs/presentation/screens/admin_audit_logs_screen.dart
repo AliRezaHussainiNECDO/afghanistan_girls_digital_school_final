@@ -9,6 +9,7 @@ import 'package:intl/intl.dart' as intl;
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/audit_log_entry.dart';
 import '../providers/audit_logs_providers.dart';
 
@@ -205,7 +206,7 @@ class _AdminAuditLogsScreenState extends ConsumerState<AdminAuditLogsScreen> {
 
     return AppScaffold(
       title: context.tr('admin.auditLogs'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       actions: [
         IconButton(
           tooltip: context.tr('auditLogs.refreshTooltip'),

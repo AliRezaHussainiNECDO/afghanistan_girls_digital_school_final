@@ -6,12 +6,14 @@ import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../../core/widgets/loading_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
+import '../../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../ai_teacher/presentation/widgets/ai_engine_settings_card.dart';
 import '../../domain/entities/ai_teacher_config.dart';
 import '../../domain/usecases/ai_teacher_management_usecases.dart';
 import '../providers/ai_teacher_management_providers.dart';
 import '../widgets/ai_curriculum_generate_panel.dart';
 import '../widgets/ai_teacher_stats_section.dart';
+import '../widgets/curriculum_translation_panel.dart';
 
 class AiTeacherManagementScreen extends ConsumerWidget {
   const AiTeacherManagementScreen({super.key});
@@ -23,7 +25,7 @@ class AiTeacherManagementScreen extends ConsumerWidget {
 
     return AppScaffold(
       title: context.tr('admin.aiTeacherManagement'),
-      role: AppUserRole.superAdmin,
+      role: ref.watch(authSessionProvider)?.role ?? AppUserRole.superAdmin,
       body: configsAsync.when(
         loading: () => const LoadingView(),
         error: (e, st) => ErrorView(
@@ -49,6 +51,9 @@ class AiTeacherManagementScreen extends ConsumerWidget {
                   // دروس یتیم، آپلود کتاب هر مضمون) از این رابط حذف شدند —
                   // منبع مطلق محتوا خودِ Gemini است.
                   AiCurriculumGeneratePanel(),
+                  SizedBox(height: 10),
+                  // ═══ ترجمهٔ نصاب (اول پشتو) — طبق درخواست صاحب پروژه ═══
+                  CurriculumTranslationPanel(),
                   SizedBox(height: 10),
                   // ── نظارت/بازنویسی رفتار پایه و پرامپت معلم هوشمند ──
                   AiBasePromptCard(),

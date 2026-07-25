@@ -24,6 +24,10 @@ class AppRoutes {
       '/student/curriculum/$subjectId/$chapterId';
   static String curriculumLessonDetail(String subjectId, String chapterId, String lessonId) =>
       '/student/curriculum/$subjectId/$chapterId/$lessonId';
+  // «آزمون فصل» خودکار — طبق درخواست صاحب پروژه، بعد از دیدن تمام درس‌های
+  // یک فصل باز می‌شود (backend/src/routes/chapterQuizzes.ts).
+  static String chapterQuiz(String subjectId, String chapterId) =>
+      '/student/curriculum/$subjectId/$chapterId/quiz';
   static const aiTeacher = '/student/ai-teacher';
   static const homework = '/student/homework';
   static const advisor = '/student/advisor';
@@ -31,6 +35,8 @@ class AppRoutes {
   static const certificates = '/student/certificates';
   static const exams = '/student/exams';
   static String examTaking(String examId) => '/student/exams/$examId';
+  // امتحان فاینل چندمضمونهٔ صنف (backend/src/routes/finalExams.ts).
+  static const finalExam = '/student/final-exam';
   static const attendance = '/student/attendance';
   static const library = '/student/library';
   static const seminars = '/student/seminars';
@@ -95,4 +101,6 @@ class AppRoutes {
   static const adminSubmissions = '/admin/submissions';
   static const adminNotifications = '/admin/notifications';
   static const adminProfile = '/admin/profile';
+  // مدیریت مدیران — فقط Super Admin (بخش «مدیریت مدیران»، دسترسی‌بندی سمت سرور).
+  static const adminManagement = '/admin/management';
 }
