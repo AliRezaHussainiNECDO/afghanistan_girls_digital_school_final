@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- آیکون نمایهٔ پنهان‌سازی («حالت پنهان») — یک آیکون کاملاً معمولیِ
+     ماشین‌حساب، بدون هیچ ارجاعی به برند/لوگوی برنامهٔ اصلی، تا در فهرست
+     برنامه‌های گوشی کاملاً بی‌ضرر و غیرقابل‌تشخیص به‌نظر برسد. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- پس‌زمینه -->
+    <path android:pathData="M0,0h108v108h-108z" android:fillColor="#2B2E33"/>
+    <!-- بدنهٔ ماشین‌حساب -->
+    <path
+        android:pathData="M30,20 h48 a6,6 0,0,1 6,6 v56 a6,6 0,0,1 -6,6 h-48 a6,6 0,0,1 -6,-6 v-56 a6,6 0,0,1 6,-6 z"
+        android:fillColor="#F4F1EA"/>
+    <!-- صفحه‌نمایش -->
+    <path android:pathData="M32,28 h44 v14 h-44 z" android:fillColor="#8FBF9F"/>
+    <!-- ردیف‌های دکمه -->
+    <path android:pathData="M32,50 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M45.5,50 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M59,50 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M72.5,50 h9 v9 h-9 z" android:fillColor="#F0A94E"/>
+
+    <path android:pathData="M32,63 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M45.5,63 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M59,63 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M72.5,63 h9 v9 h-9 z" android:fillColor="#F0A94E"/>
+
+    <path android:pathData="M32,76 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M45.5,76 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M59,76 h9 v9 h-9 z" android:fillColor="#C7C1B4"/>
+    <path android:pathData="M72.5,76 h9 v9 h-9 z" android:fillColor="#F0A94E"/>
+</vector>

@@ -22,6 +22,7 @@ export const ADMIN_PERMISSIONS = [
   'manage_invite_codes', // کدهای دعوت (بخش ۳ب.۳)
   'view_reports_audit', // گزارش خلاصهٔ پلتفرم + لاگ بازبینی (فقط‌خواندنی)
   'manage_notifications', // اعلان‌ها
+  'manage_error_logs', // گزارش خطاهای برنامه (Migration 0046) — مرور/تغییر وضعیت/حذف رکوردهای error_logs
 ] as const;
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];

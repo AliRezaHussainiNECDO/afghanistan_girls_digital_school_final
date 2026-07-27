@@ -1,19 +1,41 @@
+import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../app/theme/design_tokens.dart';
 import '../localization/app_localizations.dart';
+import '../network/api_client.dart' show kApiBaseUrl;
 
 /// مدیریت‌کنندهٔ مرکزی خطا.
 ///
-/// همهٔ خطاهای مدیریت‌نشدهٔ اپ (فریم‌ورک، پلتفرم، Zone) به اینجا می‌رسند.
-/// در فاز فعلی صرفاً خطا را به‌صورت ساختاریافته لاگ می‌کند و در حافظه نگه
-/// می‌دارد؛ در فازهای بعد می‌توان همین نقطه را به یک سرویس گزارش خطا
-/// (مانند Sentry/Crashlytics) وصل کرد بدون تغییر در بقیهٔ اپ.
+/// همهٔ خطاهای مدیریت‌نشدهٔ اپ (فریم‌ورک، پلتفرم، Zone — نگاه کن main.dart)
+/// به اینجا می‌رسند. علاوه بر لاگ محلی (حافظه/کنسول)، از «گزارش خطاهای
+/// برنامه» (Migration 0046) به بعد، هر خطا به‌صورت خاموش (fire-and-forget)
+/// به `POST /api/v1/errors` هم گزارش می‌شود — دقیقاً همان نقطه‌ای که این
+/// کلاس از قبل پیش‌بینی کرده بود («در فازهای بعد می‌توان به یک سرویس گزارش
+/// خطا وصل کرد»). نتیجه در پنل مدیر («گزارش خطاها» — routes/errorLogs.ts +
+/// features/admin/error_logs) با کد خطا، تاریخ/روز/ساعت دقیق، و دکمهٔ «کپی
+/// برای هوش مصنوعی» قابل مرور است.
+///
+/// این کلاس عمداً از ApiClient/Riverpod استفاده نمی‌کند: `FlutterError.onError`
+/// در main.dart پیش از ساخته‌شدن `ProviderScope` تنظیم می‌شود، پس یک نمونهٔ
+/// سبک و مستقل `Dio` با baseUrl همان [kApiBaseUrl] کافی است. Endpoint ثبت
+/// خطا عمداً بدون نیاز به Bearer است (routes/errorLogs.ts) چون باید کرش
+/// کاربر مهمان/واردنشده را هم بگیرد.
 class AppErrorHandler {
   AppErrorHandler._();
 
   /// آخرین خطاهای ثبت‌شده (برای صفحهٔ تشخیص/دیباگ داخلی، حداکثر ۵۰ مورد).
   static final List<AppErrorEntry> recent = <AppErrorEntry>[];
+
+  static final Dio _reportDio = Dio(BaseOptions(
+    baseUrl: kApiBaseUrl,
+    connectTimeout: const Duration(seconds: 6),
+    sendTimeout: const Duration(seconds: 6),
+    receiveTimeout: const Duration(seconds: 6),
+  ));
 
   static void record(Object error, StackTrace? stack, {String context = 'unknown'}) {
     final entry = AppErrorEntry(
@@ -34,6 +56,93 @@ class AppErrorHandler {
         debugPrint('│  $firstLines');
       }
       debugPrint('└─────────────────────────────');
+    }
+
+    _reportToBackend(entry);
+  }
+
+  /// نگاشت `context` هر سه قلاب main.dart به دسته‌بندی سمت سرور
+  /// (lib/errorLog.ts) — همه از نوع «کرش برنامه» هستند، پس UI مناسب است.
+  static String _categoryFor(String context) => 'UI';
+
+  static String get _platformName {
+    if (kIsWeb) return 'web';
+    try {
+      if (Platform.isAndroid) return 'android';
+      if (Platform.isIOS) return 'ios';
+      if (Platform.isWindows) return 'windows';
+      if (Platform.isMacOS) return 'macos';
+      if (Platform.isLinux) return 'linux';
+    } catch (_) {
+      /* dart:io روی وب در دسترس نیست — kIsWeb بالا این حالت را پوشش می‌دهد */
+    }
+    return 'unknown';
+  }
+
+  static String? get _osVersion {
+    if (kIsWeb) return null;
+    try {
+      return Platform.operatingSystemVersion;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// ارسال خاموش به سرور — هرگز نباید یک خطای تازه بسازد یا مسیر اصلی
+  /// (که خودش از یک کرش می‌آید) را کند/قفل کند.
+  static void _reportToBackend(AppErrorEntry entry) {
+    unawaited(
+      _reportDio
+          .post<dynamic>(
+            '/errors',
+            data: {
+              'category': _categoryFor(entry.context),
+              'severity': 'high',
+              'title': 'کرش برنامه (${entry.context})',
+              'message': entry.error,
+              'stackTrace': entry.stack.isEmpty ? null : entry.stack,
+              'source': 'flutter_app',
+              'screenOrEndpoint': entry.context,
+              'platform': _platformName,
+              'osVersion': _osVersion,
+            },
+          )
+          .catchError((Object e) {
+            // بی‌صدا — نبودِ اینترنت/در دسترس‌نبودن سرور نباید چیزی را بشکند.
+            if (kDebugMode) debugPrint('[AppErrorHandler] گزارش خطا به سرور ناموفق بود: $e');
+            return null;
+          }),
+    );
+  }
+
+  /// «ردِ نان» (breadcrumb) برای مسیرهای پرخطری که به یک SDK/کد بومی
+  /// می‌روند (مثل `_jitsiMeet.join()` در ورود به سمینار) — جایی که یک کرش
+  /// واقعی ممکن است اصلاً به Dart نرسد و [record] هرگز صدا زده نشود.
+  ///
+  /// چرا لازم است؟ اگر پردازه دقیقاً همان لحظه از بین برود، تنها راه فهمیدن
+  /// «تا کجا رسیدیم» این است که هر قدم را *قبل* از انجامش اینجا ثبت کنیم.
+  /// برخلاف [record]، این متد را عمداً await می‌کنیم (نه fire-and-forget)
+  /// تا مطمئن شویم درخواست واقعاً قبل از قدم پرخطر بعدی به سرور رسیده —
+  /// در غیر این صورت خودِ تأخیر شبکه ممکن بود باعث شود آخرین ردِ نان هم
+  /// هرگز ارسال نشود.
+  static Future<void> breadcrumb(String message, {String context = 'breadcrumb', String severity = 'low'}) async {
+    if (kDebugMode) debugPrint('[Breadcrumb/$context] $message');
+    try {
+      await _reportDio.post<dynamic>(
+        '/errors',
+        data: {
+          'category': 'UI',
+          'severity': severity,
+          'title': 'ردیابی: $context',
+          'message': message,
+          'source': 'flutter_app',
+          'screenOrEndpoint': context,
+          'platform': _platformName,
+          'osVersion': _osVersion,
+        },
+      ).timeout(const Duration(seconds: 3));
+    } catch (e) {
+      if (kDebugMode) debugPrint('[AppErrorHandler] ارسال ردِ نان ناموفق بود: $e');
     }
   }
 }

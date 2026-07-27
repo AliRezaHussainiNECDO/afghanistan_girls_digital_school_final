@@ -9,6 +9,7 @@ import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/errors/app_error_handler.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/permissions/permission_service.dart';
 import '../../../../core/widgets/error_view.dart';
@@ -75,8 +76,17 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
   /// شده باشند؛ در غیر این صورت یک گفتگوی روشن با راه رفتن به تنظیمات نشان
   /// داده می‌شود — نه یک کرش.
   Future<bool> _ensureCallPermissions() async {
+    // ردِ نان تشخیصی: چون کرش احتمالی اینجا بومی است (نه یک Exception قابل
+    // گرفتن در Dart)، هر قدم را *قبل* از انجامش ثبت می‌کنیم — اگر پردازه از
+    // بین برود، در «گزارش خطاهای برنامه» می‌بینیم دقیقاً کدام قدم آخرین بار
+    // موفق بوده (رجوع کن core/errors/app_error_handler.dart::breadcrumb).
+    await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون', context: 'SeminarJoin.permissions');
     final cameraOk = await PermissionService.request(Permission.camera);
     final micOk = await PermissionService.request(Permission.microphone);
+    await AppErrorHandler.breadcrumb(
+      'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk',
+      context: 'SeminarJoin.permissions',
+    );
     if (cameraOk && micOk) return true;
     if (!mounted) return false;
     await showDialog<void>(
@@ -130,7 +140,26 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
       // پیوستن به کلاس هرگز نباید فقط به‌خاطر این توکن اختیاری متوقف شود.
       final videoToken =
           await ref.read(seminarLiveServiceProvider).fetchVideoToken(seminar.id);
-      if (!mounted) return;
+      await AppErrorHandler.breadcrumb(
+        videoToken.configured
+            ? 'توکن JaaS دریافت شد — سرور: ${videoToken.serverUrl}، اتاق: ${videoToken.room}'
+            : 'JaaS تنظیم نشده — بازگشت به سرور عمومی meet.jit.si',
+        context: 'SeminarJoin.videoToken',
+      );
+      if (!mounted) {
+        // ردِ نان تشخیصی: اگر اینجا widget دیگر mounted نبود، یعنی خودِ صفحه
+        // بین دریافت توکن JaaS و فراخوانی SDK بومی از درخت ویجت حذف شده
+        // (مثلاً یک ناوبری/ری‌دایرکت خودکار) — این خودِ علتِ «خروج از سمینار»
+        // است، نه یک کرش داخل Jitsi. چون context دیگر معتبر نیست، این ردِ نان
+        // را بدون context.mounted می‌فرستیم (breadcrumb به BuildContext نیازی
+        // ندارد).
+        unawaited(AppErrorHandler.breadcrumb(
+          'ویجت دیگر mounted نبود — قبل از jitsiMeet.join() بازگشت زده شد',
+          context: 'SeminarJoin.unmountedBeforeJoin',
+          severity: 'high',
+        ));
+        return;
+      }
       final options = JitsiMeetConferenceOptions(
         serverURL: videoToken.configured ? videoToken.serverUrl : null,
         room: videoToken.configured ? videoToken.room : _roomNameFor(seminar.id),
@@ -165,12 +194,45 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
           if (isHost) _promptEndAfterCall(seminar);
         },
         conferenceTerminated: (url, error) {
+          // ردِ نان تشخیصی: این کال‌بک وقتی صدا زده می‌شود که خودِ Jitsi
+          // (نه سیستم‌عامل) تصمیم بگیرد کنفرانس را ببندد — مثلاً به‌خاطر
+          // شکست احراز هویت JaaS (توکن/سرور نامعتبر). اگر «برنامه بسته
+          // می‌شود» واقعاً همین باشد، این ردِ نان با متن خطا ثبت می‌شود، نه
+          // یک کرش بی‌صدا.
+          unawaited(AppErrorHandler.breadcrumb(
+            'conferenceTerminated — url=$url error=$error',
+            context: 'SeminarJoin.conferenceTerminated',
+            severity: error == null ? 'low' : 'high',
+          ));
           if (!mounted) return;
           setState(() => _connecting = false);
         },
       );
+      // آخرین ردِ نان قبل از ورود واقعی به SDK بومی Jitsi — اگر پردازه دقیقاً
+      // همین‌جا (یا کمی بعدش، پیش از هر callback) کرش کند، این پیام آخرین
+      // چیزی است که در «گزارش خطاها» می‌بینیم و ثابت می‌کند مشکل از مجوزها
+      // نبوده، بلکه داخل خودِ SDK بومی Jitsi/WebRTC است.
+      await AppErrorHandler.breadcrumb(
+        'مجوزها تأیید شد — در حال فراخوانی jitsiMeet.join()',
+        context: 'SeminarJoin.nativeCall',
+        severity: 'medium',
+      );
       await _jitsiMeet.join(options, listener);
-    } catch (e) {
+      // ردِ نان تشخیصی: اگر این خط اجرا شود یعنی jitsiMeet.join() برگشته
+      // (فراخوانی بومی بدون کرش تمام شده) — اگر کاربر باز هم گزارش کند که
+      // «برنامه بسته شد»، ولی این ردِ نان ثبت شده باشد، یعنی مشکل *بعد* از
+      // این نقطه (داخل رابط بومی خودِ Jitsi، نه در کد Dart ما) رخ می‌دهد.
+      unawaited(AppErrorHandler.breadcrumb(
+        'jitsiMeet.join() بدون پرتاب خطا برگشت',
+        context: 'SeminarJoin.nativeCallReturned',
+      ));
+    } catch (e, st) {
+      unawaited(AppErrorHandler.breadcrumb(
+        'خطای قابل‌گرفتن در jitsiMeet.join(): $e',
+        context: 'SeminarJoin.nativeCallError',
+        severity: 'high',
+      ));
+      AppErrorHandler.record(e, st, context: 'SeminarJoin.nativeCallError');
       if (!mounted) return;
       setState(() => _connecting = false);
       ScaffoldMessenger.of(context)

@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -17,6 +20,8 @@ import '../../../../core/widgets/user_avatar.dart';
 import '../../../admin/dashboard/presentation/providers/admin_dashboard_providers.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../hidden_mode/presentation/providers/hidden_mode_providers.dart';
+import '../../../hidden_mode/presentation/screens/hidden_mode_screen.dart';
 import '../../../instructor/presentation/providers/instructor_providers.dart';
 import '../../../parent_dashboard/presentation/providers/guardian_link_providers.dart';
 import '../../../parent_dashboard/presentation/providers/parent_providers.dart';
@@ -512,6 +517,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               onTap: () => PermissionsSheet.show(context),
             ),
           ]).animate().fadeIn(delay: 110.ms, duration: 300.ms).slideY(begin: 0.06, end: 0, duration: 300.ms),
+
+          // «حالت پنهان» — طبق درخواست صریح کاربر، فقط روی اندروید نشان داده
+          // می‌شود (اپل اجازهٔ تغییر بی‌صدای آیکون/نام برنامه را نمی‌دهد و
+          // دکمهٔ صدا هم روی iOS در اختیار اپ‌های معمولی نیست).
+          if (!kIsWeb && Platform.isAndroid) ...[
+            const SizedBox(height: 16),
+            _SectionLabel(icon: Icons.security_rounded, text: context.tr('hiddenMode.sectionLabel')),
+            const SizedBox(height: 8),
+            Consumer(
+              builder: (context, ref, _) {
+                final hidden = ref.watch(hiddenModeProvider);
+                return _SettingsGroup(children: [
+                  _SettingsTile(
+                    icon: hidden.enabled ? Icons.shield_rounded : Icons.shield_outlined,
+                    color: hidden.enabled ? scheme.secondary : scheme.tertiary,
+                    title: context.tr('hiddenMode.settingsEntryTitle'),
+                    subtitle: hidden.enabled
+                        ? context.tr('hiddenMode.settingsEntrySubtitleOn')
+                        : context.tr('hiddenMode.settingsEntrySubtitleOff'),
+                    trailing: Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
+                    onTap: () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => const HiddenModeScreen())),
+                  ),
+                ]).animate().fadeIn(delay: 130.ms, duration: 300.ms).slideY(begin: 0.06, end: 0, duration: 300.ms);
+              },
+            ),
+          ],
 
           if (user?.role == AppUserRole.student) ...[
             const SizedBox(height: 16),

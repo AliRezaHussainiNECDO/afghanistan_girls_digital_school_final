@@ -7,6 +7,11 @@ class AppRoutes {
   static const languageSelect = '/language-select';
   static const welcome = '/welcome';
 
+  // «حالت پنهان» — وقتی فعال است، این صفحه (نمای ماشین‌حسابِ نمایشی) پیش از
+  // هر مسیر دیگری (حتی صفحهٔ ورود) نشان داده می‌شود؛ نگاه کنید به redirect
+  // در app_router.dart.
+  static const hiddenLock = '/hidden-lock';
+
   // Auth
   static const login = '/login';
   static const registerRoleSelect = '/register';
@@ -93,6 +98,7 @@ class AppRoutes {
   static const adminBulkImport = '/admin/ai-teacher/bulk-import';
   static const adminSafetyQueue = '/admin/safety-queue';
   static const adminAuditLogs = '/admin/audit-logs';
+  static const adminErrorLogs = '/admin/error-logs';
   static const adminChats = '/admin/chats';
   static String adminClassChats(String classId) => '/admin/chats/class/$classId';
   static String adminChatThread(String conversationId) => '/admin/chats/thread/$conversationId';

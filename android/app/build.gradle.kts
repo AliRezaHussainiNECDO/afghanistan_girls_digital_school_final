@@ -8,6 +8,9 @@ plugins {
     // Push Notification واقعی (FCM) — مقادیر google-services.json را در زمان
     // build به کد بومی تزریق می‌کند (نیاز firebase_core/firebase_messaging).
     id("com.google.gms.google-services")
+    // گزارش خودکار خرابی (شامل خرابی‌های بومی WebRTC/Jitsi روی گوشی‌های واقعی
+    // مثل سامسونگ — نگاه کنید به کامنت firebase_crashlytics در pubspec.yaml).
+    id("com.google.firebase.crashlytics")
 }
 
 // امضای نسخهٔ release: اگر android/key.properties وجود داشته باشد (که در گیت

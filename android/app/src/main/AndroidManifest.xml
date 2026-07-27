@@ -6,6 +6,34 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- رفع اشکال «اتاق ویدیوکنفرانس روی گوشی واقعی برنامه را می‌بندد، ولی
+         روی امولاتور کار می‌کند»: این مجوزها دقیقاً همان‌هایی هستند که مستندات
+         رسمی نصب Android برای jitsi_meet_flutter_sdk/WebRTC می‌خواهند
+         (مدیریت مسیر صدا بین بلندگو/گوشی/بلوتوث، وضعیت شبکه، سرویس
+         پیش‌زمینهٔ تماس در حال انجام). امولاتورها معمولاً سخت‌افزار
+         بلوتوث/صدای واقعی ندارند، پس همان مسیر کدِ WebRTC که این مجوزها را
+         در زمان اجرا لازم دارد اصلاً روی امولاتور اجرا نمی‌شود — ولی روی
+         گوشی واقعی (که بلوتوث/کارت صدای واقعی دارد) همان لحظه که تماس واقعاً
+         شروع می‌شود این کد صدا زده می‌شود؛ بدون این مجوزها یک SecurityException
+         بومی پرتاب می‌شود که سمت Dart قابل گرفتن نیست و کل برنامه می‌بندد.
+         افزودن این مجوزها اپ را روی هیچ دستگاهی مجبور به داشتن بلوتوث نمی‌کند
+         (خودِ jitsi/WebRTC در نبود سخت‌افزار، آن مسیر را نادیده می‌گیرد). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.BLUETOOTH"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <!-- Android 14+ (API 34+، که compileSdk=36 این پروژه هم شامل آن است):
+         هر سرویس پیش‌زمینه‌ای که از دوربین/میکروفون استفاده کند (سرویس
+         «تماس در حال انجام» داخلی Jitsi، JitsiMeetOngoingConferenceService)
+         از این پس صراحتاً به این دو مجوز نیاز دارد؛ بدون آن‌ها، تلاش برای
+         شروع آن سرویس (دقیقاً لحظهٔ ورود به تماس) با SecurityException رد
+         می‌شود. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
     <!-- خواندن رسانه‌ها: Android 13+ از READ_MEDIA_* و نسخه‌های پایین‌تر از READ_EXTERNAL_STORAGE استفاده می‌کنند. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
@@ -26,7 +54,7 @@
 
     <application
         tools:replace="android:label"
-        android:label="Afghanistan Girls Digital School"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -46,11 +74,44 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+
+        <!-- ── نمایه‌های «حالت پنهان» ────────────────────────────────────────
+             طبق درخواست صریح کاربر: یک گزینهٔ امنیتی در پروفایل که با نگه‌
+             داشتن دکمهٔ صدا-کم برای ۳ ثانیه، آیکون/نامِ برنامه در صفحهٔ اصلی و
+             App Drawer گوشی را از برند واقعی به یک «ماشین‌حساب» بی‌ضرر تغییر
+             می‌دهد — نه فقط صفحهٔ داخلی اپ، بلکه خودِ نمایهٔ launcher. هر دو
+             alias زیر به همان MainActivity اشاره می‌کنند (کد یکسان اجرا
+             می‌شود)؛ فقط یکی از این دو در هر لحظه enabled است — سوییچ با
+             PackageManager.setComponentEnabledSetting در MainActivity.kt
+             انجام می‌شود. پیش‌فرض نصب: نمایهٔ واقعی فعال (کاربر باید یک‌بار
+             از پروفایل، «حالت پنهان» را روشن کند). intent-filter اصلیِ
+             LAUNCHER از خودِ MainActivity به این دو alias منتقل شده. -->
+        <activity-alias
+            android:name=".RealLauncherAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".CalculatorDisguiseAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_calculator_disguise"
+            android:label="@string/calculator_disguise_label">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

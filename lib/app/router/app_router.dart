@@ -16,6 +16,7 @@ import '../../features/admin/dashboard/presentation/screens/admin_dashboard_scre
 import '../../features/admin/exams_management/presentation/screens/admin_exams_screen.dart';
 import '../../features/admin/reports/presentation/screens/reports_screen.dart';
 import '../../features/admin/audit_logs/presentation/screens/admin_audit_logs_screen.dart';
+import '../../features/admin/error_logs/presentation/screens/admin_error_logs_screen.dart';
 import '../../features/admin/safety_queue/presentation/screens/safety_queue_screen.dart';
 import '../../features/admin/seminars/presentation/screens/admin_seminars_screen.dart';
 import '../../features/admin/user_management/presentation/screens/instructor_detail_screen.dart';
@@ -53,6 +54,8 @@ import '../../features/exams/presentation/screens/exams_screen.dart';
 import '../../features/chapter_quiz/presentation/screens/chapter_quiz_screen.dart';
 import '../../features/final_exam/presentation/screens/final_exam_screen.dart';
 import '../../features/grade_map/presentation/screens/grade_map_screen.dart';
+import '../../features/hidden_mode/presentation/providers/hidden_mode_providers.dart';
+import '../../features/hidden_mode/presentation/screens/calculator_disguise_screen.dart';
 import '../../features/instructor/presentation/screens/instructor_home_screen.dart';
 import '../../features/library/presentation/screens/library_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
@@ -84,6 +87,21 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.login,
     refreshListenable: _AuthListenable(ref),
     redirect: (context, state) {
+      // «حالت پنهان» — بالاترین اولویتِ ممکن، پیش از هر بررسیِ دیگری (حتی
+      // ورود/زبان). طبق طراحیِ توافق‌شده با کاربر: اگر برنامه هم‌اکنون در
+      // حالت پنهان است، فقط و فقط نمای ماشین‌حسابِ نمایشی دیده می‌شود —
+      // حتی اگر برنامه کاملاً بسته و دوباره باز شود (پرچم روی حافظهٔ محلی
+      // ذخیره شده)، تا وقتی رمزِ مخفیِ درست با «=» وارد نشود.
+      final hiddenModeState = ref.read(hiddenModeProvider);
+      if (hiddenModeState.isHidden) {
+        return state.matchedLocation == AppRoutes.hiddenLock ? null : AppRoutes.hiddenLock;
+      }
+      if (state.matchedLocation == AppRoutes.hiddenLock) {
+        // رمز درست وارد شد؛ بسته به وضعیتِ ورود به مسیرِ مناسب برمی‌گردیم.
+        final u = ref.read(authSessionProvider);
+        return u == null ? AppRoutes.login : _homeForRole(u.role);
+      }
+
       final user = ref.read(authSessionProvider);
       final loggingIn = state.matchedLocation == AppRoutes.languageSelect ||
           state.matchedLocation == AppRoutes.welcome ||
@@ -143,6 +161,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+          path: AppRoutes.hiddenLock,
+          pageBuilder: (c, s) => fadePage(s, const CalculatorDisguiseScreen())),
       GoRoute(
           path: AppRoutes.languageSelect,
           pageBuilder: (c, s) => fadePage(s, const LanguageSelectScreen())),
@@ -361,6 +382,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: AppRoutes.adminAuditLogs,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminAuditLogsScreen())),
       GoRoute(
+          path: AppRoutes.adminErrorLogs,
+          pageBuilder: (c, s) => fadeSlidePage(s, const AdminErrorLogsScreen())),
+      GoRoute(
           path: AppRoutes.adminChats,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminChatMonitoringScreen())),
       GoRoute(
@@ -417,6 +441,14 @@ class _AuthListenable extends ChangeNotifier {
     });
     ref.listen(languageChosenProvider, (previous, next) {
       notifyListeners();
+    });
+    // تغییرِ وضعیتِ «حالت پنهان» (پنهان/آشکار) هم باید بلافاصله redirect را
+    // دوباره اجرا کند — چه با نگه‌داشتنِ دکمهٔ صدا-کم، چه با وارد کردنِ
+    // درستِ رمزِ مخفی در ماشین‌حسابِ نمایشی.
+    ref.listen(hiddenModeProvider, (previous, next) {
+      if (previous?.isHidden != next.isHidden) {
+        notifyListeners();
+      }
     });
   }
 }

@@ -24,6 +24,9 @@ plugins {
     // Push Notification واقعی (Firebase Cloud Messaging) — google-services.json
     // از قبل در android/app/ گذاشته شده، پس این پلاگین اکنون بی‌خطر است.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // گزارش خودکار خرابی (شامل خرابی‌های بومی WebRTC/Jitsi که هیچ try/catch
+    // سمت Dart نمی‌تواند بگیرد) — نگاه کنید به کامنت firebase_crashlytics در pubspec.yaml.
+    id("com.google.firebase.crashlytics") version "3.0.3" apply false
 }
 
 include(":app")

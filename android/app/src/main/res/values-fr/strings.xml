@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Étiquette de l'icône de déguisement. -->
+<resources>
+    <string name="calculator_disguise_label">Calculatrice</string>
+</resources>

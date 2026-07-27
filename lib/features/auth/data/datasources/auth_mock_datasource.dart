@@ -51,9 +51,16 @@ class AuthMockDataSource implements AuthDataSource {
 
   // تنها حساب ورودِ از پیش ساخته: مدیر کل. حساب‌های نمایشی حذف شدند —
   // شاگرد/والد/استاد فقط از راه ثبت‌نام (با کد دعوت) حساب می‌سازند.
+  //
+  // ⚠️ امنیتی: این حساب فقط وقتی فعال می‌شود که kUseLiveBackend=false باشد
+  // (یعنی build عادی release هرگز از این مسیر عبور نمی‌کند — نگاه کنید
+  // auth_providers.dart). رمز واقعی اینجا هرگز نباید نوشته شود؛ این فقط یک
+  // مقدار نمایشی برای تست UI محلی است و ربطی به رمز واقعیِ همین ایمیل روی
+  // سرور زنده ندارد (آن رمز را از طریق «فراموشی رمز عبور» در خودِ اپ تغییر
+  // دهید، نه اینجا).
   static final Map<String, ({String password, AppUserModel user})> _accounts = {
     'alireza.necdo@gmail.com': (
-      password: 'loveNJ@\$2026',
+      password: 'demo-only-not-a-real-password',
       user: const AppUserModel(
         id: 'u_super_admin_ali',
         email: 'alireza.necdo@gmail.com',

@@ -1,7 +1,7 @@
 name: afghanistan_girls_digital_school
-description: "Afghanistan Girls Digital School — Flutter client (Phase 1: UI Prototype with mock data)."
+description: "Afghanistan Girls Digital School — Flutter client for a real Cloudflare Workers backend."
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -50,6 +50,15 @@ dependencies:
   # هر خطا را بی‌صدا می‌بلعد و بقیهٔ اپ عادی کار می‌کند.
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
+  # گزارش خودکار خرابی — طبق نیاز واقعی «اتاق ویدیوکنفرانس سمینار روی
+  # گوشی‌های واقعی (سامسونگ) می‌بندد ولی روی امولاتور/آیفون کار می‌کند»:
+  # این‌جور خرابی‌ها معمولاً در لایهٔ بومی WebRTC/Jitsi رخ می‌دهند و هیچ
+  # try/catch سمت Dart (حتی runZonedGuarded در main.dart) نمی‌تواند آن‌ها را
+  # بگیرد. Crashlytics یک لایهٔ NDK دارد که دقیقاً همین خرابی‌های بومی را هم
+  # ثبت می‌کند — گزارش کامل (نوع دستگاه، مدل، نسخهٔ اندروید، Stack Trace
+  # بومی) چند دقیقه بعد از خرابی خودش در Firebase Console ظاهر می‌شود، بدون
+  # نیاز به کابل/ADB/لاگ‌گیری دستی روی خودِ گوشی.
+  firebase_crashlytics: ^4.3.10
   # جایگزین تایپ‌دار dart:html (منسوخ‌شده) برای انتخاب/دانلود فایل در وب —
   # pdf_picker_web.dart و pdf_saver_web.dart. قبلاً فقط به‌صورت transitive
   # (از طریق بسته‌های دیگر) در دسترس بود؛ حالا صریح اعلام شده.
@@ -57,6 +66,9 @@ dependencies:
   # کد QR روی سرتیفیکت — لینک به صفحهٔ تأیید عمومی آنلاین اصالت سند (بدون
   # نیاز به ورود)، برای اعتبار بین‌المللی گواهی‌نامه‌ها (مثل Coursera/edX).
   qr_flutter: ^4.1.0
+  # هش کردنِ محلیِ PIN «حالت پنهان» (پروفایل → امنیت) — هرگز PIN را متن‌ساده
+  # ذخیره نمی‌کنیم، حتی روی خودِ گوشی.
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    رفع اشکال «بستن/خروج برنامه هنگام ورود به سمینار، فقط روی گوشی واقعی
+    (مثلاً سامسونگ)»:
+
+    app_name: android:label در AndroidManifest.xml اصلاح شد تا به‌جای یک
+    رشتهٔ مستقیم، به این resource ارجاع بدهد (بهبود جانبی، نه علت اصلی کرش).
+
+    dropbox_app_key: علت *واقعی* کرش — تأییدشده با بازتولید زندهٔ مشکل روی
+    گوشی (از طریق Android Studio + adb logcat) و مقایسه با سورس واقعی
+    Jitsi Meet Android SDK (org.jitsi.meet.sdk.DropboxModule):
+
+        int resId = reactContext.getResources()
+            .getIdentifier("dropbox_app_key", "string", pkg);
+        appKey = reactContext.getString(resId);   // اگر resId==0 کرش می‌کند
+
+    این ماژول همیشه (صرف‌نظر از featureFlags.recordingEnabled در کد Dart ما)
+    در createNativeModules ساخته می‌شود — درست همان لحظه‌ای که کاربر وارد
+    سمینار می‌شود. چون اپ ما هرگز رشته‌ای به نام dropbox_app_key تعریف نکرده
+    بود، getIdentifier() مقدار 0 برمی‌گرداند و getString(0) با
+    android.content.res.Resources$NotFoundException: String resource ID #0x0
+    کرش می‌کند (روی ترد create_react_context) — این خودِ خطای گزارش‌شده در
+    adb logcat است؛ یک باگ شناخته‌شده در خودِ SDK جیتسی (باید قبل از
+    getString مقدار resId!=0 را چک می‌کرد، ولی نمی‌کند). چون ما نمی‌توانیم
+    AAR کامپایل‌شدهٔ SDK را ویرایش کنیم، تنها راه رفع، تعریف همین رشته در
+    اپ خودمان است — خالی گذاشتنش چون قصد فعال‌سازی واقعی Dropbox را نداریم؛
+    مقدار خالی باعث می‌شود SDK به‌درستی isEnabled=false تشخیص دهد و ماژول
+    را بی‌خطر و غیرفعال نگه دارد.
+-->
+<resources>
+    <string name="app_name">Afghanistan Girls Digital School</string>
+    <string name="dropbox_app_key"></string>
+    <!-- برچسب نمایهٔ پنهان‌سازی («حالت پنهان» در پروفایل) — وقتی فعال است،
+         آیکون/نام برنامه در صفحهٔ اصلی گوشی دقیقاً همین متن را نشان می‌دهد. -->
+    <string name="calculator_disguise_label">Calculator</string>
+</resources>

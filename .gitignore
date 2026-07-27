@@ -54,3 +54,12 @@ backend/node_modules/
 backend/.dev.vars
 backend/.wrangler/
 backend/*.tmp
+
+# فایل‌های موقتِ لاگِ adb logcat (بازتولید کرشِ سمینار روی گوشی واقعی) —
+# حجیم (تا ۹۰+ مگابایت) و صرفاً برای دیباگ محلی بودند، نباید وارد گیت شوند.
+crash.txt*
+full.txt
+live.txt
+live_utf8.txt
+result.txt
+result2.txt

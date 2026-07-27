@@ -10,6 +10,7 @@ import { verifyBearer } from './lib/auth';
 import authRouter from './routes/auth';
 import curriculumRouter from './routes/curriculum';
 import examsRouter, { verifyCertificateHandler } from './routes/exams';
+import { privacyPolicyHandler } from './routes/privacy';
 import engagementRouter from './routes/engagement';
 import adminRouter from './routes/admin';
 import seminarsRouter from './routes/seminars';
@@ -24,6 +25,8 @@ import devicesRouter from './routes/devices';
 import aiCurriculumRouter from './routes/aiCurriculum';
 import chapterQuizzesRouter from './routes/chapterQuizzes';
 import finalExamsRouter from './routes/finalExams';
+import errorLogsRouter from './routes/errorLogs';
+import { captureError } from './lib/errorLog';
 import { notifyFinalExamRetakesDue } from './lib/finalExamRetakeNotify';
 
 type Bindings = {
@@ -77,6 +80,13 @@ app.get('/', (c) => c.json({ ok: true, service: 'afghan-girls-school-api' }));
 // بدون نیاز به ورود است، نه یک Endpoint JSON.
 app.get('/verify/:serial', verifyCertificateHandler);
 
+// ─────────── سیاست حریم خصوصی و قوانین استفاده — روی ریشهٔ دامنهٔ برند ───────────
+// همان الگوی /verify بالا: یک صفحهٔ HTML عمومیِ همیشه‌در‌دسترس (بدون نیاز به
+// دیتابیس یا ورود) که Google Play/App Store به‌عنوان Privacy Policy URL در
+// Store Listing می‌خواهند. متن دقیقاً همان متن تأییدشدهٔ داخل اپ (Flutter
+// terms_gate.dart) است.
+app.get('/privacy', privacyPolicyHandler);
+
 // ─────────────────── ضربان حضور (Presence Heartbeat) ────────────────────────
 // هر درخواستِ دارای توکن معتبر، `users.last_seen_at` را در پس‌زمینه تازه
 // می‌کند (migration 0032) — بدون هیچ تأخیری در پاسخ اصلی (waitUntil بعد از
@@ -113,8 +123,28 @@ app.use('/api/v1/*', async (c, next) => {
 // قابل پیگیری در لاگ. این نگهبان همیشه یک JSON با قرارداد خطای استاندارد
 // برمی‌گرداند و خطای واقعی را در لاگ سرور (wrangler tail) ثبت می‌کند تا
 // مشکلات مثل «جدول/ستون مهاجرت‌نشده» سریع قابل تشخیص باشند.
+//
+// از Migration 0046 به بعد، علاوه بر console.error، همین خطا در جدول
+// error_logs هم ذخیره می‌شود (captureError — lib/errorLog.ts) تا از پنل مدیر
+// («گزارش خطاهای برنامه») بدون نیاز به `wrangler tail` قابل مرور باشد — دقیقاً
+// همان دو مشکل قبلی («ورود ادمین ناموفق» و «تداخل مهاجرت دیتابیس») از این پس
+// این‌جا با کد خطا و Stack trace کامل ثبت می‌شوند. با `waitUntil` اجرا می‌شود
+// تا پاسخ ۵۰۰ به کاربر معطل درج لاگ نماند.
 app.onError((err, c) => {
   console.error(`[unhandled] ${c.req.method} ${c.req.path} →`, err);
+  c.executionCtx.waitUntil(
+    captureError(c.env.DB, {
+      category: 'UNKNOWN',
+      severity: 'critical',
+      title: `خطای مدیریت‌نشده — ${c.req.method} ${c.req.path}`,
+      message: err instanceof Error ? err.message : String(err),
+      stackTrace: err instanceof Error ? err.stack ?? null : null,
+      source: 'cloudflare_worker',
+      screenOrEndpoint: c.req.path,
+      httpMethod: c.req.method,
+      httpStatus: 500,
+    }).catch(() => {}),
+  );
   return c.json(
     {
       success: false,
@@ -201,6 +231,10 @@ app.route('/api/v1', homeworkRouter);
 
 // ─────────────── ثبت/حذف توکن دستگاه برای Push Notification (FCM) ──────────
 app.route('/api/v1', devicesRouter);
+
+// ───────────────────── گزارش خطاهای برنامه (Migration 0046) ─────────────────
+// POST /errors (عمومی، از اپ فلاتر) + GET/PATCH/DELETE /admin/error-logs.
+app.route('/api/v1', errorLogsRouter);
 
 // ─────────── Cron روزانه: پوش نوتیفیکیشن «فرصت تلاش دوبارهٔ امتحان فاینل» ───
 // migration 0043 + lib/finalExamRetakeNotify.ts. تلاش دوم بعد از ۱۵ روز از

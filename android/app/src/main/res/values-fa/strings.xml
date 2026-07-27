@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- برچسبِ نمایهٔ پنهان‌سازی به زبان دری — وقتی گوشی روی زبان فارسی/دری باشد. -->
+<resources>
+    <string name="calculator_disguise_label">ماشین‌حساب</string>
+</resources>
