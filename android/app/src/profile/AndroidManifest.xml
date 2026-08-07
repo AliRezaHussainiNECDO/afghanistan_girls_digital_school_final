@@ -4,4 +4,17 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- همان رفع اشکال «launch activity not found» که در src/debug/AndroidManifest.xml
+         توضیح داده شده (LAUNCHER به‌جای فقط روی activity-alias، مستقیماً روی
+         MainActivity هم اضافه می‌شود) — این‌جا برای «flutter run --profile». روی
+         Manifest اصلی/release هیچ اثری ندارد. -->
+    <application>
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>
