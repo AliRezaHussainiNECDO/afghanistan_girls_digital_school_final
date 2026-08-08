@@ -6,6 +6,8 @@ workflows:
     integrations:
       app_store_connect: Codemagic CI Admin
     environment:
+      groups:
+        - ios_signing
       vars:
         APP_STORE_APPLE_ID: 6799480851
       flutter: stable
@@ -20,6 +22,10 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter packages pub get
+      - name: Re-enable code signing for Release config (undo GitHub Actions unsigned-build override)
+        script: |
+          sed -i '' '/CODE_SIGNING_ALLOWED=NO/d; /CODE_SIGNING_REQUIRED=NO/d; /CODE_SIGN_IDENTITY=$/d' ios/Flutter/Release.xcconfig
+          cat ios/Flutter/Release.xcconfig
       - name: Generate iOS Flutter config (Generated.xcconfig)
         script: |
           flutter precache --ios
@@ -33,7 +39,8 @@ workflows:
           app-store-connect fetch-signing-files af.digital.girls.school \
             --platform IOS \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Flutter build ipa
