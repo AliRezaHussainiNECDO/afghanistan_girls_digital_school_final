@@ -20,6 +20,10 @@ workflows:
     scripts:
       - name: Get Flutter packages
         script: flutter packages pub get
+      - name: Generate iOS Flutter config (Generated.xcconfig)
+        script: |
+          flutter precache --ios
+          flutter build ios --release --no-codesign --config-only
       - name: Install CocoaPods dependencies
         script: |
           find . -name "Podfile" -maxdepth 2 -type f
