@@ -6,8 +6,6 @@ workflows:
     integrations:
       app_store_connect: Codemagic CI Admin
     environment:
-      groups:
-        - ios_signing
       vars:
         APP_STORE_APPLE_ID: 6799480851
       flutter: stable
@@ -36,10 +34,12 @@ workflows:
           cd ios && pod install
       - name: Fetch (or create) signing certificate and provisioning profile
         script: |
+          openssl genrsa -out /tmp/certificate_key.pem 2048
           app-store-connect fetch-signing-files af.digital.girls.school \
             --platform IOS \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=@file:/tmp/certificate_key.pem
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Flutter build ipa
