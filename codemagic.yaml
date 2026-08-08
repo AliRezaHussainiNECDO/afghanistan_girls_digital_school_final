@@ -32,6 +32,13 @@ workflows:
         script: |
           find . -name "Podfile" -maxdepth 2 -type f
           cd ios && pod install
+      - name: Debug - verify App Store Connect auth env vars are present
+        script: |
+          echo "ISSUER_ID set: ${APP_STORE_CONNECT_ISSUER_ID:+yes} (length: ${#APP_STORE_CONNECT_ISSUER_ID})"
+          echo "KEY_IDENTIFIER value: $APP_STORE_CONNECT_KEY_IDENTIFIER"
+          echo "PRIVATE_KEY set: ${APP_STORE_CONNECT_PRIVATE_KEY:+yes} (length: ${#APP_STORE_CONNECT_PRIVATE_KEY})"
+          echo "PRIVATE_KEY first line: $(echo "$APP_STORE_CONNECT_PRIVATE_KEY" | head -1)"
+          echo "PRIVATE_KEY last line: $(echo "$APP_STORE_CONNECT_PRIVATE_KEY" | tail -1)"
       - name: Fetch (or create) signing certificate and provisioning profile
         script: |
           openssl genrsa -out /tmp/certificate_key.pem 2048
