@@ -32,24 +32,6 @@ workflows:
         script: |
           find . -name "Podfile" -maxdepth 2 -type f
           cd ios && pod install
-      - name: Debug - verify App Store Connect auth env vars are present
-        script: |
-          echo "ISSUER_ID set: ${APP_STORE_CONNECT_ISSUER_ID:+yes} (length: ${#APP_STORE_CONNECT_ISSUER_ID})"
-          echo "ISSUER_ID value: $APP_STORE_CONNECT_ISSUER_ID"
-          echo "KEY_IDENTIFIER value: $APP_STORE_CONNECT_KEY_IDENTIFIER"
-          echo "PRIVATE_KEY set: ${APP_STORE_CONNECT_PRIVATE_KEY:+yes} (length: ${#APP_STORE_CONNECT_PRIVATE_KEY})"
-          echo "PRIVATE_KEY raw value: $APP_STORE_CONNECT_PRIVATE_KEY"
-          KEYFILE="${APP_STORE_CONNECT_PRIVATE_KEY#@file:}"
-          echo "Resolved key file path: $KEYFILE"
-          ls -la "$(dirname "$KEYFILE")" 2>&1 || echo "directory missing"
-          if [ -f "$KEYFILE" ]; then
-            echo "Key file exists. Byte count: $(wc -c < "$KEYFILE")"
-            echo "Line count: $(wc -l < "$KEYFILE")"
-            echo "First line: $(head -1 "$KEYFILE")"
-            echo "Last line: $(tail -1 "$KEYFILE")"
-          else
-            echo "Key file DOES NOT EXIST at that path"
-          fi
       - name: Fetch (or create) signing certificate and provisioning profile
         script: |
           openssl genrsa -out /tmp/certificate_key.pem 2048
