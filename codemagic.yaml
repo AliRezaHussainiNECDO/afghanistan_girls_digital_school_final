@@ -41,7 +41,9 @@ workflows:
             --create \
             --certificate-key=@file:/tmp/certificate_key.pem
       - name: Import signing certificate into keychain
-        script: keychain add-certificates
+        script: |
+          keychain initialize
+          keychain add-certificates
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Flutter build ipa
