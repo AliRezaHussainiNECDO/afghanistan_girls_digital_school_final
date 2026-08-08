@@ -35,6 +35,7 @@ workflows:
       - name: Debug - verify App Store Connect auth env vars are present
         script: |
           echo "ISSUER_ID set: ${APP_STORE_CONNECT_ISSUER_ID:+yes} (length: ${#APP_STORE_CONNECT_ISSUER_ID})"
+          echo "ISSUER_ID value: $APP_STORE_CONNECT_ISSUER_ID"
           echo "KEY_IDENTIFIER value: $APP_STORE_CONNECT_KEY_IDENTIFIER"
           echo "PRIVATE_KEY set: ${APP_STORE_CONNECT_PRIVATE_KEY:+yes} (length: ${#APP_STORE_CONNECT_PRIVATE_KEY})"
           echo "PRIVATE_KEY raw value: $APP_STORE_CONNECT_PRIVATE_KEY"
