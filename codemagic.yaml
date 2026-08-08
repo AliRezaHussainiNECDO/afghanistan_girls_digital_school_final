@@ -6,9 +6,6 @@ workflows:
     integrations:
       app_store_connect: Codemagic CI Admin
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: af.digital.girls.school
       vars:
         APP_STORE_APPLE_ID: 6799480851
       flutter: stable
