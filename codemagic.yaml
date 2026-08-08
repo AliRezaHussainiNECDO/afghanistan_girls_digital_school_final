@@ -27,6 +27,12 @@ workflows:
         script: |
           find . -name "Podfile" -maxdepth 2 -type f
           cd ios && pod install
+      - name: Fetch (or create) signing certificate and provisioning profile
+        script: |
+          app-store-connect fetch-signing-files af.digital.girls.school \
+            --platform IOS \
+            --type IOS_APP_STORE \
+            --create
       - name: Set up code signing settings on Xcode project
         script: xcode-project use-profiles
       - name: Flutter build ipa
