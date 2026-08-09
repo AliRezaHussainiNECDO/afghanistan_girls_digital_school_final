@@ -38,13 +38,7 @@ workflows:
           # certificate left behind by a previous run can never be reused (its private
           # key no longer exists) and would just block --create with a 409 conflict.
           # Revoke stale Distribution certs first so every run starts from a clean slate.
-          EXISTING_CERT_IDS=$(app-store-connect certificates list --type DISTRIBUTION --json 2>/dev/null | python3 -c "import json,sys
-try:
-    data = json.load(sys.stdin)
-    for c in data:
-        print(c['id'])
-except Exception:
-    pass" || true)
+          EXISTING_CERT_IDS=$(app-store-connect certificates list --type DISTRIBUTION --json 2>/dev/null | python3 -c "import json,sys; data=json.load(sys.stdin); print(chr(10).join(c['id'] for c in data))" 2>/dev/null || echo "")
           for CERT_ID in $EXISTING_CERT_IDS; do
             echo "Revoking stale Distribution certificate: $CERT_ID"
             app-store-connect certificates delete "$CERT_ID" --ignore-not-found || true
