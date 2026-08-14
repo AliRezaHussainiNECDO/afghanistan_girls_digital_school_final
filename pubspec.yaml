@@ -78,12 +78,15 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
-# رفع هشدار Built-in Kotlin (KGP) — package_info_plus/wakelock_plus فقط
-# وابستگی غیرمستقیم هستند، پس نسخهٔ رفع‌شده را اینجا Force می‌کنیم؛
-# نسخهٔ نصب‌شدهٔ Flutter (3.44.2) هر دو حداقل لازم (3.38+/3.41+) را دارد.
+# رفع هشدار Built-in Kotlin (KGP) — package_info_plus فقط وابستگی
+# غیرمستقیم است، پس نسخهٔ رفع‌شده را اینجا Force می‌کنیم
+# (نسخهٔ Flutter نصب‌شده حداقل لازم ۳.۳۸+ را دارد).
+# نکته: wakelock_plus عمدا Force نشده — نسخهٔ رفع‌شدهٔ آن (۱.۶.۰+) به win32 ^6.0.1
+# نیاز دارد که با win32 ^5.9.0 موردنیاز file_picker (نسخهٔ ۱۱.x) در تضاد است.
+# چون رفع تداخل file_picker/xml با syncfusion_flutter_pdf ممکن نیست (کامیت قبلی)،
+# این هشدار KGP برای wakelock_plus هم مثل file_picker و jitsi_meet_flutter_sdk باقی می‌ماند.
 dependency_overrides:
   package_info_plus: ^10.2.0
-  wakelock_plus: ^1.7.0
 
 flutter:
   uses-material-design: true
