@@ -160,7 +160,7 @@ export async function getRankTiers(db: D1Database): Promise<RankTier[]> {
   return tiers;
 }
 
-function tierForPoints(tiers: RankTier[], totalPoints: number): { current: RankTier; next: RankTier | null } {
+export function tierForPoints(tiers: RankTier[], totalPoints: number): { current: RankTier; next: RankTier | null } {
   let current = tiers[0];
   let next: RankTier | null = null;
   for (const t of tiers) {

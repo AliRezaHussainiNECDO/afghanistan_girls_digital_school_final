@@ -39,12 +39,24 @@ database_id = "76b6e211-eecd-4464-ae0f-8fb65a21eebe"
 # ساعت ۳ صبح UTC (~۷:۳۰ صبح کابل) — زمانی که تقریباً هیچ شاگردی بیدار
 # نیست، تا وقتی چند دقیقه بعد اپ را باز کند، اعلان از قبل رسیده باشد.
 [triggers]
-crons = ["0 3 * * *"]
+# ۳ صبح UTC: پوش «فرصت تلاش دوبارهٔ امتحان». هر ۱۵ دقیقه: انتقال وضعیت
+# رویدادهای «آرنای زنده» (scheduled→live→ended) — lib/liveArena.ts.
+crons = ["0 3 * * *", "*/15 * * * *"]
 
 # R2 — فضای ذخیرهٔ فایل‌های صوتی چت و PDF کتابخانه.
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "afghan-girls-school-storage"
+
+# ── «آرنای زنده» — Durable Object، یک اتاق زنده به‌ازای هر رویداد هفتگی ──────
+# ذخیره‌سازی SQLite داخلی (نه Redis/بیرونی) — طبق lib/liveArenaRoom.ts.
+[[durable_objects.bindings]]
+name = "LIVE_ARENA_ROOM"
+class_name = "LiveArenaRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LiveArenaRoom"]
 
 [vars]
 # محدود به دامنهٔ واقعی اپ — قبلاً "*" بود (هر سایتی مجاز بود). چند نسخهٔ

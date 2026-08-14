@@ -27,6 +27,9 @@ import chapterQuizzesRouter from './routes/chapterQuizzes';
 import finalExamsRouter from './routes/finalExams';
 import errorLogsRouter from './routes/errorLogs';
 import competitionRouter from './routes/competition';
+import liveArenaRouter from './routes/liveArena';
+export { LiveArenaRoom } from './lib/liveArenaRoom';
+import { transitionArenaEvents } from './lib/liveArena';
 import { captureError } from './lib/errorLog';
 import { notifyFinalExamRetakesDue } from './lib/finalExamRetakeNotify';
 
@@ -54,6 +57,9 @@ type Bindings = {
   FCM_PROJECT_ID?: string;
   FCM_CLIENT_EMAIL?: string;
   FCM_PRIVATE_KEY?: string;
+  // «آرنای زنده» — Durable Object یک اتاق زنده به‌ازای هر رویداد هفتگی
+  // (نگاه کن به lib/liveArenaRoom.ts + wrangler.toml [[durable_objects.bindings]]).
+  LIVE_ARENA_ROOM: DurableObjectNamespace;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -229,6 +235,7 @@ app.route('/api/v1', academyRouter);
 // میشن‌هایی که تمام بخش‌های برنامه (درس، کارخانگی، امتحان، حافظهٔ جمعی، چت،
 // پروفایل، معلم هوشمند، سمینار، کد دعوت، گواهی‌نامه) را به رقابت وصل می‌کنند.
 app.route('/api/v1', competitionRouter);
+app.route('/api/v1', liveArenaRouter);
 
 // ───────────────────────────── مشاور هوشمند ─────────────────────────────────
 app.route('/api/v1', advisorRouter);
@@ -252,6 +259,17 @@ app.route('/api/v1', errorLogsRouter);
 async function scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
   ctx.waitUntil(
     notifyFinalExamRetakesDue(env).catch((err) => console.error('[scheduled] notifyFinalExamRetakesDue failed —', err)),
+  );
+  // «آرنای زنده» — هر بار که کرون اجرا می‌شود (طبق [triggers].crons در
+  // wrangler.toml)، رویدادهای رسیده به زمان شروع را «زنده» می‌کند و به
+  // Durable Object مربوطه سیگنال شروع می‌دهد؛ رویدادهای فراموش‌شده (اگر DO
+  // به هر دلیلی پایان نداده) را هم به‌عنوان پشتیبان می‌بندد.
+  ctx.waitUntil(
+    transitionArenaEvents(env.DB, async (eventId) => {
+      const id = env.LIVE_ARENA_ROOM.idFromName(eventId);
+      const stub = env.LIVE_ARENA_ROOM.get(id);
+      await stub.fetch(`https://live-arena-room/start?eventId=${encodeURIComponent(eventId)}`);
+    }).catch((err) => console.error('[scheduled] transitionArenaEvents failed —', err)),
   );
 }
 
