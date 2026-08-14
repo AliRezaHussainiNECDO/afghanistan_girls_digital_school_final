@@ -119,7 +119,7 @@ liveArena.post('/admin/live-arena/schedule', async (c) => {
     `INSERT INTO arena_events (id, title_fa, starts_at, ends_at, status, min_rank_no, question_count, time_limit_seconds)
      VALUES (?, ?, ?, datetime(?, '+' || ? || ' minutes'), 'scheduled', ?, ?, ?)`,
   )
-    .bind(eventId, body.titleFa ?? 'آرنای زنده هفتگی', body.startsAt, body.startsAt, durationMinutes, minRankNo, questionCount, timeLimitSeconds)
+    .bind(eventId, body.titleFa ?? 'نبرد زنده هفتگی', body.startsAt, body.startsAt, durationMinutes, minRankNo, questionCount, timeLimitSeconds)
     .run();
 
   await c.env.DB.prepare(
