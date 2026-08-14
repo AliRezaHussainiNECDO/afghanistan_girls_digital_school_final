@@ -127,7 +127,12 @@ class CompetitionHeroCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    )
+        // درخشش ملایم و پیوسته روی کل کارت — طبق کامنت بالای فایل: کارت باید
+        // «همیشه زنده» به‌نظر برسد، نه فقط لحظهٔ بارگذاری. یک نوار نور کم‌رنگ
+        // هر چند ثانیه از روی گرادیان سرمی‌خورد.
+        .animate(onPlay: (c) => c.repeat())
+        .shimmer(duration: 3200.ms, delay: 900.ms, color: Colors.white.withValues(alpha: 0.16));
   }
 }
 

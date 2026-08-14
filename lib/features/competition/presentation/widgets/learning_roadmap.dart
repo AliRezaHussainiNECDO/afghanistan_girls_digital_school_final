@@ -342,6 +342,18 @@ class _RoadmapPathPainter extends CustomPainter {
     if (positions.length < 2) return;
     final path = _buildPath();
 
+    // سایهٔ نرمِ زیرِ مسیر — یک آفست عمودیِ کوچک + بلور، برای حس عمقِ
+    // شبه‌سه‌بعدی (طبق توضیح بالای فایل: بدون موتور ۳بعدی واقعی، عمق را با
+    // گرادیان/سایه/درخشش القا می‌کنیم).
+    final shadowPath = path.shift(const Offset(0, 4));
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.10)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 11
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
+    canvas.drawPath(shadowPath, shadowPaint);
+
     final basePaint = Paint()
       ..color = inactiveColor
       ..style = PaintingStyle.stroke

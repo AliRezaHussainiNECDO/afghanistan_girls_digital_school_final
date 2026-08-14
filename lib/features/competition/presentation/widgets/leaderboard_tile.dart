@@ -13,7 +13,19 @@ class LeaderboardTile extends StatelessWidget {
   final bool isMe;
   final int index;
 
-  const LeaderboardTile({super.key, required this.entry, required this.isMe, required this.index});
+  /// موقعیت این کاربر در تازه‌سازیِ *قبلی* جدول — اگر داده شود و با موقعیت
+  /// فعلی فرق کند، یک نشانگر ▲/▼ کوچک نمایش داده می‌شود (طبق درخواست کاربر:
+  /// «زنده‌بودن» جدول باید حتی در تغییرِ رتبه هم حس شود، نه فقط در بارگذاری
+  /// اول). اختیاری — بدون آن رفتار قبلی دقیقاً حفظ می‌شود.
+  final int? previousPosition;
+
+  const LeaderboardTile({
+    super.key,
+    required this.entry,
+    required this.isMe,
+    required this.index,
+    this.previousPosition,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +64,7 @@ class LeaderboardTile extends StatelessWidget {
               ],
             ),
           ),
+          if (previousPosition != null && previousPosition != entry.position) _PositionDelta(previous: previousPosition!, current: entry.position),
           Text(
             context.tr('competition.pointsShort', {'points': '${entry.totalPoints}'}),
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: scheme.tertiary),
@@ -59,5 +72,32 @@ class LeaderboardTile extends StatelessWidget {
         ],
       ),
     ).animate(delay: (20 * index).ms).fadeIn(duration: 260.ms).slideX(begin: 0.08, end: 0, duration: 260.ms);
+  }
+}
+
+/// نشانگر کوچک تغییرِ رتبه — عدد کوچک‌تر یعنی بهتر، پس رفتن از #۵ به #۳
+/// «بهبود» (سبز، فلش بالا) و برعکس «افت» (سرخ، فلش پایین) است.
+class _PositionDelta extends StatelessWidget {
+  final int previous;
+  final int current;
+  const _PositionDelta({required this.previous, required this.current});
+
+  @override
+  Widget build(BuildContext context) {
+    final improved = current < previous;
+    final delta = (previous - current).abs();
+    final color = improved ? AppColors.green600 : AppColors.danger;
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(AppRadii.pill)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(improved ? Icons.arrow_drop_up_rounded : Icons.arrow_drop_down_rounded, size: 14, color: color),
+          Text('$delta', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: color)),
+        ],
+      ),
+    ).animate().fadeIn(duration: 300.ms).scaleXY(begin: 0.7, end: 1, duration: 300.ms, curve: Curves.easeOutBack);
   }
 }

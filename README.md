@@ -1,6 +1,6 @@
 # Afghanistan Girls Digital School — Flutter Client
 
-این پروژه خروجی **فاز ۱ (UI Prototype)** طبق نقشهٔ راه سند `SPEC v2.3` (بخش ۲۵.۳) است.
+این پروژه اپ فلاتر «مکتب دیجیتال دختران افغانستان» است — به یک بک‌اند واقعی (Cloudflare Workers + D1، پوشهٔ `backend/`) وصل است. نسخهٔ ۲.۰ سیستم رقابت/گیمیفیکیشن (۵۰ مقام، جدول رتبه‌بندی، میشن‌های روزانه، نقشهٔ‌راه شبه‌سه‌بعدی، و «آرنای زنده» — نبرد هفتگی زندهٔ WebSocket برای مقام اول) را اضافه می‌کند.
 
 ## اجرا
 
@@ -12,7 +12,7 @@ flutter analyze           # بررسی سلامت کد
 
 ## نکات مهم
 
-- **این فاز بک‌اند واقعی ندارد.** تمام `DataSource` ها در `data/datasources/*_mock_datasource.dart` هستند و داده‌های ساختگی (Mock) برمی‌گردانند — دقیقاً طبق الگوی Repository Pattern سند (بخش ۲۴.۳)، تا در فاز ۲ به بعد فقط این لایه با نسخهٔ واقعی (Dio + REST API) جایگزین شود، بدون تغییر در `presentation/` یا `domain/`.
+- **بک‌اند واقعی متصل است** (`kUseLiveBackend = true` پیش‌فرض — `lib/features/auth/presentation/providers/auth_providers.dart`). نسخه‌های `*_mock_datasource.dart` هنوز برای توسعهٔ محلی/دموی UI بدون سرور نگه داشته شده‌اند (`flutter run --dart-define=USE_LIVE_BACKEND=false`) — همان الگوی Repository Pattern (بخش ۲۴.۳ سند) که هر دو پیاده‌سازی را بدون تغییر در `presentation/`/`domain/` قابل تعویض نگه می‌دارد.
 - معماری: Clean Architecture سه‌لایه به‌ازای هر Feature (`domain` مستقل از Flutter، `data` پیاده‌سازی دسترسی داده، `presentation` وابسته به Flutter) — طبق بخش ۲۴.۱ سند.
 - مدیریت وضعیت: Riverpod.
 - مسیریابی: go_router، تمام مسیرها در `lib/app/router/app_router.dart`.
