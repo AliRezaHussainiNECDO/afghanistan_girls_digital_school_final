@@ -26,7 +26,7 @@ dependencies:
   # student lesson view (lesson_detail_screen.dart).
   flutter_markdown: ^0.7.4+3
   confetti: ^0.8.0
-  file_picker: ^12.0.0
+  file_picker: ^11.0.2
   syncfusion_flutter_pdf: ^33.2.15
   record: ^7.0.0
   audioplayers: ^6.1.0
