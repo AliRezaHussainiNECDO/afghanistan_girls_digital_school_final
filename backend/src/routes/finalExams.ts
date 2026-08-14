@@ -31,6 +31,7 @@ import { verifyBearer } from '../lib/auth';
 import { gradeEssaysWithAi } from '../lib/essayGrading';
 import { generateFinalExamQuestions } from '../lib/finalExam';
 import { promoteIfEligible, PROMOTION_EXAM_PASS_PERCENT } from '../lib/progress';
+import { COMPETITION_POINTS, awardSafe } from '../lib/competition';
 import { logAudit, clientIp } from '../lib/audit';
 import { sendPushToUsers } from '../lib/push';
 import { hasAdminPermission } from '../lib/permissions';
@@ -319,6 +320,10 @@ finalExams.post('/final-exams/:id/submit', async (c) => {
   let promotion: { promoted: boolean; newGrade: number | null } = { promoted: false, newGrade: null };
   if (passed) {
     promotion = await promoteIfEligible(c.env.DB, me.sub);
+    // امتیاز «رقابت مکتب» — پس از کامیابی، تلاش دیگری برای همین امتحان
+    // فاینل مجاز نیست (computeEligibility بالا)، پس این هرگز دوبار اجرا
+    // نمی‌شود.
+    c.executionCtx.waitUntil(awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.finalExamPass, 'final_exam_pass', examId));
   }
 
   return c.json({

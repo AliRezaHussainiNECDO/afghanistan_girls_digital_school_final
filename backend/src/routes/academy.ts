@@ -11,6 +11,7 @@ import { verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
 import { gradeEssaysWithAi } from '../lib/essayGrading';
 import { hasAdminPermission } from '../lib/permissions';
+import { COMPETITION_POINTS, awardWithDailyCap } from '../lib/competition';
 
 type Bindings = {
   DB: D1Database;
@@ -87,6 +88,22 @@ academy.get('/academy/books', async (c) => {
     : c.env.DB.prepare("SELECT * FROM academy_books WHERE status = 'published' ORDER BY updated_at DESC");
   const { results } = await stmt.all<any>();
   return c.json({ books: results.map(bookJson) });
+});
+
+// ─────────── امتیاز «رقابت مکتب» برای مطالعهٔ کتابخانهٔ دیجیتال ────────────
+// طبق سند طراحی رقابت (اقتصاد امتیاز): مطالعهٔ کتابخانه ۳۰XP، حداکثر ۲ بار
+// در روز (ضدِ اسپم) — لحظهٔ «باز کردن» ورقهٔ جزئیات کتاب توسط شاگرد (نه صرفِ
+// دیدن آن در فهرست) به‌عنوان «مطالعه» شمرده می‌شود.
+academy.post('/academy/books/:id/read', async (c) => {
+  const u = await me(c);
+  if (!u) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const bookId = c.req.param('id');
+  if (u.role === 'student') {
+    c.executionCtx.waitUntil(
+      awardWithDailyCap(c.env.DB, u.sub, COMPETITION_POINTS.libraryRead, 'library_read', bookId, COMPETITION_POINTS.libraryReadDailyCap),
+    );
+  }
+  return c.json({ success: true });
 });
 
 academy.post('/academy/books', async (c) => {

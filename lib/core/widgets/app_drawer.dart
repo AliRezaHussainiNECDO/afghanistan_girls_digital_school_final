@@ -24,6 +24,7 @@ class _DrawerItem {
 
 const _studentItems = [
   _DrawerItem(Icons.home_rounded, 'nav.home', AppRoutes.studentHome),
+  _DrawerItem(Icons.emoji_events_rounded, 'nav.competition', AppRoutes.competition),
   _DrawerItem(Icons.map_rounded, 'nav.gradeMap', AppRoutes.gradeMap),
   _DrawerItem(Icons.menu_book_rounded, 'nav.curriculum', AppRoutes.curriculum),
   _DrawerItem(Icons.assignment_turned_in_rounded, 'nav.homework', AppRoutes.homework),

@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import { hashPassword, verifyPassword, signJwt, verifyJwt, verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
 import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
+import { COMPETITION_POINTS, awardOnce } from '../lib/competition';
 import {
   sendEmail,
   verificationEmailHtml,
@@ -331,6 +332,13 @@ auth.post('/register', async (c) => {
   }
 
   await c.env.DB.batch(statements);
+
+  // امتیاز «رقابت مکتب» — پاداش خوش‌آمدگویی یک‌بارهٔ ورود با کد دعوت (میشن
+  // m_invite_welcome، migration 0047)؛ فقط برای شاگردان تازه‌ثبت‌نام‌شده.
+  if (role === 'student' && inviteRow) {
+    c.executionCtx.waitUntil(awardOnce(c.env.DB, id, COMPETITION_POINTS.inviteWelcome, 'invite_code_registered', inviteRow.id));
+  }
+
   if (adminsForNotice.length > 0) {
     c.executionCtx.waitUntil(
       sendPushToUsers(

@@ -99,6 +99,15 @@ class StudentDashboardScreen extends ConsumerWidget {
                 .animate()
                 .fadeIn(duration: 420.ms)
                 .slideY(begin: 0.12, end: 0, duration: 420.ms, curve: Curves.easeOutCubic),
+            const SizedBox(height: 14),
+
+            // ── ورودی «رقابت مکتب» (نسخهٔ ۲) — طبق درخواست صریح کاربر: باید
+            // همهٔ شاگردان را به رقابت و استفاده از تمام بخش‌های اپ تشویق کند،
+            // پس یک بنر درخشان و همیشه‌دیدنی درست زیر کارت امتیاز قرار گرفت.
+            _CompetitionEntryBanner(onTap: () => context.push(AppRoutes.competition))
+                .animate()
+                .fadeIn(delay: 40.ms, duration: 420.ms)
+                .slideY(begin: 0.12, end: 0, delay: 40.ms, duration: 420.ms, curve: Curves.easeOutCubic),
             const SizedBox(height: 18),
 
             // ── تقسیم اوقات هوشمند امروز — به بالای صفحه منتقل شد ──
@@ -346,6 +355,57 @@ class _MainSectionsGrid extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// بنر ورود به «رقابت مکتب» — گرادیان طلایی/جشن (هماهنگ با `PointsBadge`)
+/// + شعلهٔ در حال تپش، تا شاگرد را هر بار که وارد خانه می‌شود دوباره به
+/// رقابت (جدول رتبه‌ها + میشن‌های تمام بخش‌های اپ) دعوت کند.
+class _CompetitionEntryBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _CompetitionEntryBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: AppColors.goldCelebrationGradient,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            boxShadow: AppShadows.soft,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 28)
+                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                  .scaleXY(end: 1.15, duration: 1000.ms, curve: Curves.easeInOut),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(context.tr('competition.entryTitle'),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14.5)),
+                    const SizedBox(height: 2),
+                    Text(context.tr('competition.entrySubtitle'),
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 11.5),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

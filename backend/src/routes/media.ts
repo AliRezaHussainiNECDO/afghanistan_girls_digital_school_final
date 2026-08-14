@@ -10,6 +10,7 @@ import { verifyBearer } from '../lib/auth';
 import { sendPushToUser, sendPushToUsers } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
 import { hasAdminPermission } from '../lib/permissions';
+import { COMPETITION_POINTS, awardOnce, awardWithDailyCap } from '../lib/competition';
 
 type Bindings = {
   DB: D1Database;
@@ -192,6 +193,14 @@ media.post('/conversations/:id/messages', async (c) => {
     .bind(flagged ? 'در انتظار بازبینی مدیر...' : body.text, conversationId)
     .run();
 
+  // امتیاز «رقابت مکتب» — فقط برای شاگردان، پیام‌های تمیز (نه فیلترشده)، و
+  // با سقف روزانه (ضدِ اسپم؛ migration 0047 / lib/competition.ts).
+  if (u.role === 'student' && !flagged) {
+    c.executionCtx.waitUntil(
+      awardWithDailyCap(c.env.DB, u.sub, COMPETITION_POINTS.chatMessage, 'chat_message', id, COMPETITION_POINTS.chatMessageDailyCap),
+    );
+  }
+
   // رفع اشکال (۲۴ جولای): پیام‌های فیلترشده با کلمهٔ ممنوعه قبلاً فقط در
   // «نظارت بر چت» (`/admin/chat/*`) دیده می‌شدند، نه در «صف بازبینی ایمنی»
   // (`safety_events`) — با اینکه Mock همین سناریو را دقیقاً به‌عنوان یک مورد
@@ -299,6 +308,11 @@ media.post('/users/me/avatar', async (c) => {
   await c.env.DB.prepare("UPDATE users SET avatar_url = ?, updated_at = datetime('now') WHERE id = ?")
     .bind(avatarUrl, u.sub)
     .run();
+  // امتیاز «رقابت مکتب» — پاداش یک‌بارهٔ «آراستن پروفایل» (میشن m_avatar،
+  // migration 0047). awardOnce خودش تضمین می‌کند دوباره اهدا نشود.
+  if (u.role === 'student') {
+    c.executionCtx.waitUntil(awardOnce(c.env.DB, u.sub, COMPETITION_POINTS.avatarSet, 'avatar_set', u.sub));
+  }
   return c.json({ success: true, avatarUrl });
 });
 

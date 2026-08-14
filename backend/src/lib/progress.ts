@@ -320,13 +320,18 @@ export async function isLessonUnlockedFor(
 
 // ═══════════════════════ امتیازدهی بر اساس فعالیت (Gamification) ═══════════
 
-export const POINTS_PER_LESSON_VIEW = 10;
-export const POINTS_PER_CHAPTER_COMPLETE = 25;
+// طبق سند «اقتصاد امتیاز» رقابت مکتب (نسخهٔ ۲): تماشای کامل یک درس = ۵۰XP،
+// تکمیل یک فصل (که چند درس را در بر می‌گیرد) به همان نسبت بزرگ‌تر شد.
+export const POINTS_PER_LESSON_VIEW = 50;
+export const POINTS_PER_CHAPTER_COMPLETE = 80;
 
 /** مشق کاغذی نمره‌گذاری‌شده توسط هوش مصنوعی (بخش «مشق کاغذی + نمره‌دهی هوشمند»). */
 export const POINTS_PER_HOMEWORK_GRADED = 15;
 
-export async function awardPoints(
+/** درج خام یک ردیف در دفتر کل امتیازات — بدون هیچ عارضهٔ جانبی (بدون Streak).
+ * [touchDailyStreak] خودش برای ثبت پاداش نقطهٔ عطف از همین تابع استفاده
+ * می‌کند تا هرگز در حلقهٔ بی‌پایان با [awardPoints] نیفتد. */
+async function insertPointsRow(
   db: D1Database,
   studentId: string,
   points: number,
@@ -338,6 +343,131 @@ export async function awardPoints(
     .prepare('INSERT INTO student_points_ledger (id, student_id, points, reason, ref_id) VALUES (?, ?, ?, ?, ?)')
     .bind(id, studentId, points, reason, refId)
     .run();
+}
+
+export async function awardPoints(
+  db: D1Database,
+  studentId: string,
+  points: number,
+  reason: string,
+  refId: string,
+): Promise<void> {
+  await insertPointsRow(db, studentId, points, reason, refId);
+  // هر فعالیت امتیازآور (از هر بخش برنامه) روزشمار فعالیت پیوسته را هم
+  // تازه می‌کند — طبق طراحی «رقابت مکتب» (migration 0047). خودِ پاداش
+  // نقطهٔ عطف با reason='streak_bonus' درج می‌شود و دوباره این تابع را
+  // صدا نمی‌زند (فقط insertPointsRow) تا حلقه‌ای شکل نگیرد.
+  if (reason !== 'streak_bonus') {
+    await touchDailyStreak(db, studentId).catch((err) => {
+      console.error('[touchDailyStreak] fail-safe — رقابت هرگز نباید فعالیت اصلی را بشکند', err);
+    });
+  }
+}
+
+// ═════════════════════ روزشمار فعالیت پیوسته (Daily Streak) ════════════════
+// بخشی از «رقابت مکتب» (migration 0047، backend/src/routes/competition.ts).
+// نقاط عطف و پاداش هرکدام — رسیدن به هرکدام یک‌بار در طول عمر حساب پاداش
+// می‌دهد (milestones_awarded جلوی تکرار را می‌گیرد).
+export const STREAK_MILESTONE_REWARDS: Record<number, number> = {
+  3: 15,
+  7: 40,
+  14: 80,
+  30: 150,
+  60: 300,
+  100: 500,
+};
+
+// طبق سند «اقتصاد امتیاز»: هر روز فعالیت = ۲۰XP؛ در هر هفتمین روز پیاپی
+// (۷، ۱۴، ۲۱، …) این پاداش روزانه دو برابر می‌شود. جدا از reason خودِ
+// نقاط‌عطف («streak_bonus» — یک‌بار در طول عمر حساب) تا میشن‌های «۷ روز
+// پیوسته»/«۳۰ روز پیوسته» که COUNT ردیف‌های streak_bonus را می‌شمارند خراب
+// نشوند؛ این یکی reason جداگانهٔ 'daily_streak_bonus' دارد.
+export const STREAK_DAILY_POINTS = 20;
+
+/** امروز به‌وقت سرور، به‌فرمت YYYY-MM-DD (سازگار با date('now') در SQLite). */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysBetween(a: string, b: string): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / msPerDay);
+}
+
+/**
+ * هر بار که شاگرد امتیاز می‌گیرد، یک‌بار در روز صدا زده می‌شود (از داخل
+ * [awardPoints]) — idempotent برای همان روز. اگر امروز اولین فعالیت بعد از
+ * دقیقاً یک روز غیبت باشد، streak یک واحد بالا می‌رود؛ اگر بیش از یک روز
+ * غیبت بوده، streak از ۱ شروع می‌شود؛ اگر امروز از قبل ثبت شده، کاری نمی‌کند.
+ * هر روز تازه (چه شروع یک streak نو، چه ادامهٔ آن) بلافاصله پاداش روزانهٔ
+ * ثابت (و دوبرابرشدهٔ هر هفتمین روز) می‌گیرد.
+ */
+export async function touchDailyStreak(db: D1Database, studentId: string): Promise<void> {
+  const today = todayIso();
+  const row = await db
+    .prepare('SELECT current_streak, longest_streak, last_active_date, milestones_awarded FROM student_streaks WHERE student_id = ?')
+    .bind(studentId)
+    .first<{ current_streak: number; longest_streak: number; last_active_date: string | null; milestones_awarded: string }>();
+
+  if (!row) {
+    await db
+      .prepare(
+        'INSERT INTO student_streaks (student_id, current_streak, longest_streak, last_active_date, milestones_awarded) VALUES (?, 1, 1, ?, ?)',
+      )
+      .bind(studentId, today, '[]')
+      .run();
+    await insertPointsRow(db, studentId, STREAK_DAILY_POINTS, 'daily_streak_bonus', today);
+    return; // ۱ روز هرگز نقطهٔ عطف (milestone) نیست، ولی پاداش روزانه گرفت.
+  }
+
+  if (row.last_active_date === today) return; // امروز قبلاً ثبت شده.
+
+  const gap = row.last_active_date ? daysBetween(row.last_active_date, today) : null;
+  const newStreak = gap === 1 ? row.current_streak + 1 : 1;
+  const newLongest = Math.max(row.longest_streak, newStreak);
+
+  const dailyPoints = newStreak % 7 === 0 ? STREAK_DAILY_POINTS * 2 : STREAK_DAILY_POINTS;
+  await insertPointsRow(db, studentId, dailyPoints, 'daily_streak_bonus', today);
+
+  await db
+    .prepare('UPDATE student_streaks SET current_streak = ?, longest_streak = ?, last_active_date = ? WHERE student_id = ?')
+    .bind(newStreak, newLongest, today, studentId)
+    .run();
+
+  let milestones: number[] = [];
+  try {
+    milestones = JSON.parse(row.milestones_awarded ?? '[]');
+  } catch {
+    milestones = [];
+  }
+  const reward = STREAK_MILESTONE_REWARDS[newStreak];
+  if (reward && !milestones.includes(newStreak)) {
+    await insertPointsRow(db, studentId, reward, 'streak_bonus', String(newStreak));
+    milestones.push(newStreak);
+    await db
+      .prepare('UPDATE student_streaks SET milestones_awarded = ? WHERE student_id = ?')
+      .bind(JSON.stringify(milestones), studentId)
+      .run();
+  }
+}
+
+export type StreakStatus = { currentStreak: number; longestStreak: number; lastActiveDate: string | null };
+
+export async function getStreakStatus(db: D1Database, studentId: string): Promise<StreakStatus> {
+  try {
+    const row = await db
+      .prepare('SELECT current_streak, longest_streak, last_active_date FROM student_streaks WHERE student_id = ?')
+      .bind(studentId)
+      .first<{ current_streak: number; longest_streak: number; last_active_date: string | null }>();
+    return {
+      currentStreak: row?.current_streak ?? 0,
+      longestStreak: row?.longest_streak ?? 0,
+      lastActiveDate: row?.last_active_date ?? null,
+    };
+  } catch (err) {
+    console.error('[getStreakStatus] fallback to zero —', err);
+    return { currentStreak: 0, longestStreak: 0, lastActiveDate: null };
+  }
 }
 
 export type PointsSummary = {

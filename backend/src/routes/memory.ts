@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { logAudit, clientIp } from '../lib/audit';
+import { COMPETITION_POINTS, awardWithDailyCap } from '../lib/competition';
 
 type Bindings = {
   DB: D1Database;
@@ -113,6 +114,13 @@ memory.post('/memory/posts', async (c) => {
     )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM memory_posts WHERE id = ?').bind(id).first<any>();
+  // امتیاز «رقابت مکتب» — فقط برای شاگردان و با سقف روزانه (ضدِ اسپم؛
+  // migration 0047 / lib/competition.ts).
+  if (u.role === 'student') {
+    c.executionCtx.waitUntil(
+      awardWithDailyCap(c.env.DB, u.sub, COMPETITION_POINTS.memoryPost, 'memory_post', id, COMPETITION_POINTS.memoryPostDailyCap),
+    );
+  }
   return c.json({ post: postJson(row) }, 201);
 });
 

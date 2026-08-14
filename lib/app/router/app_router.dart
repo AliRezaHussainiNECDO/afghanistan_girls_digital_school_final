@@ -41,6 +41,7 @@ import '../../features/auth/presentation/screens/register_parent_screen.dart';
 import '../../features/auth/presentation/screens/register_role_select_screen.dart';
 import '../../features/auth/presentation/screens/register_student_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
+import '../../features/competition/presentation/screens/competition_screen.dart';
 import '../../features/chat/presentation/screens/chat_thread_screen.dart';
 import '../../features/chat/presentation/screens/contact_admin_screen.dart';
 import '../../features/collective_memory/presentation/screens/collective_memory_screen.dart';
@@ -263,6 +264,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (c, s) =>
             fadeSlidePage(s, ChatThreadScreen(conversationId: s.pathParameters['conversationId']!)),
       ),
+      GoRoute(
+          path: AppRoutes.competition,
+          pageBuilder: (c, s) => fadeSlidePage(s, const CompetitionScreen())),
       GoRoute(
           path: AppRoutes.notifications,
           pageBuilder: (c, s) => fadeSlidePage(s, const NotificationsScreen())),

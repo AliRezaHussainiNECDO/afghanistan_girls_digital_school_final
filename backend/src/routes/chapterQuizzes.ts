@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { gradeChapterQuizSubmission, type ChapterQuizBindings } from '../lib/chapterQuiz';
+import { COMPETITION_POINTS, awardSafe } from '../lib/competition';
 
 type Bindings = ChapterQuizBindings & { JWT_SECRET: string };
 const chapterQuizzes = new Hono<{ Bindings: Bindings }>();
@@ -226,6 +227,34 @@ chapterQuizzes.post('/chapters/:chapterId/quiz/submit', async (c) => {
   // quizSubmitted : ...). اینجا کاری اضافه لازم نیست؛ همان لحظه که این
   // ردیف در chapter_quiz_attempts ثبت شد، فراخوانی بعدیِ فهرست فصل‌ها
   // خودکار فصل بعدی را unlocked نشان می‌دهد.
+
+  // امتیاز «رقابت مکتب» برای کامیابی در آزمون فصل — هر آزمون فصل هم فقط
+  // یک‌بار قابل دادن است (بررسی بالای همین Endpoint). اگر این آزمون در بازهٔ
+  // کوتاهی بعد از تکمیل فصل (یعنی «بلافاصله» طبق سند اقتصاد امتیاز) داده
+  // شود، ۱۰٪ پاداش اضافه هم می‌گیرد.
+  if (passed) {
+    c.executionCtx.waitUntil(awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.chapterQuizPass, 'chapter_quiz_pass', quiz.id));
+    c.executionCtx.waitUntil(
+      (async () => {
+        try {
+          const completedRow = await c.env.DB.prepare(
+            "SELECT created_at FROM student_points_ledger WHERE student_id = ? AND reason = 'chapter_complete' AND ref_id = ? ORDER BY created_at DESC LIMIT 1",
+          )
+            .bind(me.sub, chapterId)
+            .first<{ created_at: string }>();
+          if (!completedRow) return;
+          const elapsedMinutes = (Date.now() - new Date(`${completedRow.created_at.replace(' ', 'T')}Z`).getTime()) / 60000;
+          if (elapsedMinutes >= 0 && elapsedMinutes <= COMPETITION_POINTS.chapterQuizEarlyWindowMinutes) {
+            const bonus = Math.round((COMPETITION_POINTS.chapterQuizPass * COMPETITION_POINTS.chapterQuizEarlyBonusPercent) / 100);
+            await awardSafe(c.env.DB, me.sub, bonus, 'chapter_quiz_early_bonus', quiz.id);
+          }
+        } catch (err) {
+          console.error('[chapterQuizzes.submit] early bonus fail-safe —', err);
+        }
+      })(),
+    );
+  }
+
   return c.json({ scorePercent: score, correctCount: correct, totalCount: total, passed });
 });
 

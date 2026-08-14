@@ -26,6 +26,7 @@ import aiCurriculumRouter from './routes/aiCurriculum';
 import chapterQuizzesRouter from './routes/chapterQuizzes';
 import finalExamsRouter from './routes/finalExams';
 import errorLogsRouter from './routes/errorLogs';
+import competitionRouter from './routes/competition';
 import { captureError } from './lib/errorLog';
 import { notifyFinalExamRetakesDue } from './lib/finalExamRetakeNotify';
 
@@ -222,6 +223,12 @@ app.route('/api/v1', memoryRouter);
 
 // ─────────────────────── آکادمی (کتابخانه/بانک سؤال/پاسخ‌ها) ────────────────
 app.route('/api/v1', academyRouter);
+
+// ───────────────────── رقابت مکتب (۵۰ مقام + میشن‌ها + جدول رتبه) ───────────
+// migration 0047 + lib/competition.ts. جدول رتبه‌بندی سراسری، مقام شاگرد، و
+// میشن‌هایی که تمام بخش‌های برنامه (درس، کارخانگی، امتحان، حافظهٔ جمعی، چت،
+// پروفایل، معلم هوشمند، سمینار، کد دعوت، گواهی‌نامه) را به رقابت وصل می‌کنند.
+app.route('/api/v1', competitionRouter);
 
 // ───────────────────────────── مشاور هوشمند ─────────────────────────────────
 app.route('/api/v1', advisorRouter);

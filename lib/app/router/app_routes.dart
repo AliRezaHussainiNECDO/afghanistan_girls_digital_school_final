@@ -47,6 +47,8 @@ class AppRoutes {
   static const seminars = '/student/seminars';
   static const chat = '/student/chat';
   static String chatThread(String conversationId) => '/student/chat/$conversationId';
+  // «رقابت مکتب» — جدول رتبه‌بندی سراسری + ۵۰ مقام + میشن‌ها (نسخهٔ ۲).
+  static const competition = '/student/competition';
   static const notifications = '/student/notifications';
   static const profile = '/student/profile';
 

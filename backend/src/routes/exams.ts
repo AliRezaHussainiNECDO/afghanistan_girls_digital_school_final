@@ -25,6 +25,7 @@
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
 import { promoteIfEligible, PROMOTION_EXAM_PASS_PERCENT } from '../lib/progress';
+import { COMPETITION_POINTS, awardSafe, awardOnce } from '../lib/competition';
 import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
 import { gradeEssaysWithAi, callAiJsonArrayLenient } from '../lib/essayGrading';
@@ -301,6 +302,12 @@ exams.get('/exams/attempts/:attemptId', async (c) => {
 // ─────────────────────────── سؤالات (بدون پاسخ) ─────────────────────────────
 
 exams.get('/exams/:examId/questions', async (c) => {
+  // رفع اشکال جانبی: این Endpoint قبلاً هیچ احراز هویتی نداشت (برخلاف
+  // بقیهٔ Endpointهای مشابه در همین فایل). برای ثبت «زمان شروع واقعی» امتحان
+  // (پایهٔ پاداش سرعت رقابت مکتب — lib/competition.ts) به هویت کاربر نیاز
+  // است؛ همین لازم بودن، این نبودِ قبلی را هم رفع می‌کند.
+  const me = await auth(c);
+  if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   const examId = c.req.param('examId');
   const { results } = await c.env.DB.prepare(
     'SELECT id, text, options, q_type FROM questions WHERE exam_id = ? ORDER BY order_index',
@@ -315,6 +322,13 @@ exams.get('/exams/:examId/questions', async (c) => {
     // correctIndex و answer_text عمداً فرستاده نمی‌شوند (بخش ۷.۲ — نمره‌دهی
     // فقط سمت سرور؛ پاسخ نمونهٔ تشریحی هم کلید نمره‌دهی است).
   }));
+  // زمان شروع واقعی — فقط اولین بار ثبت می‌شود (INSERT OR IGNORE)، تا باز
+  // کردن مجدد صفحهٔ سؤالات، «شروع» را دیر‌تر نکند (که پاداش سرعت را
+  // ناعادلانه ساده‌تر می‌کرد).
+  await c.env.DB.prepare('INSERT OR IGNORE INTO exam_start_times (exam_id, user_id) VALUES (?, ?)')
+    .bind(examId, me.sub)
+    .run()
+    .catch(() => {});
   return c.json({ questions: list });
 });
 
@@ -471,6 +485,35 @@ exams.post('/exams/:examId/submit', async (c) => {
     promotion = await promoteIfEligible(c.env.DB, me.sub);
   }
 
+  // امتیاز «رقابت مکتب» برای کامیابی در امتحان — هر امتحان فقط یک‌بار قابل
+  // دادن است (بررسی بالای همین Endpoint)، پس awardSafe اینجا هرگز دوبار
+  // اجرا نمی‌شود؛ fail-safe است و اگر شکست بخورد نتیجهٔ امتحان را نمی‌شکند.
+  // طبق سند اقتصاد امتیاز: پایهٔ قبولی + پاداش «نمرهٔ کامل» + پاداش «سرعت»
+  // (هرکدام مستقل و قابل جمع‌شدن با هم).
+  if (score >= PROMOTION_EXAM_PASS_PERCENT) {
+    c.executionCtx.waitUntil(awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.examPass, 'exam_pass', examId));
+    if (score >= 100) {
+      c.executionCtx.waitUntil(awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.examPerfectScoreBonus, 'exam_perfect_score', examId));
+    }
+    c.executionCtx.waitUntil(
+      (async () => {
+        try {
+          const startRow = await c.env.DB.prepare('SELECT started_at FROM exam_start_times WHERE exam_id = ? AND user_id = ?')
+            .bind(examId, me.sub)
+            .first<{ started_at: string }>();
+          if (!startRow) return;
+          const elapsedSeconds = (Date.now() - new Date(`${startRow.started_at.replace(' ', 'T')}Z`).getTime()) / 1000;
+          const budgetSeconds = Math.max(total, 1) * COMPETITION_POINTS.examSpeedSecondsPerQuestion;
+          if (elapsedSeconds > 0 && elapsedSeconds <= budgetSeconds * 0.5) {
+            await awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.examSpeedBonus, 'exam_speed_bonus', examId);
+          }
+        } catch (err) {
+          console.error('[exams.submit] speed bonus fail-safe —', err);
+        }
+      })(),
+    );
+  }
+
   return c.json({
     attemptId,
     scorePercent: Math.round(score * 10) / 10,
@@ -581,6 +624,9 @@ exams.post('/admin/certificates', async (c) => {
     )
     .run();
   const row = await c.env.DB.prepare('SELECT * FROM certificates WHERE id = ?').bind(id).first<any>();
+  // امتیاز «رقابت مکتب» — یک‌بار در طول عمر حساب (اولین گواهی‌نامه)، طبق
+  // میشن m_certificate_1 (migration 0047).
+  c.executionCtx.waitUntil(awardOnce(c.env.DB, String(b.studentId), COMPETITION_POINTS.certificateEarned, 'certificate_earned', id));
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: me.sub,

@@ -22,6 +22,7 @@ import { hasAdminPermission } from '../lib/permissions';
 import { logAudit, clientIp } from '../lib/audit';
 import { generateSeminarArchiveReport } from '../lib/seminarReport';
 import { jaasConfigured, jaasRoomName, signJaasToken } from '../lib/jaas';
+import { COMPETITION_POINTS, awardSafe } from '../lib/competition';
 
 type Bindings = {
   DB: D1Database;
@@ -469,6 +470,11 @@ seminars.post('/seminars/:id/register', async (c) => {
   )
     .bind(seminarId, me.sub)
     .run();
+  // امتیاز «رقابت مکتب» — ثبت‌نام تکراری در همین سمینار بالاتر رد شده
+  // (already/409)، پس این هرگز برای یک سمینار دوبار اجرا نمی‌شود.
+  if (me.role === 'student') {
+    c.executionCtx.waitUntil(awardSafe(c.env.DB, me.sub, COMPETITION_POINTS.seminarRegistered, 'seminar_registered', seminarId));
+  }
   return c.json({ success: true });
 });
 

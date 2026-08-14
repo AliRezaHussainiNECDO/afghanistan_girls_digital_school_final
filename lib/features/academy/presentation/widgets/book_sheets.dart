@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/network/network_providers.dart';
 import '../../../../core/notifications/notification_center.dart';
 import '../../../../shared_models/app_notification.dart';
+import '../../../auth/presentation/providers/auth_providers.dart' show kUseLiveBackend;
 import '../../data/pdf_picker/pdf_picker.dart';
 import '../../data/pdf_picker/picked_pdf.dart';
 import '../../data/pdf_saver/pdf_saver.dart';
@@ -480,6 +482,17 @@ class StudentBookSheet extends ConsumerStatefulWidget {
 
 class _StudentBookSheetState extends ConsumerState<StudentBookSheet> {
   bool _downloading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // ثبت «مطالعه کتابخانه» برای سیستم رقابت/امتیازدهی — آتش‌وفراموش،
+    // هرگز نباید باعث خطا یا کندی در باز شدن شیت شود (سقف روزانه و منطق
+    // امتیازدهی در بک‌اند کنترل می‌شود: awardWithDailyCap در academy.ts).
+    if (kUseLiveBackend) {
+      ref.read(apiClientProvider).post('/academy/books/${widget.book.id}/read').catchError((_) {});
+    }
+  }
 
   /// دانلود واقعی — رفع اشکال: قبلاً این فقط یک تأخیر ۵۰۰ میلی‌ثانیه‌ای +
   /// پیام موفقیت جعلی بود؛ هیچ فایلی واقعاً دریافت/ذخیره نمی‌شد. اکنون
