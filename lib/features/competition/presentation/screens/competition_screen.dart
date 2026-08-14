@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../app/router/app_routes.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../core/widgets/celebration_overlay.dart';
 import '../../../../core/widgets/error_view.dart';
@@ -12,6 +15,7 @@ import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/competition_entities.dart';
 import '../providers/competition_providers.dart';
+import '../../../live_arena/presentation/providers/live_arena_providers.dart';
 import '../widgets/competition_hero_card.dart';
 import '../widgets/competition_stats_card.dart';
 import '../widgets/daily_quest_card.dart';
@@ -131,6 +135,8 @@ class _CompetitionScreenState extends ConsumerState<CompetitionScreen> {
               },
             ),
             const SizedBox(height: 14),
+            const _LiveArenaBanner(),
+            const SizedBox(height: 14),
             ref.watch(competitionStatsProvider).maybeWhen(
                   data: (stats) => Padding(
                     padding: const EdgeInsets.only(bottom: 4),
@@ -199,9 +205,7 @@ class _CompetitionScreenState extends ConsumerState<CompetitionScreen> {
               children: [
                 LeaderboardPodium(top3: top3, myStudentId: myId),
                 const SizedBox(height: 8),
-                ...rest.asMap().entries.map(
-                      (e) => LeaderboardTile(entry: e.value, isMe: e.value.studentId == myId, index: e.key),
-                    ),
+                _DeltaTrackedLeaderboardRest(rest: rest, myId: myId),
               ],
             );
           },
@@ -362,6 +366,106 @@ class _ScopeToggle extends StatelessWidget {
         chip(context.tr('competition.scopeGlobal'), !byGrade, () => onChanged(false)),
         chip(context.tr('competition.scopeGrade'), byGrade, () => onChanged(true)),
       ],
+    );
+  }
+}
+
+/// بنرِ ورودیِ «آرنای زنده» بالای صفحهٔ رقابت — فقط وقتی رویدادی
+/// برنامه‌ریزی‌شده/در حال برگزاری وجود دارد نشان داده می‌شود؛ اگر رویدادی
+/// نبود یا شاگرد واجد‌شرایط نبود، کاملاً خودش را پنهان می‌کند تا فضای بی‌مورد
+/// اشغال نکند (طبق سند طراحی رقابت: آرنا یک قابلیت «پیشرفته» است، نه بخش
+/// همیشگی صفحه).
+class _LiveArenaBanner extends ConsumerWidget {
+  const _LiveArenaBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final infoAsync = ref.watch(liveArenaCurrentProvider);
+    return infoAsync.maybeWhen(
+      data: (info) {
+        final event = info.event;
+        if (event == null || !info.eligible || event.isEnded) return const SizedBox.shrink();
+        return GestureDetector(
+          onTap: () => context.go(AppRoutes.liveArena),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF1B1033), Color(0xFF3D1E6D)]),
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              boxShadow: AppShadows.soft,
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.bolt_rounded, color: AppColors.gold300, size: 26)
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .scaleXY(end: 1.2, duration: 800.ms, curve: Curves.easeInOut),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.tr(event.isLive ? 'liveArena.bannerLiveNow' : 'liveArena.bannerScheduled'),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13.5),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        event.titleFa,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 22),
+              ],
+            ),
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// فهرست ردیف‌های جدول (بعد از سکو) — موقعیتِ *قبلیِ* هر شاگرد را بین
+/// تازه‌سازی‌ها به‌خاطر می‌سپارد (`didUpdateWidget`) تا [LeaderboardTile]
+/// بتواند نشانگر ▲/▼ تغییرِ رتبه را نشان دهد. در اولین بارگذاری چیزی
+/// نمی‌سازد (چون «قبلی» معنا ندارد).
+class _DeltaTrackedLeaderboardRest extends StatefulWidget {
+  final List<LeaderboardEntry> rest;
+  final String? myId;
+  const _DeltaTrackedLeaderboardRest({required this.rest, required this.myId});
+
+  @override
+  State<_DeltaTrackedLeaderboardRest> createState() => _DeltaTrackedLeaderboardRestState();
+}
+
+class _DeltaTrackedLeaderboardRestState extends State<_DeltaTrackedLeaderboardRest> {
+  Map<String, int> _previousPositions = {};
+
+  @override
+  void didUpdateWidget(covariant _DeltaTrackedLeaderboardRest oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final changed = oldWidget.rest.length != widget.rest.length ||
+        Iterable.generate(oldWidget.rest.length).any((i) => oldWidget.rest[i].position != widget.rest[i].position);
+    if (changed) {
+      _previousPositions = {for (final e in oldWidget.rest) e.studentId: e.position};
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: widget.rest.asMap().entries.map((e) {
+        return LeaderboardTile(
+          entry: e.value,
+          isMe: e.value.studentId == widget.myId,
+          index: e.key,
+          previousPosition: _previousPositions[e.value.studentId],
+        );
+      }).toList(),
     );
   }
 }

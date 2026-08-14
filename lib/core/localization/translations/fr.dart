@@ -233,6 +233,7 @@ const Map<String, String> frStrings = {
 
 // ── Compétition scolaire (v2) — 50 rangs + missions + classement général ──
 'nav.competition': 'Compétition scolaire',
+'nav.liveArena': 'Arène en direct',
 'competition.title': 'Compétition scolaire',
 'competition.myRank': 'Mon rang',
 'competition.streakLabel': 'jours de suite',
@@ -263,6 +264,20 @@ const Map<String, String> frStrings = {
 'competition.roadmapPointsNeeded': 'Points nécessaires',
 'competition.roadmapReward': 'Récompense',
 'competition.roadmapLockedHint': 'Gagnez plus de points pour débloquer ce rang.',
+'liveArena.title': 'Arène en direct',
+'liveArena.noEventScheduled': "Aucun événement d'Arène en direct n'est prévu pour le moment — revenez bientôt !",
+'liveArena.notEligibleTitle': "Vous n'êtes pas encore éligible",
+'liveArena.notEligibleBody': "Atteignez le rang #{rank} ou plus pour entrer dans l'Arène en direct.",
+'liveArena.waitingForStart': 'En attente du début du match...',
+'liveArena.startingSoon': 'Début imminent',
+'liveArena.connectionError': "Impossible de se connecter à l'arène. Veuillez vérifier votre connexion internet.",
+'liveArena.reconnecting': 'Reconnexion...',
+'liveArena.questionOf': 'Question {current} sur {total}',
+'liveArena.liveStandings': 'Classement en direct',
+'liveArena.eventFinished': 'Le match est terminé !',
+'liveArena.championIs': 'Championne de la semaine : {name} 🏆',
+'liveArena.bannerLiveNow': "⚔️ L'Arène en direct a lieu maintenant !",
+'liveArena.bannerScheduled': "⚔️ Arène en direct bientôt — appuyez pour rejoindre",
 
 // ai teacher
 'aiTeacher.chatTitle': 'Professeur IA — {subject}',

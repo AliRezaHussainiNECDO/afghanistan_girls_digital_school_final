@@ -1,7 +1,7 @@
 name: afghanistan_girls_digital_school
 description: "Afghanistan Girls Digital School — Flutter client for a real Cloudflare Workers backend."
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -69,6 +69,9 @@ dependencies:
   # هش کردنِ محلیِ PIN «حالت پنهان» (پروفایل → امنیت) — هرگز PIN را متن‌ساده
   # ذخیره نمی‌کنیم، حتی روی خودِ گوشی.
   crypto: ^3.0.3
+  # اتصال زندهٔ «آرنای زنده» (WebSocket) — کار می‌کند روی موبایل/دسکتاپ/وب،
+  # بدون نیاز به import شرطی دستی (lib/features/live_arena/).
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

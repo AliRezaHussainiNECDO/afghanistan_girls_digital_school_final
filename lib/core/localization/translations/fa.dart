@@ -224,6 +224,7 @@ const Map<String, String> faStrings = {
 
 // ── «رقابت مکتب» (نسخهٔ ۲) — ۵۰ مقام + میشن‌ها + جدول رتبه‌بندی سراسری ──
 'nav.competition': 'رقابت مکتب',
+'nav.liveArena': 'آرنای زنده',
 'competition.title': 'رقابت مکتب',
 'competition.myRank': 'مقام من',
 'competition.streakLabel': 'روز پیوسته',
@@ -254,6 +255,20 @@ const Map<String, String> faStrings = {
 'competition.roadmapPointsNeeded': 'امتیاز لازم',
 'competition.roadmapReward': 'پاداش',
 'competition.roadmapLockedHint': 'با کسب امتیاز بیشتر این مقام باز می‌شود.',
+'liveArena.title': 'آرنای زنده',
+'liveArena.noEventScheduled': 'فعلاً رویداد آرنای زنده‌ای برنامه‌ریزی نشده — به‌زودی خبر می‌دهیم!',
+'liveArena.notEligibleTitle': 'هنوز واجد‌شرایط نیستید',
+'liveArena.notEligibleBody': 'برای ورود به آرنای زنده باید به مقام #{rank} یا بالاتر برسید.',
+'liveArena.waitingForStart': 'در انتظار شروع مسابقه...',
+'liveArena.startingSoon': 'به‌زودی شروع می‌شود',
+'liveArena.connectionError': 'اتصال به آرنا برقرار نشد. لطفاً اتصال اینترنت را بررسی کنید.',
+'liveArena.reconnecting': 'در حال اتصال دوباره...',
+'liveArena.questionOf': 'سؤال {current} از {total}',
+'liveArena.liveStandings': 'جدول امتیاز لحظه‌ای',
+'liveArena.eventFinished': 'مسابقه پایان یافت!',
+'liveArena.championIs': 'قهرمان این هفته: {name} 🏆',
+'liveArena.bannerLiveNow': '⚔️ آرنای زنده هم‌اکنون در جریان است!',
+'liveArena.bannerScheduled': '⚔️ آرنای زنده به‌زودی — برای ورود لمس کنید',
 
 // ai teacher
 'aiTeacher.chatTitle': 'معلم هوشمند — {subject}',

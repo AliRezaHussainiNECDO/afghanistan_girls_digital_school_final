@@ -233,6 +233,7 @@ const Map<String, String> enStrings = {
 
 // ── School Competition (v2) — 50 ranks + missions + global leaderboard ──
 'nav.competition': 'School Competition',
+'nav.liveArena': 'Live Arena',
 'competition.title': 'School Competition',
 'competition.myRank': 'My Rank',
 'competition.streakLabel': 'day streak',
@@ -263,6 +264,20 @@ const Map<String, String> enStrings = {
 'competition.roadmapPointsNeeded': 'Points needed',
 'competition.roadmapReward': 'Reward',
 'competition.roadmapLockedHint': 'Earn more points to unlock this rank.',
+'liveArena.title': 'Live Arena',
+'liveArena.noEventScheduled': 'No Live Arena event is scheduled right now — check back soon!',
+'liveArena.notEligibleTitle': "You're not eligible yet",
+'liveArena.notEligibleBody': 'Reach rank #{rank} or higher to enter the Live Arena.',
+'liveArena.waitingForStart': 'Waiting for the match to start...',
+'liveArena.startingSoon': 'Starting soon',
+'liveArena.connectionError': "Couldn't connect to the arena. Please check your internet connection.",
+'liveArena.reconnecting': 'Reconnecting...',
+'liveArena.questionOf': 'Question {current} of {total}',
+'liveArena.liveStandings': 'Live standings',
+'liveArena.eventFinished': 'The match has ended!',
+'liveArena.championIs': "This week's champion: {name} 🏆",
+'liveArena.bannerLiveNow': '⚔️ Live Arena is happening right now!',
+'liveArena.bannerScheduled': '⚔️ Live Arena coming soon — tap to join',
 
 // ai teacher
 'aiTeacher.chatTitle': 'AI Teacher — {subject}',

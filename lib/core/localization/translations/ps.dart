@@ -233,6 +233,7 @@ const Map<String, String> psStrings = {
 
 // ── د ښوونځي سیالي (نسخه ۲) — ۵۰ درجې + ماموریتونه + عمومي جدول ──
 'nav.competition': 'د ښوونځي سیالي',
+'nav.liveArena': 'ژوندۍ ډګر',
 'competition.title': 'د ښوونځي سیالي',
 'competition.myRank': 'زما درجه',
 'competition.streakLabel': 'ورځې پرله‌پسې',
@@ -263,6 +264,20 @@ const Map<String, String> psStrings = {
 'competition.roadmapPointsNeeded': 'اړین امتیازات',
 'competition.roadmapReward': 'انعام',
 'competition.roadmapLockedHint': 'د دې درجې د خلاصولو لپاره نور امتیازات ترلاسه کړئ.',
+'liveArena.title': 'ژوندۍ ډګر',
+'liveArena.noEventScheduled': 'اوس مهال هیڅ د ژوندۍ ډګر پیښه نه ده مهالویش شوې — ډیر ژر به خبر درکړو!',
+'liveArena.notEligibleTitle': 'تاسو لا تر اوسه وړ نه یاست',
+'liveArena.notEligibleBody': 'د ژوندۍ ډګر لپاره باید #{rank} یا لوړ درجې ته ورسئ.',
+'liveArena.waitingForStart': 'د سیالۍ د پیل په تمه...',
+'liveArena.startingSoon': 'ډیر ژر پیل کیږي',
+'liveArena.connectionError': 'له ډګر سره اړیکه ونه نیول شوه. مهرباني وکړئ خپل انټرنیټ وګورئ.',
+'liveArena.reconnecting': 'بیا نښلول کیږي...',
+'liveArena.questionOf': 'پوښتنه {current} د {total} څخه',
+'liveArena.liveStandings': 'ژوندۍ د امتیازاتو جدول',
+'liveArena.eventFinished': 'سیالۍ پای ته ورسیده!',
+'liveArena.championIs': 'د دې اونۍ اتل: {name} 🏆',
+'liveArena.bannerLiveNow': '⚔️ ژوندۍ ډګر همدا اوس روان دی!',
+'liveArena.bannerScheduled': '⚔️ ژوندۍ ډګر ډیر ژر راځي — د ننوتلو لپاره کلیک وکړئ',
 
 // ai teacher
 'aiTeacher.chatTitle': 'هوښیار ښوونکی — {subject}',

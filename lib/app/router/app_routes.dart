@@ -49,6 +49,10 @@ class AppRoutes {
   static String chatThread(String conversationId) => '/student/chat/$conversationId';
   // «رقابت مکتب» — جدول رتبه‌بندی سراسری + ۵۰ مقام + میشن‌ها (نسخهٔ ۲).
   static const competition = '/student/competition';
+  // «آرنای زنده» — نبرد هفتگی زندهٔ رتبه‌بندی (WebSocket)، جدا از
+  // /student/competition تا اتصال زنده فقط وقتی کاربر واقعاً این صفحه را
+  // باز کرده برقرار شود.
+  static const liveArena = '/student/live-arena';
   static const notifications = '/student/notifications';
   static const profile = '/student/profile';
 
