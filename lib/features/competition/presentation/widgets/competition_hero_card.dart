@@ -144,7 +144,7 @@ class _StreakChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(Icons.local_fire_department_rounded, color: AppColors.gold300, size: 26)
+        const Icon(Icons.local_fire_department_rounded, color: AppColors.gold300, size: 26)
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .scaleXY(end: 1.18, duration: 900.ms, curve: Curves.easeInOut),
         const SizedBox(height: 2),

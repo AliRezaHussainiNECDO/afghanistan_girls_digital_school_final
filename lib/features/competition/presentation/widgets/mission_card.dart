@@ -108,7 +108,7 @@ class _RewardOrClaim extends StatelessWidget {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.verified_rounded, color: AppColors.green500, size: 20),
+          const Icon(Icons.verified_rounded, color: AppColors.green500, size: 20),
           const SizedBox(height: 2),
           Text('+${mission.pointsReward}', style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ],

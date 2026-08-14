@@ -107,11 +107,13 @@ class AppErrorHandler {
               'osVersion': _osVersion,
             },
           )
-          .catchError((Object e) {
-            // بی‌صدا — نبودِ اینترنت/در دسترس‌نبودن سرور نباید چیزی را بشکند.
-            if (kDebugMode) debugPrint('[AppErrorHandler] گزارش خطا به سرور ناموفق بود: $e');
-            return null;
-          }),
+          .then(
+            (_) {},
+            onError: (Object e) {
+              // بی‌صدا — نبودِ اینترنت/در دسترس‌نبودن سرور نباید چیزی را بشکند.
+              if (kDebugMode) debugPrint('[AppErrorHandler] گزارش خطا به سرور ناموفق بود: $e');
+            },
+          ),
     );
   }
 

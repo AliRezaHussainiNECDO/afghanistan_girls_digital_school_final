@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../../app/theme/design_tokens.dart';
-import '../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/competition_entities.dart';
 import 'competition_icons.dart';
 

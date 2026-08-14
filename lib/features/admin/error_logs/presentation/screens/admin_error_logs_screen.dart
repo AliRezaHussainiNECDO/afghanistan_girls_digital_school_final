@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart' as intl;
 
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
@@ -654,7 +653,7 @@ class _ErrorDetailSheetState extends ConsumerState<_ErrorDetailSheet> {
                 SelectableText(e.message, style: const TextStyle(color: _Cine.text, fontSize: 13.5, height: 1.6)),
                 if (e.stackTrace != null && e.stackTrace!.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Text('Stack trace', style: const TextStyle(color: _Cine.text, fontWeight: FontWeight.w800, fontSize: 14)),
+                  const Text('Stack trace', style: TextStyle(color: _Cine.text, fontWeight: FontWeight.w800, fontSize: 14)),
                   const SizedBox(height: 6),
                   Container(
                     width: double.infinity,
@@ -686,7 +685,7 @@ class _ErrorDetailSheetState extends ConsumerState<_ErrorDetailSheet> {
                 Text(context.tr('errorLogs.statusLabel'), style: const TextStyle(color: _Cine.text, fontWeight: FontWeight.w800, fontSize: 14)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<ErrorLogStatus>(
-                  value: _status,
+                  initialValue: _status,
                   dropdownColor: _Cine.surfaceHi,
                   style: const TextStyle(color: _Cine.text),
                   decoration: InputDecoration(

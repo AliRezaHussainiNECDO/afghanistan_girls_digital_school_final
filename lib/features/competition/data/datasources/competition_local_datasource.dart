@@ -183,7 +183,7 @@ class CompetitionLocalDataSource implements CompetitionDataSource {
       ('dq_memory_1', 'روایت روزانه', 'یک روایت در حافظهٔ جمعی به‌اشتراک بگذارید.', 'groups_rounded', 1, 20, 0, null),
     ];
     return defs.map((d) {
-      final (id, title, desc, icon, target, reward, progress, requires) = d as (String, String, String, String, int, int, int, String?);
+      final (id, title, desc, icon, target, reward, progress, requires) = d;
       final requiresClaimed = requires == null || _claimedDaily.contains(requires);
       return DailyQuest(
         id: id,
