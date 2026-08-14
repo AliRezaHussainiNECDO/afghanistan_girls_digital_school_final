@@ -110,6 +110,8 @@ class AppRoutes {
   static String adminChatThread(String conversationId) => '/admin/chats/thread/$conversationId';
   static const adminReports = '/admin/reports';
   static const adminSeminars = '/admin/seminars';
+  // زمان‌بندی/لغو رویدادهای «میدان ستارگان» (فقط مدیر).
+  static const adminLiveArena = '/admin/live-arena-scheduler';
   static const adminSubmissions = '/admin/submissions';
   static const adminNotifications = '/admin/notifications';
   static const adminProfile = '/admin/profile';

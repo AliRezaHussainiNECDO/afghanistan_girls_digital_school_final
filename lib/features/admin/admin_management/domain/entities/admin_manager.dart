@@ -47,4 +47,5 @@ const List<String> kAllAdminPermissions = [
   'view_reports_audit',
   'manage_notifications',
   'manage_error_logs',
+  'manage_live_arena',
 ];

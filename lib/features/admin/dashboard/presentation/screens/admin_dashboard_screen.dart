@@ -818,6 +818,7 @@ class _AdminQuickSectionsGrid extends StatelessWidget {
     _AdminSectionItem(Icons.bug_report_rounded, 'admin.errorLogs', AppRoutes.adminErrorLogs, AppColors.danger, 'manage_error_logs'),
     _AdminSectionItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions, AppColors.green500, 'manage_exams'),
     _AdminSectionItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars, AppColors.gold500, 'manage_seminars'),
+    _AdminSectionItem(Icons.auto_awesome_rounded, 'admin.liveArenaScheduler', AppRoutes.adminLiveArena, AppColors.info, 'manage_live_arena'),
     _AdminSectionItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports, AppColors.orange700, 'view_reports_audit'),
     _AdminSectionItem(Icons.auto_stories_rounded, 'nav.collectiveMemory', AppRoutes.collectiveMemory, AppColors.ink700, 'manage_content'),
     _AdminSectionItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications, AppColors.green700, 'manage_notifications'),

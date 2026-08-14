@@ -53,6 +53,7 @@ const _adminItems = [
   _DrawerItem(Icons.bug_report_rounded, 'admin.errorLogs', AppRoutes.adminErrorLogs),
   _DrawerItem(Icons.fact_check_rounded, 'admin.submissions', AppRoutes.adminSubmissions),
   _DrawerItem(Icons.groups_rounded, 'admin.seminars', AppRoutes.adminSeminars),
+  _DrawerItem(Icons.auto_awesome_rounded, 'admin.liveArenaScheduler', AppRoutes.adminLiveArena),
   _DrawerItem(Icons.bar_chart_rounded, 'admin.reports', AppRoutes.adminReports),
   _DrawerItem(Icons.notifications_rounded, 'nav.notifications', AppRoutes.adminNotifications),
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.adminProfile),
@@ -74,6 +75,7 @@ const Map<String, String> _adminRoutePermission = {
   AppRoutes.adminErrorLogs: 'manage_error_logs',
   AppRoutes.adminSubmissions: 'manage_exams',
   AppRoutes.adminSeminars: 'manage_seminars',
+  AppRoutes.adminLiveArena: 'manage_live_arena',
   AppRoutes.adminReports: 'view_reports_audit',
   AppRoutes.adminNotifications: 'manage_notifications',
 };

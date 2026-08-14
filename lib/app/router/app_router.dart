@@ -14,6 +14,7 @@ import '../../features/admin/chat_monitoring/presentation/screens/admin_class_ch
 import '../../features/admin/cms/presentation/screens/cms_screen.dart';
 import '../../features/admin/dashboard/presentation/screens/admin_dashboard_screen.dart';
 import '../../features/admin/exams_management/presentation/screens/admin_exams_screen.dart';
+import '../../features/admin/live_arena_scheduler/presentation/screens/admin_live_arena_scheduler_screen.dart';
 import '../../features/admin/reports/presentation/screens/reports_screen.dart';
 import '../../features/admin/audit_logs/presentation/screens/admin_audit_logs_screen.dart';
 import '../../features/admin/error_logs/presentation/screens/admin_error_logs_screen.dart';
@@ -411,6 +412,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
           path: AppRoutes.adminSeminars,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminSeminarsScreen())),
+      GoRoute(
+          path: AppRoutes.adminLiveArena,
+          pageBuilder: (c, s) => fadeSlidePage(s, const AdminLiveArenaSchedulerScreen())),
       GoRoute(
           path: AppRoutes.adminSubmissions,
           pageBuilder: (c, s) => fadeSlidePage(s, const AdminSubmissionsScreen())),
