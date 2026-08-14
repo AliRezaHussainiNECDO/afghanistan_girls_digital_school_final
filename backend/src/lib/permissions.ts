@@ -23,6 +23,7 @@ export const ADMIN_PERMISSIONS = [
   'view_reports_audit', // گزارش خلاصهٔ پلتفرم + لاگ بازبینی (فقط‌خواندنی)
   'manage_notifications', // اعلان‌ها
   'manage_error_logs', // گزارش خطاهای برنامه (Migration 0046) — مرور/تغییر وضعیت/حذف رکوردهای error_logs
+  'manage_live_arena', // زمان‌بندی/لغو رویدادهای «میدان ستارگان» (Migration 0049) — routes/liveArena.ts
 ] as const;
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];

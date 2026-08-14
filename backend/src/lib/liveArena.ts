@@ -238,3 +238,49 @@ export async function transitionArenaEvents(
     await finalizeArenaEvent(db, row.id);
   }
 }
+
+/** یک ردیف فهرست رویدادها برای پنل مدیر — شامل نام قهرمان (join با users) و
+ * شمار شرکت‌کنندگان، تا صفحهٔ زمان‌بندی نیازی به درخواست‌های جداگانه نداشته
+ * باشد. */
+export type ArenaEventListRow = ArenaEventRow & {
+  champion_first_name: string | null;
+  champion_last_name: string | null;
+  participant_count: number;
+};
+
+/** فهرست رویدادها (جدیدترین‌ها اول) — برای صفحهٔ «زمان‌بندی میدان ستارگان»
+ * در پنل مدیر: هم رویداد جاری/بعدی، هم تاریخچهٔ رویدادهای پایان‌یافته. */
+export async function listArenaEvents(db: D1Database, limit = 30): Promise<ArenaEventListRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT e.*, u.first_name AS champion_first_name, u.last_name AS champion_last_name,
+              (SELECT COUNT(*) FROM arena_participants p WHERE p.event_id = e.id) AS participant_count
+         FROM arena_events e
+         LEFT JOIN users u ON u.id = e.champion_student_id
+        ORDER BY e.starts_at DESC
+        LIMIT ?`,
+    )
+    .bind(limit)
+    .all<ArenaEventListRow>();
+  return results;
+}
+
+/** شمار سؤال‌های فعال بانک — تا فرم زمان‌بندی بتواند هشدار بدهد اگر
+ * `questionCount` درخواستی بیشتر از موجودی بانک باشد. */
+export async function getActiveQuestionBankCount(db: D1Database): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(*) AS c FROM arena_question_bank WHERE active = 1`).first<{ c: number }>();
+  return row?.c ?? 0;
+}
+
+/** لغو یک رویداد «برنامه‌ریزی‌شده» (هنوز شروع نشده) — مثلاً مدیر می‌خواهد
+ * زمان/تنظیمات را عوض کند. عمداً فقط `status = 'scheduled'` مجاز است:
+ * رویدادهای «در حال برگزاری»/«پایان‌یافته» هرگز قابل لغو نیستند، چون
+ * شرکت‌کننده‌ای که وسط مسابقهٔ زنده است نباید ناگهان غافلگیر شود. برمی‌گرداند
+ * که آیا واقعاً لغو شد (false یعنی یافت نشد یا دیگر scheduled نبود). */
+export async function cancelScheduledEvent(db: D1Database, eventId: string): Promise<boolean> {
+  const event = await getArenaEventById(db, eventId);
+  if (!event || event.status !== 'scheduled') return false;
+  await db.prepare(`DELETE FROM arena_event_questions WHERE event_id = ?`).bind(eventId).run();
+  await db.prepare(`DELETE FROM arena_events WHERE id = ?`).bind(eventId).run();
+  return true;
+}

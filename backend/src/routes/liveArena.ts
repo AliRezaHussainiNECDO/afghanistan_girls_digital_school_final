@@ -11,7 +11,16 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
-import { getCurrentOrLatestArenaEvent, getArenaEventById, checkEligibility, getStandings } from '../lib/liveArena';
+import { hasAdminPermission, type AdminPermission } from '../lib/permissions';
+import {
+  getCurrentOrLatestArenaEvent,
+  getArenaEventById,
+  checkEligibility,
+  getStandings,
+  listArenaEvents,
+  getActiveQuestionBankCount,
+  cancelScheduledEvent,
+} from '../lib/liveArena';
 
 type Bindings = { DB: D1Database; JWT_SECRET: string; LIVE_ARENA_ROOM: DurableObjectNamespace };
 const liveArena = new Hono<{ Bindings: Bindings }>();
@@ -24,6 +33,19 @@ async function auth(c: any): Promise<{ sub: string; role: string; firstName?: st
   const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!p?.['sub']) return null;
   return { sub: p['sub'] as string, role: (p['role'] as string) ?? 'student' };
+}
+
+/** همان الگوی routes/errorLogs.ts — احراز مدیر با دسترسی‌بندیِ ریزدانه (نه
+ * فقط role). super_admin همیشه مجاز؛ admin فقط اگر دسترسی 'manage_live_arena'
+ * صریحاً به او تخصیص داده شده باشد (بخش «مدیریت مدیران»). */
+async function requireAdmin(c: any, permission: AdminPermission): Promise<string | null> {
+  const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  if (!p?.['sub']) return null;
+  const role = p['role'];
+  const sub = p['sub'] as string;
+  if (role === 'super_admin') return sub;
+  if (role === 'admin' && (await hasAdminPermission(c.env.DB, sub, permission))) return sub;
+  return null;
 }
 
 liveArena.get('/live-arena/current', async (c) => {
@@ -95,8 +117,7 @@ liveArena.get('/live-arena/:eventId/socket', async (c) => {
 
 // ───────────────────────── زمان‌بندی رویداد بعدی (فقط مدیر) ──────────────────
 liveArena.post('/admin/live-arena/schedule', async (c) => {
-  const me = await auth(c);
-  if (!me || (me.role !== 'admin' && me.role !== 'super_admin')) {
+  if (!(await requireAdmin(c, 'manage_live_arena'))) {
     return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
   }
   const body = await c.req.json<{
@@ -131,6 +152,49 @@ liveArena.post('/admin/live-arena/schedule', async (c) => {
     .run();
 
   return c.json({ success: true, eventId });
+});
+
+// ───────────────── فهرست رویدادها برای پنل مدیر (فقط مدیر) ───────────────────
+liveArena.get('/admin/live-arena/events', async (c) => {
+  if (!(await requireAdmin(c, 'manage_live_arena'))) {
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  }
+  const [rows, questionBankCount] = await Promise.all([
+    listArenaEvents(c.env.DB, 30),
+    getActiveQuestionBankCount(c.env.DB),
+  ]);
+  return c.json({
+    events: rows.map((e) => ({
+      id: e.id,
+      titleFa: e.title_fa,
+      startsAt: e.starts_at,
+      endsAt: e.ends_at,
+      status: e.status,
+      minRankNo: e.min_rank_no,
+      questionCount: e.question_count,
+      timeLimitSeconds: e.time_limit_seconds,
+      championStudentId: e.champion_student_id,
+      championPoints: e.champion_points,
+      championName: e.champion_first_name ? `${e.champion_first_name} ${e.champion_last_name ?? ''}`.trim() : null,
+      participantCount: e.participant_count,
+    })),
+    questionBankCount,
+  });
+});
+
+// ─────────────── لغو یک رویداد «برنامه‌ریزی‌شده» (فقط مدیر) ──────────────────
+liveArena.delete('/admin/live-arena/:eventId', async (c) => {
+  if (!(await requireAdmin(c, 'manage_live_arena'))) {
+    return c.json(fail('FORBIDDEN', 'دسترسی مجاز نیست', 'Forbidden'), 403);
+  }
+  const ok = await cancelScheduledEvent(c.env.DB, c.req.param('eventId'));
+  if (!ok) {
+    return c.json(
+      fail('BAD_REQUEST', 'این رویداد قابل لغو نیست (شروع شده یا یافت نشد)', 'Event cannot be cancelled (already started or not found)'),
+      400,
+    );
+  }
+  return c.json({ success: true });
 });
 
 export default liveArena;
