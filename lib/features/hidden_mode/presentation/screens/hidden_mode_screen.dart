@@ -134,7 +134,7 @@ class _HiddenModeScreenState extends ConsumerState<HiddenModeScreen> {
                   .changePin(currentCtrl.text.trim(), newCtrl.text.trim());
               if (!dialogContext.mounted) return;
               Navigator.pop(dialogContext);
-              if (!context.mounted) return;
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(ok ? context.tr('hiddenMode.pinChanged') : context.tr('hiddenMode.wrongPin')),
@@ -467,11 +467,11 @@ class _HiddenModeScreenState extends ConsumerState<HiddenModeScreen> {
       children: [
         const SizedBox(height: 20),
         Center(
-          child: const Container(
+          child: Container(
             width: 84,
             height: 84,
             decoration: BoxDecoration(gradient: AppColors.heroGradientWarm, shape: BoxShape.circle),
-            child: Icon(Icons.lock_rounded, color: Colors.white, size: 38),
+            child: const Icon(Icons.lock_rounded, color: Colors.white, size: 38),
           ).animate().scale(duration: 320.ms, curve: Curves.easeOutBack),
         ),
         const SizedBox(height: 20),
@@ -528,11 +528,11 @@ class _HiddenModeScreenState extends ConsumerState<HiddenModeScreen> {
       children: [
         const SizedBox(height: 20),
         Center(
-          child: const Container(
+          child: Container(
             width: 100,
             height: 100,
             decoration: BoxDecoration(gradient: AppColors.successGradient, shape: BoxShape.circle),
-            child: Icon(Icons.check_rounded, color: Colors.white, size: 52),
+            child: const Icon(Icons.check_rounded, color: Colors.white, size: 52),
           ).animate().scale(duration: 420.ms, curve: Curves.elasticOut),
         ),
         const SizedBox(height: 20),
