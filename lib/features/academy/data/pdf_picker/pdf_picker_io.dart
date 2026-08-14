@@ -8,6 +8,7 @@ Future<PickedPdf?> pickPdfFile() async {
   final result = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['pdf'],
+    allowMultiple: false,
     withData: false,
   );
   if (result == null || result.files.isEmpty) return null;

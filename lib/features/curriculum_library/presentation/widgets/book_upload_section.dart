@@ -197,6 +197,7 @@ class _GradeBookRowState extends ConsumerState<_GradeBookRow>
       result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
+        allowMultiple: false,
         withData: true,
       );
     } catch (e) {

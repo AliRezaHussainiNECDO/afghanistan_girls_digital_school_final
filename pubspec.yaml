@@ -4,8 +4,8 @@ publish_to: 'none'
 version: 2.0.0+1
 
 environment:
-  sdk: '>=3.5.0 <4.0.0'
-  flutter: '>=3.24.0'
+  sdk: '>=3.11.0 <4.0.0'
+  flutter: '>=3.41.0'
 
 dependencies:
   flutter:
@@ -26,7 +26,7 @@ dependencies:
   # student lesson view (lesson_detail_screen.dart).
   flutter_markdown: ^0.7.4+3
   confetti: ^0.8.0
-  file_picker: ^11.0.2
+  file_picker: ^12.0.0
   syncfusion_flutter_pdf: ^33.2.15
   record: ^7.0.0
   audioplayers: ^6.1.0
@@ -77,6 +77,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+
+# رفع هشدار Built-in Kotlin (KGP) — package_info_plus/wakelock_plus فقط
+# وابستگی غیرمستقیم هستند، پس نسخهٔ رفع‌شده را اینجا Force می‌کنیم؛
+# نسخهٔ نصب‌شدهٔ Flutter (3.44.2) هر دو حداقل لازم (3.38+/3.41+) را دارد.
+dependency_overrides:
+  package_info_plus: ^10.2.0
+  wakelock_plus: ^1.7.0
 
 flutter:
   uses-material-design: true
