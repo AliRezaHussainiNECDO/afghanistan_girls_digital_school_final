@@ -470,7 +470,7 @@ class _HiddenModeScreenState extends ConsumerState<HiddenModeScreen> {
           child: Container(
             width: 84,
             height: 84,
-            decoration: BoxDecoration(gradient: AppColors.heroGradientWarm, shape: BoxShape.circle),
+            decoration: const BoxDecoration(gradient: AppColors.heroGradientWarm, shape: BoxShape.circle),
             child: const Icon(Icons.lock_rounded, color: Colors.white, size: 38),
           ).animate().scale(duration: 320.ms, curve: Curves.easeOutBack),
         ),
@@ -531,7 +531,7 @@ class _HiddenModeScreenState extends ConsumerState<HiddenModeScreen> {
           child: Container(
             width: 100,
             height: 100,
-            decoration: BoxDecoration(gradient: AppColors.successGradient, shape: BoxShape.circle),
+            decoration: const BoxDecoration(gradient: AppColors.successGradient, shape: BoxShape.circle),
             child: const Icon(Icons.check_rounded, color: Colors.white, size: 52),
           ).animate().scale(duration: 420.ms, curve: Curves.elasticOut),
         ),
