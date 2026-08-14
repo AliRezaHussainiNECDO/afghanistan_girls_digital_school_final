@@ -32,8 +32,6 @@ class LiveArenaScreen extends ConsumerStatefulWidget {
 class _LiveArenaScreenState extends ConsumerState<LiveArenaScreen> {
   int? _selectedChoice;
 
-  String _lang(BuildContext context) => Localizations.localeOf(context).languageCode;
-
   String _promptFor(ArenaQuestionPublic q, String lang) => switch (lang) {
         'en' => q.promptEn,
         'ps' => q.promptPs,
@@ -226,7 +224,7 @@ class _CountdownToTextState extends State<_CountdownToText> {
         final h = d.inHours;
         final m = d.inMinutes % 60;
         final s = d.inSeconds % 60;
-        final text = h > 0 ? '${h}س ${m}د ${s}ث' : '${m}د ${s}ث';
+        final text = h > 0 ? '$hس $mد $sث' : '$mد $sث';
         return Text(text, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: AppColors.orange600));
       },
     );
