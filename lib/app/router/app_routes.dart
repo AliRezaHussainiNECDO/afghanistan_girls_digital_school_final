@@ -117,4 +117,35 @@ class AppRoutes {
   static const adminProfile = '/admin/profile';
   // مدیریت مدیران — فقط Super Admin (بخش «مدیریت مدیران»، دسترسی‌بندی سمت سرور).
   static const adminManagement = '/admin/management';
+
+  /// نگاشت هر مسیر پنل مدیر به دستهٔ دسترسیِ لازم (سمت سرور: lib/permissions.ts).
+  /// **منبع واحد حقیقت** — هم برای فیلترکردن منوی «مدیر زیرمجموعه» در
+  /// `app_drawer.dart` (فقط UI) و هم برای محافظتِ واقعیِ خودِ مسیر در
+  /// `redirect` روتر (`app_router.dart`) استفاده می‌شود. رفع اشکال: قبلاً
+  /// این نگاشت فقط در Drawer بود، پس یک زیرمدیر بدون این Permission همچنان
+  /// می‌توانست با لینک مستقیم (Deep Link) وارد صفحه شود چون خودِ مسیر هیچ
+  /// بررسی‌ای نمی‌کرد؛ حالا روتر همین نگاشت را برای بستنِ مسیر هم می‌خواند.
+  /// مسیرهایی که در این نگاشت نیستند (داشبورد/پروفایل/جزئیات کاربر) برای
+  /// هر مدیری همیشه در دسترس‌اند. Super Admin هرگز فیلتر/بسته نمی‌شود.
+  static const Map<String, String> adminRoutePermission = {
+    adminUsers: 'manage_users',
+    // پروندهٔ جزئیات شاگرد/استاد/والد بخشی از همان جریان «مدیریت کاربران»
+    // است — باید همان دستهٔ دسترسی adminUsers را بخواهد.
+    adminStudents: 'manage_users',
+    adminInstructors: 'manage_users',
+    adminParents: 'manage_users',
+    adminCms: 'manage_content',
+    adminExamsManagement: 'manage_exams',
+    adminAiTeacher: 'manage_content',
+    collectiveMemory: 'manage_content',
+    adminChats: 'manage_safety_chat',
+    adminSafetyQueue: 'manage_safety_chat',
+    adminAuditLogs: 'view_reports_audit',
+    adminErrorLogs: 'manage_error_logs',
+    adminSubmissions: 'manage_exams',
+    adminSeminars: 'manage_seminars',
+    adminLiveArena: 'manage_live_arena',
+    adminReports: 'view_reports_audit',
+    adminNotifications: 'manage_notifications',
+  };
 }

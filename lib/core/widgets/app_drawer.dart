@@ -59,35 +59,21 @@ const _adminItems = [
   _DrawerItem(Icons.person_rounded, 'nav.profile', AppRoutes.adminProfile),
 ];
 
-/// نگاشت هر مسیر پنل مدیر به دستهٔ دسترسیِ لازم (سمت سرور: lib/permissions.ts)
-/// — برای فیلتر منوی «مدیر زیرمجموعه» (role='admin') بر اساس permissions او.
-/// مسیرهایی که در این نگاشت نیستند (داشبورد/پروفایل) برای هر مدیری همیشه
-/// نمایش داده می‌شوند. Super Admin هرگز فیلتر نمی‌شود.
-const Map<String, String> _adminRoutePermission = {
-  AppRoutes.adminUsers: 'manage_users',
-  AppRoutes.adminCms: 'manage_content',
-  AppRoutes.adminExamsManagement: 'manage_exams',
-  AppRoutes.adminAiTeacher: 'manage_content',
-  AppRoutes.collectiveMemory: 'manage_content',
-  AppRoutes.adminChats: 'manage_safety_chat',
-  AppRoutes.adminSafetyQueue: 'manage_safety_chat',
-  AppRoutes.adminAuditLogs: 'view_reports_audit',
-  AppRoutes.adminErrorLogs: 'manage_error_logs',
-  AppRoutes.adminSubmissions: 'manage_exams',
-  AppRoutes.adminSeminars: 'manage_seminars',
-  AppRoutes.adminLiveArena: 'manage_live_arena',
-  AppRoutes.adminReports: 'view_reports_audit',
-  AppRoutes.adminNotifications: 'manage_notifications',
-};
-
 /// آیتم منوی «مدیریت مدیران» — فقط برای Super Admin به `_adminItems` افزوده
 /// می‌شود (build())، هرگز برای مدیر زیرمجموعه (حتی نباید بداند این بخش وجود دارد).
 const _adminManagementItem =
     _DrawerItem(Icons.admin_panel_settings_rounded, 'admin.management', AppRoutes.adminManagement);
 
+/// فیلتر منوی «مدیر زیرمجموعه» (role='admin') بر اساس permissions او —
+/// نگاشتِ مسیر→دسترسیِ لازم اکنون از `AppRoutes.adminRoutePermission` خوانده
+/// می‌شود (رفع اشکال: قبلاً این‌جا یک نسخهٔ خصوصی/تکراری از همین نگاشت بود
+/// که با نسخهٔ روتر هماهنگ نگه‌داشتنش دستی و مستعدِ ناهماهنگی بود — حالا
+/// یک منبع واحد حقیقت است که هم Drawer و هم `redirect` روتر از آن می‌خوانند).
+/// مسیرهایی که در این نگاشت نیستند (داشبورد/پروفایل) برای هر مدیری همیشه
+/// نمایش داده می‌شوند. Super Admin هرگز فیلتر نمی‌شود.
 List<_DrawerItem> _filterAdminItemsByPermission(List<String> permissions) {
   return _adminItems.where((item) {
-    final required = _adminRoutePermission[item.route];
+    final required = AppRoutes.adminRoutePermission[item.route];
     return required == null || permissions.contains(required);
   }).toList();
 }

@@ -119,12 +119,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   /// لمس فقط اعلان را خوانده‌شده می‌کند (رفتار قبلی).
   // منطق واقعی در `core/notifications/notification_route_resolver.dart`
   // است تا هندلر Push واقعی سیستم‌عامل هم بتواند همان قاعده را استفاده کند.
-  String? _routeFor(AppNotification n, AppUserRole role) => resolveNotificationRoute(n.kind, n.relatedId, role);
+  // رفع اشکال: قبلاً فقط `role` پاس داده می‌شد، پس یک زیرمدیرِ دارای
+  // Permission خاص (مثلاً manage_exams) روی لمس اعلانِ مرتبط به‌جایی هدایت
+  // نمی‌شد؛ حالا کاربرِ کامل (شامل permissions) پاس داده می‌شود.
+  String? _routeFor(AppNotification n, AppUser user) => resolveNotificationRoute(n.kind, n.relatedId, user);
 
-  Future<void> _openNotification(AppNotification n, AppUserRole role) async {
+  Future<void> _openNotification(AppNotification n, AppUser user) async {
     // اول مقصد را بگیر و ناوبری کن تا await شدنِ markRead (رفت‌وبرگشت شبکه)
     // باز شدن صفحه را عقب نیندازد.
-    final route = _routeFor(n, role);
+    final route = _routeFor(n, user);
     if (route != null && mounted) context.push(route);
     await _markRead(n.id);
   }
@@ -161,7 +164,8 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     // والد/استاد هم به این صفحه می‌رسیدند، منوی کناری‌شان به‌جای آیتم‌های
     // خودشان، منوی شاگرد را نشان می‌داد. حالا از نشست واردشدهٔ واقعی گرفته
     // می‌شود.
-    final role = ref.watch(authSessionProvider)?.role ?? AppUserRole.student;
+    final sessionUser = ref.watch(authSessionProvider);
+    final role = sessionUser?.role ?? AppUserRole.student;
 
     return AppScaffold(
       title: context.tr('notifications.title'),
@@ -213,7 +217,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 ),
                 ...buckets[s]!.asMap().entries.map((e) => _NotificationCard(
                       n: e.value,
-                      onTap: () => _openNotification(e.value, role),
+                      // این صفحه فقط پس از ورود قابل‌دسترسی است (روتر
+                      // تضمین می‌کند)، پس sessionUser در عمل هرگز null
+                      // نیست؛ اگر هم به‌ندرت null بود، لمس فقط چیزی باز
+                      // نمی‌کند (رفتار امن، بدون کرش).
+                      onTap: () {
+                        if (sessionUser != null) _openNotification(e.value, sessionUser);
+                      },
                     ).animate().fadeIn(delay: (30 * e.key).ms, duration: 240.ms).slideX(begin: 0.06)),
               ],
             ],

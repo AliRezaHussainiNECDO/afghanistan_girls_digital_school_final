@@ -152,6 +152,30 @@ final routerProvider = Provider<GoRouter>((ref) {
           user.role != AppUserRole.superAdmin) {
         return _homeForRole(user.role);
       }
+      // رفع اشکال: مسیرهای پنل مدیر قبلاً فقط بر اساس role محافظت می‌شدند —
+      // یعنی یک زیرمدیر بدون Permission خاص (مثلاً بدون 'manage_live_arena')
+      // می‌توانست با لینک/Deep Link مستقیم وارد آن صفحه شود، حتی اگر در
+      // Drawer برایش مخفی بود (Drawer فقط UI را فیلتر می‌کرد، نه خودِ مسیر
+      // را می‌بست). حالا همان نگاشتِ مسیر→دسترسیِ Drawer
+      // (`AppRoutes.adminRoutePermission`) برای بستنِ واقعیِ مسیر هم استفاده
+      // می‌شود. Super Admin طبق تعریفِ `AppUser.hasPermission` همیشه عبور
+      // می‌کند. طولانی‌ترین پیشوندِ مطابق انتخاب می‌شود تا مسیرهای فرزند
+      // (مثلاً `/admin/chats/thread/xyz`) همان دسترسیِ مسیر والد
+      // (`/admin/chats`) را بخواهند.
+      if (isAdminRoute && user.role == AppUserRole.admin) {
+        String? matchedRoute;
+        for (final route in AppRoutes.adminRoutePermission.keys) {
+          if (state.matchedLocation.startsWith(route) &&
+              (matchedRoute == null || route.length > matchedRoute.length)) {
+            matchedRoute = route;
+          }
+        }
+        final requiredPermission =
+            matchedRoute == null ? null : AppRoutes.adminRoutePermission[matchedRoute];
+        if (requiredPermission != null && !user.hasPermission(requiredPermission)) {
+          return _homeForRole(user.role);
+        }
+      }
       if (isParentRoute && user.role != AppUserRole.parent) {
         return _homeForRole(user.role);
       }

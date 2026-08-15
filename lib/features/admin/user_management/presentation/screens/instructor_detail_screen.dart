@@ -121,7 +121,8 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
           }
 
           return Scaffold(
-            backgroundColor: AppPalette.surface,
+            // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابت بود، ناهماهنگ با حالت تاریک.
+            backgroundColor: Theme.of(context).colorScheme.surface,
             body: CustomScrollView(slivers: [
               SliverAppBar(
                 expandedHeight: 170,

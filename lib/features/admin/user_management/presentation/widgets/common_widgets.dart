@@ -3,16 +3,30 @@
 library;
 import 'package:flutter/material.dart';
 
+import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../domain/entities/student_entities.dart';
 
+/// رفع اشکال هماهنگی طراحی: این کلاس قبلاً یک پالت رنگِ کاملاً مستقل و
+/// فقط-روشن (Hex های جداگانه) بود — موازی با پالت مرکزی
+/// `app/theme/design_tokens.dart` و کمی با آن ناهم‌مقدار (مثلاً سبزِ اینجا
+/// `0xFF16A085` بود ولی سبزِ برند `0xFF1B8A4C`). حالا این چهار رنگِ لهجهٔ
+/// معنایی (سبز=موفق/فعال، قرمز=خطر/تعلیق، زرد=هشدار/در انتظار) مستقیماً از
+/// همان توکن‌های مرکزی می‌آیند — دیگر یک سیستم رنگ دوم نیست، فقط یک نامِ
+/// کوتاه‌ترِ محلی برای همان مقادیر. این چهار رنگ عمداً با حالت تاریک عوض
+/// نمی‌شوند (مثل بقیهٔ لهجه‌های AppColors در سراسر اپ، مثلاً
+/// admin_dashboard_screen.dart) چون رنگ‌های وضعیتِ ثابتِ برند هستند، نه
+/// رنگ سطح/پس‌زمینه.
+///
+/// فیلدهای قبلی `ink` (رنگ متن) و `surface` (پس‌زمینهٔ صفحه) عمداً از اینجا
+/// حذف شدند — بر خلاف لهجه‌ها، این دو باید با حالت تاریک سازگار باشند، پس
+/// در همهٔ محل‌های استفاده با `Theme.of(context).colorScheme.onSurfaceVariant`
+/// و `Theme.of(context).colorScheme.surface` جایگزین شدند.
 class AppPalette {
-  static const green = Color(0xFF16A085);
-  static const greenDark = Color(0xFF0E6655);
-  static const red = Color(0xFFE74C3C);
-  static const amber = Color(0xFFF39C12);
-  static const ink = Color(0xFF1C2833);
-  static const surface = Color(0xFFF4F6F8);
+  static const green = AppColors.green600;
+  static const greenDark = AppColors.green700;
+  static const red = AppColors.danger;
+  static const amber = AppColors.gold600;
 }
 
 class StatusBadge extends StatelessWidget {

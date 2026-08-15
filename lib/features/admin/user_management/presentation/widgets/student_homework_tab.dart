@@ -359,7 +359,10 @@ class _AdminHomeworkDetailSheet extends ConsumerWidget {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: AppPalette.surface, borderRadius: BorderRadius.circular(14)),
+                  // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابت بود، ناهماهنگ با حالت تاریک.
+                  decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -475,8 +478,11 @@ class _ReadOnlyReplyBubble extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(11),
               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+              // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابت بود، ناهماهنگ با حالت تاریک.
               decoration: BoxDecoration(
-                color: isAi ? AppPalette.surface : AppPalette.greenDark.withValues(alpha: .1),
+                color: isAi
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
+                    : AppPalette.greenDark.withValues(alpha: .1),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Column(

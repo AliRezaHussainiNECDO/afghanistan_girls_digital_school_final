@@ -51,9 +51,16 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
   static String _roomNameFor(String seminarId) =>
       'agds${seminarId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}';
 
+  // رفع اشکال: زیرمدیرِ دارای Permission «manage_seminars» می‌توانست سمینار
+  // بسازد/ویرایش/لغو کند (همان دسترسی که Drawer و روتر برای
+  // AppRoutes.adminSeminars می‌خواهند) ولی هرگز نمی‌توانست وارد اتاق زندهٔ
+  // خودِ همان سمینار شود یا میزبانی‌اش کند — چون این‌جا فقط superAdmin (و
+  // خودِ استادِ صاحب سمینار) میزبان حساب می‌شدند. حالا همان Permission
+  // مدیریتی، حق میزبانی هم می‌دهد؛ هماهنگ با AppRoutes.adminRoutePermission.
   bool _isHostUser(AppUser? user, Seminar seminar) {
     if (user == null) return false;
     return user.role == AppUserRole.superAdmin ||
+        (user.role == AppUserRole.admin && user.hasPermission('manage_seminars')) ||
         (user.role == AppUserRole.seminarInstructor && user.id == seminar.instructorId);
   }
 

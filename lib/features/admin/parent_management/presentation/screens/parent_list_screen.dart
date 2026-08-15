@@ -23,7 +23,10 @@ class ParentListScreen extends ConsumerWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppPalette.surface,
+        // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابتِ AppPalette.surface
+        // بود که با حالت تاریک اپ هماهنگ نبود (این صفحه در حالت تاریک همیشه
+        // پس‌زمینهٔ روشن نشان می‌داد).
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: CustomScrollView(slivers: [
           SliverAppBar(
             expandedHeight: 150,

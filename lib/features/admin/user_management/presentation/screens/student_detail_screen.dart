@@ -34,7 +34,8 @@ class StudentDetailScreen extends ConsumerWidget {
       child: DefaultTabController(
         length: 8,
         child: Scaffold(
-          backgroundColor: AppPalette.surface,
+          // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابت بود، ناهماهنگ با حالت تاریک.
+          backgroundColor: Theme.of(context).colorScheme.surface,
           body: detail.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(

@@ -25,7 +25,8 @@ class StudentListScreen extends ConsumerWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppPalette.surface,
+        // رفع اشکال هماهنگی طراحی: قبلاً رنگ روشنِ ثابت بود، ناهماهنگ با حالت تاریک.
+        backgroundColor: Theme.of(context).colorScheme.surface,
         body: CustomScrollView(slivers: [
           SliverAppBar(
             expandedHeight: 150,
@@ -192,7 +193,9 @@ class _FilterBar extends ConsumerWidget {
         selectedColor: color.withValues(alpha: .15),
         checkmarkColor: color,
         labelStyle: TextStyle(
-            color: selected ? color : AppPalette.ink,
+            // رفع اشکال هماهنگی طراحی: قبلاً رنگ متنِ ثابت (AppPalette.ink)
+            // بود که در حالت تاریک به‌سختی خوانده می‌شد.
+            color: selected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: selected ? FontWeight.bold : FontWeight.normal),
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(

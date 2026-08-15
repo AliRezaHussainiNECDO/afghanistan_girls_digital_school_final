@@ -14,8 +14,18 @@ import '../../shared_models/app_notification.dart';
 ///
 /// اگر مقصد مشخصی نباشد `null` برمی‌گرداند (یعنی فقط اپ باز شود، بدون
 /// ناوبری خاص).
-String? resolveNotificationRoute(NotificationKind kind, String? relatedId, AppUserRole role) {
+///
+/// رفع اشکال: قبلاً این تابع فقط `role` می‌گرفت، پس نمی‌توانست بین Super
+/// Admin و یک زیرمدیرِ دارای Permission مشخص (`manage_exams`،
+/// `manage_safety_chat`، `manage_seminars`، ...) فرق بگذارد — یعنی زیرمدیرِ
+/// دارای همان Permission روی لمس اعلانِ مرتبط به‌جایی هدایت نمی‌شد، درحالی‌که
+/// از Drawer به همان صفحه دسترسی داشت. حالا `AppUser` کامل گرفته می‌شود و از
+/// `user.hasPermission(...)` استفاده می‌شود — دقیقاً همان قاعده‌ای که Drawer
+/// و `redirect` روتر (`AppRoutes.adminRoutePermission`) استفاده می‌کنند، تا
+/// هر سه‌جا هماهنگ بمانند.
+String? resolveNotificationRoute(NotificationKind kind, String? relatedId, AppUser user) {
   final rid = relatedId;
+  final role = user.role;
   switch (kind) {
     case NotificationKind.chat:
       if (rid == null) return null;
@@ -26,24 +36,26 @@ String? resolveNotificationRoute(NotificationKind kind, String? relatedId, AppUs
         AppUserRole.seminarInstructor => AppRoutes.instructorContactAdmin,
       };
     case NotificationKind.exam:
-      return switch (role) {
-        AppUserRole.student => AppRoutes.exams,
-        AppUserRole.superAdmin => AppRoutes.adminExamsManagement,
-        _ => null,
-      };
+      if (role == AppUserRole.student) return AppRoutes.exams;
+      if (user.hasPermission('manage_exams')) return AppRoutes.adminExamsManagement;
+      return null;
     case NotificationKind.homework:
       return role == AppUserRole.student ? AppRoutes.homework : null;
     case NotificationKind.seminar:
       return switch (role) {
         AppUserRole.student => AppRoutes.seminars,
         AppUserRole.parent => AppRoutes.parentSeminars,
-        AppUserRole.superAdmin || AppUserRole.admin => AppRoutes.adminSeminars,
         AppUserRole.seminarInstructor => AppRoutes.instructorHome,
+        AppUserRole.superAdmin || AppUserRole.admin =>
+          user.hasPermission('manage_seminars') ? AppRoutes.adminSeminars : null,
       };
     case NotificationKind.safety:
-      if (role != AppUserRole.superAdmin) return null;
+      if (!user.hasPermission('manage_safety_chat')) return null;
       return rid != null ? AppRoutes.adminStudentDetail(rid) : AppRoutes.adminSafetyQueue;
     case NotificationKind.account:
+      // مدیریتِ خودِ حساب‌های کاربری («کیست فلان کاربر») هنوز فقط برای
+      // Super Admin است — این با `manage_users` یکی نیست (آن دسترسی
+      // فهرست/جزئیات را می‌دهد، نه لزوماً تغییرات حساسِ حساب).
       if (role == AppUserRole.superAdmin) {
         final parts = rid?.split(':');
         if (parts != null && parts.length == 2) {

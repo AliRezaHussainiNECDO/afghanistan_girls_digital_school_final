@@ -138,11 +138,15 @@ class PushNotificationsService {
   }
 
   void _handleTap(RemoteMessage message) {
-    final role = _ref.read(authSessionProvider)?.role;
-    if (role == null) return;
+    // رفع اشکال: قبلاً فقط `role` خوانده می‌شد، پس یک زیرمدیرِ دارای
+    // Permission خاص (مثلاً manage_exams/manage_safety_chat) روی لمس اعلانِ
+    // Push به‌جایی هدایت نمی‌شد؛ حالا کاربرِ کامل (شامل permissions) به
+    // `resolveNotificationRoute` پاس داده می‌شود.
+    final user = _ref.read(authSessionProvider);
+    if (user == null) return;
     final kind = notificationKindFromString(message.data['kind'] as String?);
     final relatedId = message.data['relatedId'] as String?;
-    final route = resolveNotificationRoute(kind, relatedId, role);
+    final route = resolveNotificationRoute(kind, relatedId, user);
     if (route == null) return;
     final ctx = rootNavigatorKey.currentState?.context;
     if (ctx == null) return;

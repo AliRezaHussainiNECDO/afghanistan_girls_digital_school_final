@@ -195,7 +195,11 @@ class StudentDashboardScreen extends ConsumerWidget {
             // ── گواهی‌نامه‌ها: زیرنویس اکنون واقعی است، نه یک متن ثابت ──
             _ActionCard(
               icon: Icons.workspace_premium_rounded,
-              iconColor: const Color(0xFFB8860B),
+              // رفع اشکال هماهنگی طراحی: قبلاً رنگِ خامِ 0xFFB8860B (طلاییِ
+              // تیره) به‌جای توکن طراحی — همان AppColors.gold600 که چند خط
+              // پایین‌تر در همین فایل (nav.library) برای دقیقاً همین منظور
+              // (نشان طلایی/دستاورد) استفاده شده است.
+              iconColor: AppColors.gold600,
               title: context.tr('dashboard.myCertificates'),
               subtitle: summary.certificatesCount > 0
                   ? context.tr('dashboard.certificatesIssuedCount', {'count': '${summary.certificatesCount}'})
