@@ -10,6 +10,7 @@ import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../auth/domain/entities/app_user.dart';
 import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
+import '../../domain/entities/study_plan.dart';
 import '../providers/study_plan_providers.dart';
 
 /// صفحهٔ «تقسیم اوقات هفتگی من» — برنامهٔ کامل شنبه تا جمعه، ساخته‌شده توسط
@@ -146,7 +147,7 @@ class _WeeklyPlanScreenState extends ConsumerState<WeeklyPlanScreen> {
 }
 
 class _DayCard extends ConsumerWidget {
-  final dynamic day; // PlanDay
+  final PlanDay day;
   final bool isToday;
   const _DayCard({required this.day, required this.isToday});
 
@@ -168,7 +169,7 @@ class _DayCard extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Text(day.nameFa as String,
+              Text(day.nameFa,
                   style: const TextStyle(
                       fontWeight: FontWeight.w800, fontSize: 14)),
               const SizedBox(width: 8),
@@ -189,7 +190,7 @@ class _DayCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 8),
-          if (day.isRestDay as bool)
+          if (day.isRestDay)
             Text(
               day.weekday == DateTime.friday
                   ? context.tr('studyPlan.holiday')
@@ -203,9 +204,9 @@ class _DayCard extends ConsumerWidget {
               children: [
                 for (final slot in day.slots)
                   _SubjectChip(
-                    subjectId: slot.subjectId as String,
-                    label: slot.subjectNameFa as String,
-                    minutes: slot.minutes as int,
+                    subjectId: slot.subjectId,
+                    label: slot.subjectNameFa,
+                    minutes: slot.minutes,
                     enabled: isToday,
                   ),
               ],

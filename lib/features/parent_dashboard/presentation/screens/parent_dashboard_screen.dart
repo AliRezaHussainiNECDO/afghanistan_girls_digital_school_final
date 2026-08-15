@@ -98,6 +98,11 @@ Future<void> showAddChildDialog(BuildContext context, WidgetRef ref) async {
       ],
     ),
   );
+  // رفع اشکال نشتِ حافظه: این `TextEditingController` محلی، برخلاف
+  // کنترلرهای داخل `State.dispose()`، هرگز آزاد نمی‌شد — هر بار که این
+  // دیالوگ باز/بسته می‌شد (مثلاً افزودن چند فرزند پیاپی)، یک کنترلر بدون
+  // آزادسازی باقی می‌ماند.
+  controller.dispose();
 }
 
 /// طبق بخش ۱۳ب سند: فقط‌خواندنی، Aggregate-level؛ اگر هیچ فرزند لینک‌شده‌ای

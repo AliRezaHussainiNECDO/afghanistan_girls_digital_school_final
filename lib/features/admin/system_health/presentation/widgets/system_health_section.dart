@@ -41,15 +41,16 @@ class _SystemHealthSectionState extends ConsumerState<SystemHealthSection> {
   Widget build(BuildContext context) {
     final healthAsync = ref.watch(systemHealthProvider);
     final autoRefresh = ref.watch(systemHealthAutoRefreshProvider);
+    final scheme = Theme.of(context).colorScheme;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(AppRadii.lg),
         boxShadow: AppShadows.soft,
-        border: Border.all(color: AppColors.sand100, width: 1),
+        border: Border.all(color: scheme.outlineVariant, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -72,12 +73,12 @@ class _SystemHealthSectionState extends ConsumerState<SystemHealthSection> {
                   children: [
                     Text(
                       context.tr('admin.systemHealth.title'),
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.ink900),
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: scheme.onSurface),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       context.tr('admin.systemHealth.subtitle'),
-                      style: const TextStyle(fontSize: 13, color: AppColors.ink500),
+                      style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -88,7 +89,7 @@ class _SystemHealthSectionState extends ConsumerState<SystemHealthSection> {
                     : context.tr('admin.systemHealth.autoRefreshOff'),
                 icon: Icon(
                   autoRefresh ? Icons.sync_rounded : Icons.sync_disabled_rounded,
-                  color: autoRefresh ? AppColors.green600 : AppColors.ink500,
+                  color: autoRefresh ? AppColors.green600 : scheme.onSurfaceVariant,
                 ),
                 onPressed: () {
                   ref.read(systemHealthAutoRefreshProvider.notifier).state = !autoRefresh;
@@ -96,7 +97,7 @@ class _SystemHealthSectionState extends ConsumerState<SystemHealthSection> {
               ),
               IconButton(
                 tooltip: context.tr('admin.systemHealth.refreshNow'),
-                icon: const Icon(Icons.refresh_rounded, color: AppColors.ink700),
+                icon: Icon(Icons.refresh_rounded, color: scheme.onSurface),
                 onPressed: () => ref.invalidate(systemHealthProvider),
               ),
             ],
@@ -176,6 +177,7 @@ class _HealthContent extends StatelessWidget {
     final time = health.timestamp;
     final timeStr =
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:${time.second.toString().padLeft(2, '0')}';
+    final scheme = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,7 +198,7 @@ class _HealthContent extends StatelessWidget {
             Expanded(
               child: Text(
                 context.tr('admin.systemHealth.lastChecked', {'time': timeStr}),
-                style: const TextStyle(fontSize: 12, color: AppColors.ink500),
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ),
           ],

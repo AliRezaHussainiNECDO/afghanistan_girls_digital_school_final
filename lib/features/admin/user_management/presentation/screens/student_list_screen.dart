@@ -254,7 +254,7 @@ class _StudentCard extends StatelessWidget {
                 radius: 26,
                 backgroundColor: AppPalette.green.withValues(alpha: .15),
                 child: Text(
-                  student.fullName.characters.first,
+                  student.fullName.isNotEmpty ? student.fullName.characters.first : '?',
                   style: const TextStyle(
                       color: AppPalette.greenDark,
                       fontSize: 20,

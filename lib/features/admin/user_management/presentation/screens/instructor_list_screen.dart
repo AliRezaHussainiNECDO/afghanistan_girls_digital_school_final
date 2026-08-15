@@ -177,7 +177,7 @@ class _InstructorCard extends ConsumerWidget {
                     ? Colors.grey.withValues(alpha: .2)
                     : AppPalette.green.withValues(alpha: .15),
                 child: Text(
-                  instructor.fullName.characters.first,
+                  instructor.fullName.isNotEmpty ? instructor.fullName.characters.first : '?',
                   style: TextStyle(
                       color: instructor.suspended
                           ? Colors.grey

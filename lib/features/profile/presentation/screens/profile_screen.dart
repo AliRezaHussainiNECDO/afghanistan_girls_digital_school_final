@@ -211,6 +211,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
     );
+    // رفع اشکال نشتِ حافظه: این دو کنترلر محلی هرگز dispose نمی‌شدند.
+    firstNameController.dispose();
+    lastNameController.dispose();
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -289,6 +292,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
       ),
     );
+    // رفع اشکال نشتِ حافظه: این سه کنترلر محلی هرگز dispose نمی‌شدند.
+    currentController.dispose();
+    newController.dispose();
+    confirmController.dispose();
   }
 
   @override

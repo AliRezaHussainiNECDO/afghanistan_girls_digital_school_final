@@ -216,7 +216,7 @@ Future<void> showTermsDialog(BuildContext context) {
 }
 
 /// چک‌باکس پذیرش قوانین — در فرم ثبت‌نام دانش‌آموز و والدین استفاده می‌شود.
-class TermsConsentField extends StatelessWidget {
+class TermsConsentField extends StatefulWidget {
   final bool accepted;
   final ValueChanged<bool> onChanged;
   final bool showError;
@@ -229,7 +229,34 @@ class TermsConsentField extends StatelessWidget {
   });
 
   @override
+  State<TermsConsentField> createState() => _TermsConsentFieldState();
+}
+
+/// رفع اشکال نشتِ حافظه: قبلاً یک `TapGestureRecognizer` تازه داخل `build()`
+/// (در یک `StatelessWidget`) ساخته می‌شد و هرگز `dispose()` نمی‌شد — با هر
+/// بازسازیِ ویجت (مثلاً تایپ‌کردن در فرم ثبت‌نام) یک Recognizer قبلی بدون
+/// آزادسازی رها می‌شد. اکنون یک Recognizer واحد در `initState` ساخته و در
+/// `dispose` آزاد می‌شود.
+class _TermsConsentFieldState extends State<TermsConsentField> {
+  late final TapGestureRecognizer _viewFullRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewFullRecognizer = TapGestureRecognizer()..onTap = () => showTermsDialog(context);
+  }
+
+  @override
+  void dispose() {
+    _viewFullRecognizer.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final accepted = widget.accepted;
+    final onChanged = widget.onChanged;
+    final showError = widget.showError;
     final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,8 +288,7 @@ class TermsConsentField extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                               decoration: TextDecoration.underline,
                             ),
-                            recognizer: (TapGestureRecognizer()
-                              ..onTap = () => showTermsDialog(context)),
+                            recognizer: _viewFullRecognizer,
                           ),
                           TextSpan(text: ' ${context.tr('terms.acceptSuffix')}'),
                         ],

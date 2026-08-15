@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../../app/theme/design_tokens.dart';
 import '../../../../chat/presentation/providers/chat_providers.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../screens/admin_chat_thread_screen.dart';
@@ -30,6 +31,7 @@ class ContactThreadButton extends ConsumerWidget {
     );
     final hasFlag = (summary?.flaggedPendingCount ?? 0) > 0;
     final count = summary?.messageCount ?? 0;
+    final scheme = Theme.of(context).colorScheme;
 
     return Material(
       color: Colors.transparent,
@@ -42,13 +44,13 @@ class ContactThreadButton extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: hasFlag ? Colors.red.withValues(alpha: .06) : Colors.grey.shade50,
+            color: hasFlag ? AppColors.danger.withValues(alpha: .06) : scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: hasFlag ? Colors.red.withValues(alpha: .35) : Colors.grey.shade200),
+            border: Border.all(color: hasFlag ? AppColors.danger.withValues(alpha: .35) : scheme.outlineVariant),
           ),
           child: Row(children: [
             Icon(hasFlag ? Icons.priority_high_rounded : Icons.chat_bubble_outline_rounded,
-                color: hasFlag ? Colors.red : Colors.grey.shade700),
+                color: hasFlag ? AppColors.danger : scheme.onSurfaceVariant),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -58,7 +60,7 @@ class ContactThreadButton extends ConsumerWidget {
                 style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
               ),
             ),
-            const Icon(Icons.chevron_left_rounded, color: Colors.grey),
+            Icon(Icons.chevron_left_rounded, color: scheme.onSurfaceVariant),
           ]),
         ),
       ),

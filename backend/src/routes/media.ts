@@ -58,7 +58,7 @@ async function isAdmin(c: any): Promise<boolean> {
 // خصوصی دو نفر دیگر را بخواند یا حتی در آن پیام بفرستد. این تابع بررسی
 // می‌کند که userId واقعاً در فهرست participants همان گفتگو باشد.
 async function isConversationParticipant(c: any, conversationId: string, userId: string): Promise<boolean> {
-  const conv = await c.env.DB.prepare('SELECT participants FROM conversations WHERE id = ?')
+  const conv = await (c.env.DB as D1Database).prepare('SELECT participants FROM conversations WHERE id = ?')
     .bind(conversationId)
     .first<{ participants: string | null }>();
   if (!conv) return false;

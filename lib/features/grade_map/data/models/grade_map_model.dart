@@ -24,7 +24,14 @@ class GradeMapModel extends GradeMap {
             .map((e) => GradeMapSubjectEntry(
                   subjectId: e['subjectId'] as String,
                   subjectNameFa: e['subjectNameFa'] as String,
-                  status: SubjectProgressStatus.values.firstWhere((s) => s.name == e['status']),
+                  // رفع اشکال: بدون `orElse`، هر رشتهٔ وضعیتِ ناشناخته/نامنتظره از
+                  // سرور (مثلاً یک مقدار جدید که هنوز به این enum اضافه نشده) کل
+                  // پارس‌کردن نقشهٔ صنف را با یک StateError کرش می‌کرد. اکنون به‌جای
+                  // کرش، محافظه‌کارانه `locked` نمایش داده می‌شود.
+                  status: SubjectProgressStatus.values.firstWhere(
+                    (s) => s.name == e['status'],
+                    orElse: () => SubjectProgressStatus.locked,
+                  ),
                   finalScore: (e['finalScore'] as num?)?.toDouble(),
                   completionPercent: (e['completionPercent'] as num? ?? 0).toDouble(),
                 ))

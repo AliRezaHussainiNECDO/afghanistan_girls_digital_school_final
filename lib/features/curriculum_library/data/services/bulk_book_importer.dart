@@ -36,7 +36,14 @@ class BulkImportItem {
 }
 
 class BulkBookImporter {
-  final CurriculumLibraryLocalDataSource library;
+  // رفع اشکال: قبلاً این فیلد به‌طور مستقیم به پیاده‌سازیِ محلی
+  // (`CurriculumLibraryLocalDataSource`) وابسته بود. چون
+  // `curriculumLibraryDataSourceProvider` طبق سوییچ `kUseLiveBackend`
+  // (پیش‌فرض production: true) پیاده‌سازیِ Remote را برمی‌گرداند، صفحهٔ
+  // فراخوان مجبور بود یک Cast ناامن بزند که در بیلد واقعی بلافاصله با
+  // TypeError کرش می‌کرد. این کلاس فقط از `addBook` (که در Interface
+  // مشترک هم هست) استفاده می‌کند، پس رابط انتزاعی برای هر دو حالت کار می‌کند.
+  final CurriculumLibraryDataSource library;
   final String localeCode;
   BulkBookImporter(this.library, {this.localeCode = 'fa'});
 

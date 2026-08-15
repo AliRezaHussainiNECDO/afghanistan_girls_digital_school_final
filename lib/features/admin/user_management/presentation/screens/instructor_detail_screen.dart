@@ -153,7 +153,7 @@ class _InstructorDetailScreenState extends ConsumerState<InstructorDetailScreen>
                               radius: 26,
                               backgroundColor: Colors.white.withValues(alpha: .2),
                               child: Text(
-                                instructor.fullName.characters.first,
+                                instructor.fullName.isNotEmpty ? instructor.fullName.characters.first : '?',
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 20,

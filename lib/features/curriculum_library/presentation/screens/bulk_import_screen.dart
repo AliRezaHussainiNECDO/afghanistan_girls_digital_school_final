@@ -10,7 +10,6 @@ import '../../../auth/domain/entities/app_user.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../../shared_models/subject.dart';
 import '../../data/services/bulk_book_importer.dart';
-import '../../data/datasources/curriculum_library_local_datasource.dart'; // اضافه شد برای کست کردن تایپ
 import '../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../providers/curriculum_library_providers.dart';
 
@@ -59,8 +58,12 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
     if (_importing) return;
     setState(() => _importing = true);
 
-    // اصلاح شد: استفاده از پرووایدر اصلی شما و کست کردن آن به تایپ مورد نیاز Importer
-    final dataSource = ref.read(curriculumLibraryDataSourceProvider) as CurriculumLibraryLocalDataSource;
+    // رفع اشکال: قبلاً اینجا با یک Cast ناامن به
+    // `CurriculumLibraryLocalDataSource` مجبور می‌شد — در بیلد واقعی
+    // (kUseLiveBackend پیش‌فرض true) این Provider پیاده‌سازیِ Remote
+    // برمی‌گرداند و آن Cast بلافاصله با TypeError کرش می‌کرد. اکنون
+    // `BulkBookImporter` مستقیماً رابط انتزاعی مشترک را می‌پذیرد.
+    final dataSource = ref.read(curriculumLibraryDataSourceProvider);
     final importer = BulkBookImporter(dataSource, localeCode: ref.read(localeProvider).languageCode);
 
     for (final item in _items) {

@@ -745,7 +745,7 @@ ${honorLine}
  */
 export async function verifyCertificateHandler(c: any) {
   const serial = c.req.param('serial');
-  const row = await c.env.DB.prepare('SELECT * FROM certificates WHERE serial = ?').bind(serial).first<any>();
+  const row = await (c.env.DB as D1Database).prepare('SELECT * FROM certificates WHERE serial = ?').bind(serial).first<any>();
   if (!row) return c.html(certificateVerifyPage(false));
   let signatureState: 'valid' | 'invalid' | 'unsigned' = 'unsigned';
   if (row.signature) {

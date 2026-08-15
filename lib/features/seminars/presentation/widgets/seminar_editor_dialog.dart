@@ -59,6 +59,10 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
   SeminarStatus status = existing?.status ?? SeminarStatus.published;
   final formKey = GlobalKey<FormState>();
 
+  // رفع اشکال نشتِ حافظه: این ۵ کنترلر محلی (title/description/duration/
+  // capacity/meetingLink) هرگز dispose نمی‌شدند — `whenComplete` تضمین
+  // می‌کند که با هر روش بسته‌شدنِ دیالوگ (ذخیره، انصراف، لمس بیرون از
+  // دیالوگ) آزاد شوند.
   return showDialog<SeminarEditorResult>(
     context: context,
     builder: (dialogContext) {
@@ -323,5 +327,11 @@ Future<SeminarEditorResult?> showSeminarEditorDialog(
         },
       );
     },
-  );
+  ).whenComplete(() {
+    titleController.dispose();
+    descriptionController.dispose();
+    durationController.dispose();
+    capacityController.dispose();
+    meetingLinkController.dispose();
+  });
 }

@@ -173,7 +173,12 @@ class AdminCertificatesSection extends ConsumerWidget {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      // رفع اشکال نشتِ حافظه: این دو کنترلر محلی هرگز dispose نمی‌شدند.
+      yearCtrl.dispose();
+      avgCtrl.dispose();
+      return;
+    }
     await ref.read(certificateActionsProvider).issue(IssueCertificateParams(
           studentId: detail.summary.id,
           studentName: detail.summary.fullName,
@@ -183,6 +188,8 @@ class AdminCertificatesSection extends ConsumerWidget {
               detail.summary.gradeAverage,
           honor: honor,
         ));
+    yearCtrl.dispose();
+    avgCtrl.dispose();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: AppPalette.greenDark,

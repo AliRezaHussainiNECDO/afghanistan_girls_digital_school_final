@@ -131,7 +131,7 @@ class _Header extends ConsumerWidget {
                   child: CircleAvatar(
                     radius: 34,
                     backgroundColor: Colors.white,
-                    child: Text(s.fullName.characters.first,
+                    child: Text(s.fullName.isNotEmpty ? s.fullName.characters.first : '?',
                         style: const TextStyle(
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
