@@ -377,6 +377,10 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     });
     unawaited(_ensureSpeakChunkFuture(msg, index + 1));
     await _player.play(DeviceFileSource(path));
+    // رفعِ بازخوردِ کاربران («صدا خیلی آهسته/خسته‌کننده است»): سرعتِ پخش
+    // باید *بعد* از play() تنظیم شود، چون بارگذاریِ منبعِ تازه سرعت را به
+    // پیش‌فرضِ ۱ برمی‌گرداند (نگاه کنید به kAiVoicePlaybackRate).
+    unawaited(_player.setPlaybackRate(kAiVoicePlaybackRate));
   }
 
   @override

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/tts_text_splitter.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../auth/domain/entities/app_user.dart';
@@ -127,6 +128,9 @@ class _AiTeacherScreenState extends ConsumerState<AiTeacherScreen> {
       return;
     }
     await _player.play(DeviceFileSource(path));
+    // رفعِ بازخوردِ کاربران («صدا خیلی آهسته/خسته‌کننده است») — نگاه کنید
+    // به kAiVoicePlaybackRate برای اینکه چرا این باید *بعد* از play() باشد.
+    await _player.setPlaybackRate(kAiVoicePlaybackRate);
   }
 
   /// دکمهٔ میکروفون — هنگام ضبط، با ضربان آرام و مدرن بزرگ/کوچک می‌شود تا

@@ -256,6 +256,10 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     // تمام‌شدنِ آن — تا وقتی نوبتِ آن برسد، معمولاً از قبل آماده باشد.
     unawaited(_ensureChunkFuture(index + 1));
     await _player.play(DeviceFileSource(path));
+    // رفعِ بازخوردِ کاربران («صدا خیلی آهسته/خسته‌کننده است»): سرعتِ پخش
+    // باید *بعد* از play() تنظیم شود، چون بارگذاریِ منبعِ تازه سرعت را به
+    // پیش‌فرضِ ۱ برمی‌گرداند (نگاه کنید به kAiVoicePlaybackRate).
+    unawaited(_player.setPlaybackRate(kAiVoicePlaybackRate));
   }
 
   /// بازخورد فوری امتیاز فعالیت — بعد از دیدن درس نشان داده می‌شود؛ اگر همین
