@@ -168,6 +168,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     if (voice == null) return; // صدا غیرفعال — بی‌اثر (Fail-safe)
     if (_isReading) {
       await _player.stop();
+      if (!mounted) return;
       setState(() {
         _isReading = false;
         _ttsLoading = false;

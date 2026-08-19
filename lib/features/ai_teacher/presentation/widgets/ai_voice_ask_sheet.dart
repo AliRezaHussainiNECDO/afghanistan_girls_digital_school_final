@@ -329,6 +329,7 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     }
     // اگر پیامِ دیگری در حالِ پخش بود، اول متوقفش کن — یک بار در لحظه فقط.
     await _player.stop();
+    if (!mounted) return;
     setState(() {
       _speakingId = msg.id;
       _speakingMsg = msg;

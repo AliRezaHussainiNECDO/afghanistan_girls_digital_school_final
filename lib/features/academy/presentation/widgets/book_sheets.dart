@@ -73,6 +73,7 @@ class _BookFormSheetState extends ConsumerState<BookFormSheet> {
     setState(() => _picking = true);
     try {
       final PickedPdf? picked = await pickPdfFile();
+      if (!mounted) return;
       if (picked != null) {
         setState(() {
           _pickedPdf = picked;

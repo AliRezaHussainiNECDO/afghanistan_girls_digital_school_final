@@ -70,11 +70,13 @@ class _BulkImportScreenState extends ConsumerState<BulkImportScreen> {
       if (item.status == BulkItemStatus.done) continue;
       setState(() => item.status = BulkItemStatus.importing);
       await importer.importItem(item);
+      if (!mounted) return;
       setState(() {
         if (item.status == BulkItemStatus.done) _doneCount++;
       });
       // فرصت رندر بین فایل‌های سنگین
       await Future.delayed(const Duration(milliseconds: 30));
+      if (!mounted) return;
     }
     setState(() => _importing = false);
     ref.invalidate(booksForSubjectProvider);
