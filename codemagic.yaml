@@ -69,3 +69,58 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  android-release:
+    name: Android Release (Play Store)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      # این چهار متغیر باید در Codemagic → این workflow → Environment
+      # variables، به‌عنوان یک گروه رمزنگاری‌شده (مثلاً به‌نام
+      # "android_signing") تعریف شوند — نه در این فایل، چون این فایل در
+      # گیت است. مقدارها از همان android/key.properties محلی (که عمداً در
+      # .gitignore است) و همان upload-keystore.jks گرفته می‌شوند:
+      #   CM_KEYSTORE            → خودِ فایل upload-keystore.jks را در
+      #                            Codemagic از نوع "File" آپلود کنید؛
+      #                            Codemagic خودش مسیرش را در $CM_KEYSTORE می‌گذارد.
+      #   CM_KEYSTORE_PASSWORD    → همان storePassword در key.properties
+      #   CM_KEY_ALIAS            → همان keyAlias در key.properties
+      #   CM_KEY_PASSWORD         → همان keyPassword در key.properties
+      groups:
+        - android_signing
+      vars:
+        PACKAGE_NAME: "af.digital.girls.school"
+      flutter: stable
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: master
+          include: true
+    scripts:
+      - name: Get Flutter packages
+        script: flutter packages pub get
+      - name: Rebuild android/key.properties from encrypted signing vars
+        script: |
+          cat > android/key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE
+          EOF
+      - name: Build App Bundle (Play Store)
+        script: flutter build appbundle --release
+      - name: Build APK (direct/manual distribution)
+        script: flutter build apk --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/flutter-apk/*.apk
+    # انتشار خودکار به Play Console عمداً فعال نیست — درخواست تولید اندروید
+    # فقط شامل ساختنِ AAB/APK بود. اگر بعداً خواستید آپلود خودکار به کانال
+    # Internal/Production فعال شود، یک Google Cloud Service Account با
+    # دسترسیِ Play Console API لازم است؛ فایل .aab را فعلاً از artifacts
+    # همین build در Codemagic دانلود و دستی در Play Console آپلود کنید.
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
