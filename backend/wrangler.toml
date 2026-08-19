@@ -88,8 +88,15 @@ CF_STREAM_CUSTOMER = "3xsnqty4gq6f5bah"
 # URL و مدل را می‌توانید برای هر ارائه‌دهندهٔ سازگار با OpenAI تغییر دهید.
 AI_PROVIDER_URL = "https://api.openai.com/v1/chat/completions"
 AI_MODEL = "gpt-4o-mini"
-# صدای معلم AI (TTS/STT) — منبع: Azure Cognitive Services "school-speech-service-ai"
-# (Resource Group: afghan-school-group, Region: East US).
+# صدای معلم AI (TTS/STT) — مسیر اصلی از این نشست به بعد: Gemini TTS (رایگان،
+# همان GEMINI_API_KEY پایین، بدون نیاز به تنظیم اضافه — جزئیات کامل و چراییِ
+# انتخاب Gemini در بالای routes/ai.ts و lib/gemini.ts). این دو خط فقط در
+# صورت نیاز به تغییر مدل/صدای پیش‌فرض لازم‌اند (پیش‌فرض کد کافی است):
+# GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts"
+# GEMINI_TTS_VOICE = "Sulafat"   (برچسب رسمی: «Warm» — نزدیک‌ترین به لحن معلم مهربان)
+#
+# Azure Cognitive Services به‌عنوان لایهٔ دوم/پشتیبان باقی مانده — منبع:
+# "school-speech-service-ai" (Resource Group: afghan-school-group, Region: East US).
 # نکته: Azure هیچ صدای TTS برای دری (fa-AF) یا پشتو (ps-AF) ندارد — پس نامی مثل
 # «Fatima/prs-AF-FatimaNeural» روی Azure اصلاً وجود ندارد و هر درخواستی با آن رد
 # می‌شود (جزئیات در بالای routes/ai.ts). نزدیک‌ترین صدای خانمِ واقعی و کارکردنی:
@@ -99,7 +106,7 @@ AZURE_TTS_VOICE = "fa-IR-DilaraNeural"
 # کلید (حساس/محرمانه) را با دستور زیر — نه در این فایل — تنظیم کنید:
 #   wrangler secret put AZURE_TTS_KEY       (Key 1 یا Key 2 از Azure Portal را وقتی
 #                                            خواسته شد paste کنید)
-# • در نبود Azure، از همان AI_PROVIDER_KEY برای TTS/Whisper استفاده می‌شود.
+# • در نبود Gemini و Azure، از همان AI_PROVIDER_KEY برای TTS/Whisper استفاده می‌شود.
 
 # کار خانگی + نمره‌دهی هوشمند (Vision) — routes/homework.ts:
 # • OCR/نمره‌دهی عکس دست‌خط: Gemini 1.5 Flash (رایگان/ارزان و از تصویر پشتیبانی می‌کند).

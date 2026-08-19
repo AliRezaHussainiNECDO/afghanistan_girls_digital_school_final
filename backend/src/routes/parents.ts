@@ -16,6 +16,7 @@ import { verifyBearer } from '../lib/auth';
 import { getSubjectProgressList, averagePercent, getPointsSummary } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
 import { sendPushToUser } from '../lib/push';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
 
 type Bindings = {
   DB: D1Database;
@@ -69,9 +70,23 @@ parents.get('/students/me/guardian-code', async (c) => {
 
 // ═════════════════════ سمت والد: ثبت کد → درخواست پیوند ══════════════════════
 
+// رفعِ اشکالِ امنیتی: کدِ دعوتِ ۶رقمی (۱ میلیون حالتِ ممکن، معتبر تا ۷۲ ساعت)
+// تا امروز هیچ سقفِ تلاشی نداشت — کسی می‌توانست با آزمونِ خودکارِ هزاران کد
+// در دقیقه، کدهای زندهٔ شاگردانِ دیگر را پیدا کند و درخواستِ پیوندِ جعلی
+// بفرستد (که هرچند نهایتاً به تأییدِ خودِ شاگرد نیاز دارد، اما زمینهٔ
+// مهندسیِ‌اجتماعی/مزاحمتِ اعلانی فراهم می‌کند). حالا هم روی IP و هم روی
+// حسابِ درخواست‌دهنده سقفِ سبک گذاشته شده — دقیقاً همان الگویی که
+// lib/rateLimit.ts برای ورود/ثبت‌نام استفاده می‌کند.
 parents.post('/parents/link-requests', async (c) => {
   const me = await auth(c);
   if (!me) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+
+  const rl = await hitRateLimit(c.env.DB, `guardian-code:${clientIp(c)}`, 3600, 20);
+  const rlUser = await hitRateLimit(c.env.DB, `guardian-code-user:${me.sub}`, 3600, 20);
+  if (rl.limited || rlUser.limited) {
+    return c.json(rateLimitFail(), 429);
+  }
+
   const b = await c.req.json<{ code?: string }>().catch(() => null);
   const code = String(b?.code ?? '').trim();
   if (code.length !== 6) {

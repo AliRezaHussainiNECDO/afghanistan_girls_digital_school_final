@@ -98,6 +98,20 @@ async function requireSuperAdminOnly(c: any): Promise<string | null> {
   return p['sub'] as string;
 }
 
+/**
+ * نقش واقعیِ کنشگر را برای ثبت درست در گزارش رویدادها (audit log) برمی‌گرداند
+ * — رفع اشکالِ ثبتِ اشتباهِ `actorRole: 'super_admin'` برای مدیران زیرمجموعه
+ * (role='admin') که پیش‌تر در همهٔ فراخوانی‌های `logAudit` هاردکد شده بود.
+ * توکن همان درخواست پیش‌تر توسط requireAdmin/requireSuperAdminOnly معتبر
+ * شمرده شده؛ این تابع فقط دوباره آن را می‌خواند تا نقش واقعی را استخراج کند
+ * (بدون پرس‌وجوی اضافه در پایگاه‌داده).
+ */
+async function resolveActorRole(c: any): Promise<string> {
+  const p = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const role = p?.['role'];
+  return role === 'admin' || role === 'super_admin' ? role : 'super_admin';
+}
+
 // ────────────────────────────── کاربران ─────────────────────────────────────
 
 admin.get('/users', async (c) => {
@@ -198,7 +212,7 @@ admin.post('/security/backfill-encryption', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'security_backfill_encryption',
       targetTable: 'users',
       targetId: null,
@@ -232,7 +246,7 @@ admin.patch('/users/:id/toggle-suspend', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'user_status_change',
       targetTable: 'users',
       targetId: id,
@@ -269,7 +283,7 @@ admin.patch('/users/:id', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'user_status_change',
       targetTable: 'users',
       targetId: c.req.param('id'),
@@ -356,7 +370,7 @@ admin.post('/admins', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: superId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'admin_create',
       targetTable: 'users',
       targetId: id,
@@ -394,7 +408,7 @@ admin.patch('/admins/:id/permissions', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: superId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'admin_permissions_update',
       targetTable: 'admin_permissions',
       targetId: id,
@@ -423,7 +437,7 @@ admin.patch('/admins/:id/toggle-suspend', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: superId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'admin_status_change',
       targetTable: 'users',
       targetId: id,
@@ -486,7 +500,7 @@ admin.post('/invite-codes/bulk-generate', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'invite_code_issue',
       targetTable: 'invite_codes',
       ipAddress: clientIp(c),
@@ -506,7 +520,7 @@ admin.patch('/invite-codes/:id/revoke', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'invite_code_revoke',
       targetTable: 'invite_codes',
       targetId: c.req.param('id'),
@@ -964,7 +978,7 @@ admin.patch('/safety-queue/:id/resolve', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'safety_resolve',
       targetTable: 'safety_events',
       targetId: id,
@@ -1368,7 +1382,7 @@ admin.patch('/students/:id/status', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'user_status_change',
       targetTable: 'users',
       targetId: c.req.param('id'),
@@ -1410,7 +1424,7 @@ admin.post('/students/:id/password-reset-link', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'password_reset_link',
       targetTable: 'users',
       targetId: u.id,
@@ -1977,7 +1991,7 @@ admin.post('/curriculum-library/wipe-all', async (c) => {
   c.executionCtx.waitUntil(
     logAudit(c.env.DB, {
       actorId: adminId,
-      actorRole: 'super_admin',
+      actorRole: await resolveActorRole(c),
       actionType: 'curriculum_wipe',
       targetTable: 'curriculum_library_books',
       priority: 'high',

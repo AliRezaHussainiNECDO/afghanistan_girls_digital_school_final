@@ -18,7 +18,14 @@ import { verifyBearer } from '../lib/auth';
 import { embedText, cosineSimilarity } from '../lib/embeddings';
 import { awardPoints } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
-import { rateLimitFailBody, GEMINI_DEFAULT_MODEL, DARI_OUTPUT_RULES, sanitizeDariText } from '../lib/gemini';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
+import {
+  rateLimitFailBody,
+  GEMINI_DEFAULT_MODEL,
+  DARI_OUTPUT_RULES,
+  sanitizeDariText,
+  geminiSynthesizeSpeech,
+} from '../lib/gemini';
 import { ensureLessonContextCache } from '../lib/geminiCache';
 import { isPendingAiContent, pendingSummary } from '../lib/aiLessonContent';
 import { hasAdminPermission } from '../lib/permissions';
@@ -32,6 +39,10 @@ type Bindings = {
   GEMINI_API_KEY?: string;
   GEMINI_VISION_MODEL?: string;
   // صدا (TTS/STT) — همه اختیاری؛ در نبود کلید، کلاینت Fail-safe می‌شود.
+  // GEMINI_TTS_* مسیر اصلیِ صدا از این نشست به بعد — نگاه کنید lib/gemini.ts
+  // (geminiSynthesizeSpeech) برای توضیح کامل چرایی.
+  GEMINI_TTS_MODEL?: string;
+  GEMINI_TTS_VOICE?: string;
   AZURE_TTS_KEY?: string;
   AZURE_TTS_REGION?: string;
   AZURE_TTS_VOICE?: string;
@@ -206,11 +217,21 @@ async function chatViaGemini(
   }
 }
 
+// رفعِ اشکالِ امنیتی/هزینه‌ای: این سه Endpoint (چت/TTS/STT) همیشه Bearer
+// معتبر می‌خواستند، اما هیچ سقفی روی *تعدادِ* درخواست‌های یک حسابِ واحد
+// نداشتند — یعنی یک حسابِ دانش‌آموزیِ لو‌رفته/سوءاستفاده‌شده می‌توانست بدونِ
+// هیچ مانعی هزینهٔ Gemini/Azure/OpenAI را بی‌سقف بالا ببرد. حالا هر سه با
+// همان مکانیزمِ سبکِ lib/rateLimit.ts (که برای ورود/ثبت‌نام هم استفاده
+// می‌شود) به‌ازای هر حساب محدود شده‌اند — سقف‌ها سخاوتمندانه‌اند (استفادهٔ
+// معمولِ یک شاگرد در طولِ یک ساعتِ درس را هرگز رد نمی‌کنند) و Fail-open‌اند
+// (هر خطای دیتابیس، عبور را مجاز می‌کند — امنیت هرگز نباید تجربهٔ واقعی را بشکند).
 ai.post('/ai-teacher/chat', async (c) => {
   const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
   if (!payload?.['sub']) {
     return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
   }
+  const chatRl = await hitRateLimit(c.env.DB, `ai-chat:${payload['sub']}`, 3600, 120);
+  if (chatRl.limited) return c.json(rateLimitFail(), 429);
   if (!c.env.AI_PROVIDER_KEY && !c.env.GEMINI_API_KEY) {
     // هیچ کلیدی تنظیم نشده → کلاینت (FallbackAiEngine) خودکار به موتور محلی برمی‌گردد.
     return c.json(
@@ -368,27 +389,52 @@ ai.post('/ai-teacher/chat', async (c) => {
 });
 
 // ═══════════════════════ TTS — متن به گفتار (صدای خانم دری) ═══════════════════
-// نکتهٔ مهم (کشف‌شده بعد از گزارش کاربر که «صدای فاطمه کار نمی‌کند»): Azure
-// Speech **هیچ صدای Text-to-Speech برای دری (fa-AF) یا پشتو (ps-AF) ندارد** —
-// این دو زبان هنوز در Backlog مایکروسافت‌اند و ETA عمومی ندارند (تأییدشده از
-// Microsoft Q&A، آوریل ۲۰۲۶). یعنی نام صدای قبلی («prs-AF-FatimaNeural») اصلاً
-// وجود خارجی نداشت و هر درخواست Azure از همان ابتدا با خطا رد می‌شد — دقیقاً
-// همان چیزی که کاربر تجربه کرده بود. نزدیک‌ترین صدای **واقعی و کارکردنیِ**
-// Azure، فارسی ایران (fa-IR) است — از نظر زبانی به دری خیلی نزدیک و قابل‌فهم
-// است (تفاوت اصلی لهجه)، پس به‌عنوان جایگزین تا زمان انتشار صدای رسمی دری
-// استفاده می‌شود. اگر Azure در آینده صدای دری منتشر کرد، فقط کافی است Secret
-// `AZURE_TTS_VOICE` را به نام صدای جدید تغییر دهید — کد نیازی به تغییر ندارد.
-// در نبود Azure، TTS سازگار با OpenAI (صدای خانم مثل «shimmer/nova» — چندزبانه
-// و می‌تواند دری/فارسی را هم بخواند) به‌عنوان جایگزین دوم است.
-// خروجی: بایت‌های audio/mpeg (استریم). در نبود هر دو → 503 (کلاینت Fail-safe).
+// تاریخچه: Azure Speech **هیچ صدای Text-to-Speech برای دری (fa-AF) یا پشتو
+// (ps-AF) ندارد** (تأیید Microsoft Q&A، آوریل ۲۰۲۶؛ دوباره تأیید شد اوت
+// ۲۰۲۶ — هنوز تغییری نکرده). این محدودیت مخصوص Azure نیست: بررسی دوبارهٔ
+// همهٔ گزینه‌های اصلیِ بازار (اوت ۲۰۲۶) نشان داد **هیچ ارائه‌دهندهٔ ابری
+// بزرگی** (Azure، Google Cloud TTS استاندارد، OpenAI) صدای اختصاصی دری
+// افغانستان ندارد — همه فقط فارسیِ ایران (fa-IR) را به‌عنوان نزدیک‌ترین
+// جایگزین دارند.
+//
+// رفع اشکال «صدا کار نمی‌کند بدون هیچ دلیل مشخص» (کاربر گزارش داد، اوت
+// ۲۰۲۶): با `wrangler tail` تأیید شد که AZURE_TTS_KEY واقعاً تنظیم بود ولی
+// درخواست Azure با HTTP ۴۰۱ رد می‌شد — چون اشتراک Azure غیرفعال
+// (`ReadOnlyDisabledSubscription`) شده بود. یعنی حتی وقتی Azure دوباره فعال
+// شود، صدایش هنوز همان فارسیِ ایرانی خواهد بود، نه لهجهٔ افغانی.
+//
+// به همین دو دلیل (هم قابلیت‌اطمینان اشتراک، هم اصالت لهجه)، از این نشست
+// **مسیر اصلی صدا Gemini TTS شد** (`geminiSynthesizeSpeech` در lib/gemini.ts):
+// برخلاف Azure/OpenAI که یک بانکِ صدای ثابت‌اند، Gemini یک مدل مولد
+// قابل‌هدایت‌باتوضیح است — می‌توان مستقیماً در متن ارسالی از آن خواست با
+// «لهجهٔ دری افغانستان» و لحن یک معلم مهربان بخواند (نزدیک‌ترین تلاش واقعاً
+// ممکن، نه تضمین ۱۰۰٪ اصالت). از همان GEMINI_API_KEY فعال/رایگانِ موجود
+// استفاده می‌کند — بدون نیاز به هیچ اشتراک/کارت بانکی جدید.
+// Azure و OpenAI به‌عنوان لایه‌های دوم/سوم دفاعی باقی می‌مانند (اگر Gemini
+// یک روز سهمیه‌اش تمام شد یا این دو بعداً درست شدند).
+// خروجی: بایت‌های صوتی (WAV از Gemini، یا MPEG از Azure/OpenAI). در نبود هر
+// سه → 503 (کلاینت Fail-safe).
 
 ai.post('/ai-teacher/tts', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const ttsUser = await requireUser(c);
+  if (!ttsUser) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const ttsRl = await hitRateLimit(c.env.DB, `ai-tts:${ttsUser}`, 3600, 240);
+  if (ttsRl.limited) return c.json(rateLimitFail(), 429);
   const body = await c.req.json<{ text?: string }>().catch(() => null);
   const text = (body?.text ?? '').trim();
   if (!text) return c.json(fail('BAD_REQUEST', 'متن خالی است', 'Empty text', 'متن تش دی', 'Le texte est vide'), 400);
 
-  // ۱) Azure — نزدیک‌ترین صدای خانمِ واقعاً موجود (فارسی ایران؛ دری هنوز در
+  // ۱) Gemini TTS — مسیر اصلی (بالا را ببینید چرا). خروجی WAV.
+  if (c.env.GEMINI_API_KEY) {
+    const r = await geminiSynthesizeSpeech(c.env, text);
+    if (r.ok) {
+      return new Response(r.wav, { headers: { 'Content-Type': 'audio/wav' } });
+    }
+    console.error(`[tts] Gemini TTS failed: status=${r.status} detail=${r.detail}`);
+    // به لایهٔ بعدی می‌رویم — بدون قطع کردن پاسخ.
+  }
+
+  // ۲) Azure — نزدیک‌ترین صدای خانمِ واقعاً موجود (فارسی ایران؛ دری هنوز در
   //    Azure پشتیبانی نمی‌شود — بالا را ببینید). با AZURE_TTS_VOICE قابل تغییر.
   if (c.env.AZURE_TTS_KEY && c.env.AZURE_TTS_REGION) {
     // اگر Secret هنوز مقدار قدیمیِ نامعتبر («prs-AF-...») را دارد، خودکار به
@@ -418,12 +464,24 @@ ai.post('/ai-teacher/tts', async (c) => {
         return new Response(res.body, { headers: { 'Content-Type': 'audio/mpeg' } });
       }
       // در صورت خطای Azure (مثلاً نام صدای نامعتبر) به OpenAI می‌رویم.
-    } catch (_) {
-      // به جایگزین می‌رویم.
+      // رفع اشکال «صدا کار نمی‌کند بدون هیچ دلیل مشخص»: تا اینجا خطای Azure
+      // کاملاً خاموش بلعیده می‌شد — حتی وقتی AZURE_TTS_KEY واقعاً تنظیم بود
+      // (تأیید شد با `wrangler secret list`)، اگر خودِ درخواست به هر دلیلی
+      // (کلید نامعتبر/منقضی، ناحیهٔ اشتباه، اتمام سهمیهٔ رایگان F0، صدای
+      // نامعتبر و...) با خطا مواجه می‌شد، کاربر فقط پیام عمومی «پیکربندی‌نشده»
+      // می‌دید — که گمراه‌کننده بود چون واقعاً پیکربندی شده بود. حالا پاسخ
+      // خطای Azure با `console.error` لاگ می‌شود تا با `wrangler tail` علت
+      // دقیق دیده شود (بدون فاش‌کردن خودِ کلید).
+      const errBody = await res.text().catch(() => '');
+      console.error(
+        `[tts] Azure TTS failed: status=${res.status} region=${c.env.AZURE_TTS_REGION} voice=${voice} body=${errBody.slice(0, 500)}`,
+      );
+    } catch (e: any) {
+      console.error(`[tts] Azure TTS threw: ${e?.message ?? e}`);
     }
   }
 
-  // ۲) جایگزین: TTS سازگار با OpenAI (صدای خانم).
+  // ۳) جایگزین: TTS سازگار با OpenAI (صدای خانم).
   if (c.env.AI_PROVIDER_KEY) {
     try {
       const res = await fetch(c.env.AI_TTS_URL ?? 'https://api.openai.com/v1/audio/speech', {
@@ -442,12 +500,22 @@ ai.post('/ai-teacher/tts', async (c) => {
       if (res.ok) {
         return new Response(res.body, { headers: { 'Content-Type': 'audio/mpeg' } });
       }
+      const errBody = await res.text().catch(() => '');
+      console.error(
+        `[tts] OpenAI-compatible TTS failed: status=${res.status} url=${c.env.AI_TTS_URL ?? 'default'} body=${errBody.slice(0, 500)}`,
+      );
       return c.json(fail('TTS_UPSTREAM', 'خطا از سرویس صدا', 'TTS upstream error', 'د غږ له خدمت نه تېروتنه', 'Erreur du service de synthèse vocale'), 502);
-    } catch (_) {
+    } catch (e: any) {
+      console.error(`[tts] OpenAI-compatible TTS threw: ${e?.message ?? e}`);
       return c.json(fail('TTS_NETWORK', 'اتصال به سرویس صدا ناموفق بود', 'TTS network error', 'د غږ له خدمت سره اړیکه ونشوه', 'Échec de la connexion au service de synthèse vocale'), 502);
     }
   }
 
+  // اگر به اینجا رسیدیم: هر سه لایه (Gemini/Azure/OpenAI) یا تنظیم نبودند یا
+  // شکست خوردند. این لاگ مشخص می‌کند کدام حالت بوده — برای دیدن با `wrangler tail`.
+  console.error(
+    `[tts] Falling through to 503: geminiConfigured=${!!c.env.GEMINI_API_KEY} azureConfigured=${!!(c.env.AZURE_TTS_KEY && c.env.AZURE_TTS_REGION)} openaiConfigured=${!!c.env.AI_PROVIDER_KEY}`,
+  );
   return c.json(fail('TTS_NOT_CONFIGURED', 'سرویس صدا پیکربندی نشده است', 'TTS not configured', 'د غږ خدمت تنظیم شوی نه دی', 'Le service de synthèse vocale n\'est pas configuré'), 503);
 });
 
@@ -518,7 +586,10 @@ async function transcribeViaGemini(
 }
 
 ai.post('/ai-teacher/stt', async (c) => {
-  if (!(await requireUser(c))) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const sttUser = await requireUser(c);
+  if (!sttUser) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+  const sttRl = await hitRateLimit(c.env.DB, `ai-stt:${sttUser}`, 3600, 120);
+  if (sttRl.limited) return c.json(rateLimitFail(), 429);
   if (!c.env.AI_PROVIDER_KEY && !c.env.GEMINI_API_KEY) {
     return c.json(fail('STT_NOT_CONFIGURED', 'سرویس تبدیل گفتار پیکربندی نشده است', 'STT not configured', 'د خبرو بدلون خدمت تنظیم شوی نه دی', 'Le service de reconnaissance vocale n\'est pas configuré'), 503);
   }

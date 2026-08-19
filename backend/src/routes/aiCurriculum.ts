@@ -27,6 +27,7 @@ import { AI_PENDING_MARKER } from '../lib/aiLessonContent';
 import { getChapterList } from '../lib/progress';
 import { logAudit, clientIp } from '../lib/audit';
 import { hasAdminPermission } from '../lib/permissions';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
 
 type Bindings = {
   DB: D1Database;
@@ -291,9 +292,21 @@ async function sha256Hex(s: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// رفعِ اشکالِ امنیتی/هزینه‌ای (بلاکر پیش از انتشار): این Endpoint عمداً
+// بدونِ توکن مانده (توضیحِ زیر) چون رندرکنندهٔ Markdown فلاتر برای تصاویرِ
+// داخلِ متنِ درس هیچ Headerی نمی‌فرستد — همان مشکلی که برای `/files/*` هم
+// وجود داشت، با این تفاوت که اینجا حتی روی Cache Miss هم یک تماسِ *پولی* با
+// Gemini زده می‌شود. قبلاً هرکسی (حتی بدونِ ورود) با ساختنِ یک `spec`ِ
+// دلخواه و تصادفی در هر درخواست، می‌توانست Cache را همیشه Miss نگه دارد و
+// هزینهٔ تولیدِ تصویر را بی‌سقف روی حسابِ پروژه بار کند. حالا دو لایهٔ دفاعی
+// اضافه شده، هر دو بدونِ نیاز به تغییرِ کلاینت (که Header نمی‌فرستد):
+//  ۱) قبل از هر تماسِ Gemini، بررسی می‌شود که این `spec` واقعاً داخلِ متنِ
+//     یک درسِ واقعی (که خودِ سیستم قبلاً تولید کرده) به‌کار رفته — یعنی یک
+//     spec ساختگی/تصادفی هرگز حتی به مرحلهٔ تماس با AI نمی‌رسد.
+//  ۲) سقفِ نرخِ سبک بر اساسِ IP (فقط روی شاخهٔ *تولید*، نه سرو کردنِ Cache) —
+//     دفاعِ لایهٔ‌دوم اگر لایهٔ اول به هر دلیلی (مثلاً هم‌زمانیِ لحظه‌ای با
+//     تولیدِ همان درس) رد شد.
 aic.get('/ai-images/:spec', async (c) => {
-  // عمومی و بدون توکن — رندرکنندهٔ Markdown فلاتر Header احراز نمی‌فرستد؛
-  // محتوای این تصاویر آموزشی و غیرحساس است.
   const spec = decodeURIComponent(c.req.param('spec')).replace(/\.png$/i, '').trim().slice(0, 300);
   if (!spec) return c.body(PLACEHOLDER_SVG, 200, { 'Content-Type': 'image/svg+xml' });
 
@@ -305,6 +318,27 @@ aic.get('/ai-images/:spec', async (c) => {
         headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=31536000, immutable' },
       });
     }
+
+    // لایهٔ دفاعیِ ۱: این spec باید واقعاً داخلِ متنِ یک درسِ واقعی به‌کار
+    // رفته باشد — وگرنه هرگز به Gemini نمی‌رسیم. کاراکترهای ویژهٔ LIKE در
+    // spec عمداً Escape می‌شوند تا خودِ ورودیِ کاربر نتواند الگوی جست‌وجو را
+    // گسترده‌تر از حدِ مجاز کند.
+    const likeSafeSpec = encodeURIComponent(spec).replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const referenced = await c.env.DB.prepare(
+      `SELECT 1 FROM lessons WHERE content_body LIKE ? ESCAPE '\\' LIMIT 1`,
+    )
+      .bind(`%/ai-images/${likeSafeSpec}.png%`)
+      .first();
+    if (!referenced) {
+      return c.body(PLACEHOLDER_SVG, 200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=600' });
+    }
+
+    // لایهٔ دفاعیِ ۲: سقفِ نرخِ سبک بر اساسِ IP — فقط همین شاخهٔ پرهزینه.
+    const rl = await hitRateLimit(c.env.DB, `ai-images:${clientIp(c)}`, 3600, 40);
+    if (rl.limited) {
+      return c.json(rateLimitFail(), 429);
+    }
+
     const bytes = await geminiGenerateImage(c.env, spec.replace(/-/g, ' '));
     if (bytes) {
       c.executionCtx.waitUntil(c.env.BUCKET.put(key, bytes, { httpMetadata: { contentType: 'image/png' } }));

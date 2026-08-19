@@ -583,8 +583,67 @@ media.post('/admin/conversations/:id/reply', async (c) => {
 
 // ═══════════════════════════ فایل از R2 (صوت/PDF) ═══════════════════════════
 
+// رفعِ اشکالِ امنیتی/حریمِ‌خصوصیِ جدی (پیش از انتشار عمومیِ نسخهٔ دوم): این
+// Endpoint قبلاً *هیچ* بررسیِ احرازِهویت/مالکیت نداشت — هرکسی که کلیدِ یک
+// فایلِ روی R2 را می‌دانست یا حدس می‌زد (مثلاً `homework/<studentId>/…`)
+// می‌توانست بدونِ ورود، آن را ببیند. یعنی عکسِ دستخطِ کارِ خانگیِ یک
+// دانش‌آموزِ خردسال، یا پیامِ صوتیِ خصوصیِ او در چتِ ایمنی با مدیریت، عملاً
+// یک لینکِ عمومی و همیشگی بود. حالا بر اساسِ پیشوندِ کلید، دسترسیِ مناسب
+// بررسی می‌شود — هم‌راستا با همان منطقِ مالکیت/پیوندی که بقیهٔ این فایل و
+// routes/parents.ts از قبل برای همین داده‌ها استفاده می‌کنند:
+//  • books/…                    → محتوای منتشرشدهٔ نصاب — عمداً بدونِ نیاز
+//                                  به ورود می‌ماند (همیشه هم همین‌طور بوده،
+//                                  و آدرسِ PDF کتاب‌ها جای حساسی ذخیره نمی‌شود).
+//  • avatars/…                  → عمداً عمومی می‌ماند: عکسِ پروفایل همین حالا
+//                                  در چند صفحهٔ دیگر (چت، جدولِ امتیازات) بینِ
+//                                  کاربرانِ مختلف نمایش داده می‌شود و آدرسش
+//                                  (`users.avatar_url`) مستقیم و بدونِ Header
+//                                  در `Image.network` مصرف می‌شود — سخت‌گیری
+//                                  اینجا فقط باعثِ خرابیِ نمایشِ عکسِ پروفایل در
+//                                  همه‌جا می‌شد، بدونِ فایدهٔ امنیتیِ قابلِ‌توجه.
+//  • homework/<studentId>/…     → فقط خودِ همان شاگرد، مدیر، یا والدِ
+//                                  تأییدشدهٔ همان شاگرد (همان شرطِ
+//                                  parent_student_links که parents.ts دارد) —
+//                                  اینجا واقعاً حساس است (دستخطِ یک کودک).
+//  • voice/<conversationId>/…   → فقط عضوِ همان گفتگو یا مدیر
+//                                  (isConversationParticipant، بالای همین فایل)
+//                                  — پیامِ صوتیِ خصوصیِ چتِ ایمنی.
+//  • هر پیشوندِ ناشناختهٔ دیگر    → به‌طورِ پیش‌فرض رد (fail closed)، مگر مدیر.
 media.get('/files/*', async (c) => {
   const key = c.req.path.split('/files/')[1] ?? '';
+  if (!key) return c.notFound();
+
+  if (key.startsWith('homework/')) {
+    const u = await me(c);
+    if (!u) {
+      return c.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message_fa: 'وارد نشده‌اید', message_en: 'Unauthorized' } },
+        401,
+      );
+    }
+    const ownerStudentId = key.split('/')[1] ?? '';
+    const linked = await c.env.DB.prepare(
+      "SELECT 1 FROM parent_student_links WHERE parent_user_id=? AND student_user_id=? AND status='approved'",
+    )
+      .bind(u.sub, ownerStudentId)
+      .first();
+    const allowed = u.sub === ownerStudentId || linked != null || (await isAdmin(c));
+    if (!allowed) return forbid(c);
+  } else if (key.startsWith('voice/')) {
+    const u = await me(c);
+    if (!u) {
+      return c.json(
+        { success: false, error: { code: 'UNAUTHORIZED', message_fa: 'وارد نشده‌اید', message_en: 'Unauthorized' } },
+        401,
+      );
+    }
+    const conversationId = key.split('/')[1] ?? '';
+    const allowed = (await isConversationParticipant(c, conversationId, u.sub)) || (await isAdmin(c));
+    if (!allowed) return forbid(c);
+  } else if (!(key.startsWith('books/') || key.startsWith('avatars/'))) {
+    if (!(await isAdmin(c))) return forbid(c);
+  }
+
   const obj = await c.env.BUCKET.get(key);
   if (!obj) return c.notFound();
   return new Response(obj.body, {
@@ -643,10 +702,23 @@ media.delete('/books/:id', async (c) => {
 
 // ═══════════════════════════ رضایت‌نامهٔ قوانین ══════════════════════════════
 
+// رفعِ اشکالِ امنیتی: قبلاً این Endpoint نه احرازِهویت می‌خواست و نه شناسهٔ
+// کاربر را از توکن می‌خواند — بدنهٔ درخواست مستقیماً `userId` دلخواه می‌داد
+// و همان مستقیم در جدولِ `consents` درج می‌شد. یعنی هرکسی (حتی بدونِ ورود)
+// می‌توانست برای هر کاربرِ دیگری یک رکوردِ جعلیِ «قوانین را پذیرفت» بسازد —
+// دقیقاً برخلافِ هدفِ حقوقیِ همین جدول. حالا فقط خودِ کاربرِ واردشده می‌تواند
+// برای *خودش* رضایت ثبت کند؛ `userId` دیگر از بدنه خوانده نمی‌شود.
 media.post('/consents', async (c) => {
-  const body = await c.req.json<{ userId: string; version: string }>();
+  const u = await me(c);
+  if (!u) {
+    return c.json(
+      { success: false, error: { code: 'UNAUTHORIZED', message_fa: 'وارد نشده‌اید', message_en: 'Unauthorized' } },
+      401,
+    );
+  }
+  const body = await c.req.json<{ version: string }>();
   await c.env.DB.prepare('INSERT INTO consents (id, user_id, version) VALUES (?, ?, ?)')
-    .bind(uid(), body.userId, body.version)
+    .bind(uid(), u.sub, body.version)
     .run();
   return c.json({ ok: true });
 });
