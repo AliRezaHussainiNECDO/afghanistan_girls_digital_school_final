@@ -149,6 +149,7 @@ const Map<String, String> faStrings = {
 'curriculum.units': 'واحدها',
 'curriculum.lessons': 'درس‌ها',
 'curriculum.viewLesson': 'مشاهدهٔ درس',
+'curriculum.backToLessonList': 'بازگشت به فهرست دروس',
 'curriculum.lessonLearnedButton': 'این درس را یاد گرفتم',
 'curriculum.homeworkAssigned': 'آفرین! کار خانگی این درس برایتان آماده شد 📝 — از بخش «کار خانگی» ببینید.',
 'curriculum.homeworkAlreadyAssigned': 'کار خانگی این درس قبلاً برایتان داده شده است.',
@@ -402,6 +403,7 @@ const Map<String, String> faStrings = {
 'studyPlan.noBooksYet': 'هنوز کتابی وارد نشده تا برنامهٔ درسی ساخته شود. از مدیر بخواه کتاب‌های نصاب را وارد کند.',
 'studyPlan.browseBooksCta': 'مشاهدهٔ کتاب‌های نصاب',
 'studyPlan.todayMinutesLabel': '{minutes} دقیقهٔ امروز',
+'studyPlan.newSubjectBadge': 'مضمون جدید',
 
 // exams
 'exams.available': 'امتحانات موجود',

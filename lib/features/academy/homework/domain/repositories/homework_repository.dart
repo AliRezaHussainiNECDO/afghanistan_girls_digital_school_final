@@ -16,8 +16,9 @@ abstract class HomeworkRepository {
   /// تاریخچهٔ گفت‌وگوی «شاگرد ↔ معلم هوشمند» دربارهٔ یک مشق.
   Future<Either<Failure, List<HomeworkReply>>> getReplies(String homeworkId);
 
-  /// ارسال عکس دست‌خط شاگرد — نمره‌دهی خودکار (Vision) و برگشت مشق به‌روزشده.
-  Future<Either<Failure, Homework>> submitPhoto({
+  /// ارسال عکس دست‌خط شاگرد — نمره‌دهی خودکار (Vision) و برگشت مشق به‌روزشده،
+  /// همراه با علامتِ «همین ارسال فصل را تکمیل کرد یا نه» ([HomeworkSubmitResult]).
+  Future<Either<Failure, HomeworkSubmitResult>> submitPhoto({
     required String homeworkId,
     required List<int> bytes,
     required String fileName,

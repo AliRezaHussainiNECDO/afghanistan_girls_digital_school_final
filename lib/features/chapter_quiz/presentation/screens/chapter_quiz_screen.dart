@@ -7,7 +7,11 @@ import '../../../../core/widgets/celebration_overlay.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../competition/presentation/providers/competition_providers.dart';
 import '../../../curriculum/presentation/providers/curriculum_providers.dart' show chaptersProvider;
+import '../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../exams/domain/entities/exam_entities.dart' show QuestionType;
 import '../../domain/entities/chapter_quiz_entities.dart';
 import '../../domain/usecases/chapter_quiz_usecases.dart';
@@ -60,6 +64,13 @@ class _ChapterQuizScreenState extends ConsumerState<ChapterQuizScreen> {
         // «مرور» نشان دهد) و هم فهرست فصل‌ها (فصل بعدی باید unlocked شود) تازه شوند.
         ref.invalidate(chapterQuizProvider(widget.chapterId));
         ref.invalidate(chaptersProvider(widget.subjectId));
+        // رفع اشکال (H6 — کهنه‌ماندنِ داشبورد/رقابت): قبولی در آزمونِ فصل هم
+        // امتیازِ فعالیت می‌دهد (chapterQuizPass/chapterQuizEarlyBonus در
+        // progress.ts)؛ خانه/نقشهٔ صنوف/رقابت باید همین لحظه تازه شوند.
+        final studentId = ref.read(authSessionProvider)?.id;
+        if (studentId != null) ref.invalidate(dashboardSummaryProvider(studentId));
+        ref.invalidate(gradeMapProvider);
+        ref.read(competitionRefreshProvider.notifier).state++;
       },
     );
   }

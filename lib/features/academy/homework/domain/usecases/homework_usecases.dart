@@ -56,11 +56,11 @@ class SubmitHomeworkPhotoParams extends Equatable {
 
 /// ارسال عکس دست‌خط شاگرد — قلب این ویژگی: عکس روی R2 ذخیره و با Vision
 /// نمره‌دهی می‌شود (طبق `POST /homework/:id/submit`).
-class SubmitHomeworkPhotoUseCase implements UseCase<Homework, SubmitHomeworkPhotoParams> {
+class SubmitHomeworkPhotoUseCase implements UseCase<HomeworkSubmitResult, SubmitHomeworkPhotoParams> {
   final HomeworkRepository repository;
   SubmitHomeworkPhotoUseCase(this.repository);
   @override
-  Future<Either<Failure, Homework>> call(SubmitHomeworkPhotoParams params) => repository.submitPhoto(
+  Future<Either<Failure, HomeworkSubmitResult>> call(SubmitHomeworkPhotoParams params) => repository.submitPhoto(
         homeworkId: params.homeworkId,
         bytes: params.bytes,
         fileName: params.fileName,

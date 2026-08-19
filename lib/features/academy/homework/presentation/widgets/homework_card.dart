@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/localization/app_localizations.dart';
+import '../../../../../core/network/network_providers.dart';
 import '../../domain/entities/homework.dart';
 
 /// کارت شیشه‌ای (Glassmorphism) یک مشق در فهرست داشبورد — ظاهر بر اساس
@@ -102,6 +103,9 @@ class HomeworkCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppRadii.sm),
                     child: Image.network(
                       hw.studentImageUrl,
+                      // رفعِ اشکالِ امنیتی: عکسِ کارِ خانگی حالا فقط با هدرِ
+                      // Authorization سرو می‌شود (نگاه کنید authImageHeaders).
+                      headers: authImageHeaders(context),
                       width: double.infinity,
                       height: 170,
                       fit: BoxFit.cover,

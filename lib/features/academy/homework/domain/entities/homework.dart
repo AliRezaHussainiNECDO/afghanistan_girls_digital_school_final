@@ -82,6 +82,32 @@ class HomeworkListResult extends Equatable {
   List<Object?> get props => [classLevel, averageScore, homeworks];
 }
 
+/// نتیجهٔ ارسالِ عکسِ مشق — طبق رفعِ اشکالِ ریشه‌ایِ «فصل قبل از خواندنِ
+/// واقعیِ درس‌ها تکمیل‌شده اعلام می‌شود»: تکمیلِ فصل حالا به کار خانگیِ
+/// *ارسال‌شدهٔ* آخرین درس هم گره خورده (نه فقط به دیدنِ درس)، پس همین‌جا،
+/// درست مثلِ رویدادِ «دیدنِ درس» در `LessonDetailScreen`، ممکن است سرور
+/// اعلام کند همین ارسال، فصل را تکمیل کرده — و صفحه باید همان جشن/هدایتِ
+/// خودکار به «آزمون فصل» را نشان دهد.
+class HomeworkSubmitResult extends Equatable {
+  final Homework homework;
+  final bool chapterJustCompleted;
+  final int chapterBonusAwarded;
+  /// امتیازِ فعالیتِ همین ارسال (نمره‌دهیِ موفق = `POINTS_PER_HOMEWORK_GRADED`
+  /// سمتِ سرور، غیرِ آن = ۰) — رفعِ اشکالِ «بنرِ جشن همیشه ۰ امتیاز نشان
+  /// می‌داد» چون قبلاً این مقدار اصلاً از سرور نمی‌آمد.
+  final int pointsAwarded;
+
+  const HomeworkSubmitResult({
+    required this.homework,
+    this.chapterJustCompleted = false,
+    this.chapterBonusAwarded = 0,
+    this.pointsAwarded = 0,
+  });
+
+  @override
+  List<Object?> get props => [homework, chapterJustCompleted, chapterBonusAwarded, pointsAwarded];
+}
+
 /// یک پیام در گفت‌وگوی «شاگرد ↔ معلم هوشمند» دربارهٔ یک مشق مشخص.
 enum HomeworkReplySender { student, ai }
 

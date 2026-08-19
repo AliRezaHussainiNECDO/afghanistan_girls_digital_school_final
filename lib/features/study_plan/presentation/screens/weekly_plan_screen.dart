@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/student/selected_grade_provider.dart';
 import '../../../../core/widgets/app_scaffold.dart';
 import '../../../../shared_models/subject.dart';
 import '../../../auth/domain/entities/app_user.dart';
-import '../../../ai_teacher/presentation/providers/learning_progress_providers.dart';
 import '../../domain/entities/study_plan.dart';
 import '../providers/study_plan_providers.dart';
 
@@ -217,6 +214,13 @@ class _DayCard extends ConsumerWidget {
   }
 }
 
+/// چیپ یک مضمون — طبق همان هماهنگیِ زندهٔ نصاب درسی که کارت «امروز» دارد
+/// (نگاه کنید به `today_schedule_card.dart`/`openTodaySubjectPointer`):
+/// فقط برای امروز (`enabled`) فعال است، و لمسش دقیقاً همان درس/آزمون/
+/// کار-خانگیِ نصاب درسی را باز می‌کند — نه لینک ثابت به گفت‌وگوی آزاد.
+/// رفع اشکال: قبلاً این چیپ مسیر ناوبری خودش را داشت (همیشه معلم هوشمند
+/// آزاد)، کاملاً مستقل از هماهنگ‌سازی‌ای که در کارت «امروز» انجام شده بود —
+/// یعنی همان مضمون از این صفحه باز می‌شد بدون رعایت قفل نصاب.
 class _SubjectChip extends ConsumerWidget {
   final String subjectId;
   final String label;
@@ -234,9 +238,25 @@ class _SubjectChip extends ConsumerWidget {
     final subject = mockSubjects.firstWhere((s) => s.id == subjectId,
         orElse: () => mockSubjects.first);
     final color = Color(subject.colorValue);
+
+    // نقطهٔ زنده فقط برای چیپ‌های فعال (امروز) لازم است — چیپ‌های روزهای
+    // دیگر اصلاً قابل لمس نیستند، پس نیازی به این Provider ندارند.
+    final pointerAsync = enabled ? ref.watch(todaySubjectPointerProvider(subjectId)) : null;
+    final pointer = pointerAsync?.valueOrNull;
+    final loading = enabled && (pointerAsync?.isLoading ?? false) && pointer == null;
+
     return ActionChip(
-      avatar: Icon(Icons.play_circle_fill_rounded,
-          size: 18, color: enabled ? color : color.withValues(alpha: .4)),
+      avatar: loading
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: CircularProgressIndicator(strokeWidth: 2, color: color),
+              ),
+            )
+          : Icon(Icons.play_circle_fill_rounded,
+              size: 18, color: enabled ? color : color.withValues(alpha: .4)),
       label: Text(context.tr('studyPlan.subjectMinutes', {'label': label, 'minutes': '$minutes'})),
       labelStyle: TextStyle(
           fontSize: 12,
@@ -244,12 +264,8 @@ class _SubjectChip extends ConsumerWidget {
           color: enabled ? null : Theme.of(context).disabledColor),
       backgroundColor: color.withValues(alpha: .08),
       side: BorderSide(color: color.withValues(alpha: .35)),
-      onPressed: enabled
-          ? () {
-              ref.read(aiTeacherInitialSubjectProvider.notifier).state =
-                  subjectId;
-              context.push(AppRoutes.aiTeacher);
-            }
+      onPressed: (enabled && !loading)
+          ? () => openTodaySubjectPointer(context, ref, subjectId: subjectId, pointer: pointer)
           : null,
     );
   }

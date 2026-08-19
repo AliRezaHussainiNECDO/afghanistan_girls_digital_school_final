@@ -25,7 +25,7 @@
  */
 import { Hono } from 'hono';
 import { verifyBearer } from '../lib/auth';
-import { awardPoints, POINTS_PER_HOMEWORK_GRADED } from '../lib/progress';
+import { awardPoints, checkAndCompleteChapter, POINTS_PER_CHAPTER_COMPLETE, POINTS_PER_HOMEWORK_GRADED } from '../lib/progress';
 import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
 import { hasAdminPermission } from '../lib/permissions';
@@ -394,6 +394,21 @@ homework.post('/homework/:id/submit', async (c) => {
     .bind(imageKey, hw.id)
     .run();
 
+  // رفع اشکالِ ریشه‌ایِ «فصل خیلی زود/دیر تکمیل اعلام می‌شود»: طبقِ همان
+  // قاعدهٔ یکپارچهٔ [checkAndCompleteChapter] (لهی lib/progress.ts)، «کار
+  // خانگیِ ارسال‌شده» (status='submitted') به‌تنهایی برای تکمیلِ درس کافی
+  // است — لازم نیست منتظر نتیجهٔ نمره‌دهیِ هوشمند بمانیم. پس این بررسی همین
+  // الان (بلافاصله بعد از آپلود، نه بعد از Gemini Vision) انجام می‌شود تا
+  // اگر همین مشق آخرین قطعهٔ ناقصِ فصل بود، هر سه مسیرِ پاسخ زیر (پیکربندی‌
+  // نشده/نمره‌دهی ناموفق/نمره‌دهی موفق) یکسان chapterJustCompleted را
+  // برگردانند — کلاینت با همین سیگنال جشن/هدایت به «آزمون فصل» را نشان
+  // می‌دهد (دقیقاً همان الگویی که «دیدنِ درس» قبلاً داشت).
+  const chapterCompletion = hw.chapter_id
+    ? await checkAndCompleteChapter(c.env.DB, hw.student_id, hw.chapter_id)
+    : { chapterJustCompleted: false };
+  const chapterJustCompleted = chapterCompletion.chapterJustCompleted;
+  const chapterBonusAwarded = chapterJustCompleted ? POINTS_PER_CHAPTER_COMPLETE : 0;
+
   // ۲) نمره‌دهی هوشمند (Gemini Vision) — اختیاری: اگر پیکربندی نشده یا خطا
   //    داد، مشق همچنان با status='submitted' باقی می‌ماند (بعداً می‌توان
   //    دوباره تلاش کرد)؛ هرگز کل درخواست را با خطا رد نمی‌کنیم.
@@ -405,6 +420,9 @@ homework.post('/homework/:id/submit', async (c) => {
       homework: homeworkJson(row),
       graded: false,
       notice: 'سرویس نمره‌دهی هوشمند هنوز روی سرور پیکربندی نشده — عکس شما ذخیره شد و بعداً نمره داده می‌شود.',
+      chapterJustCompleted,
+      chapterBonusAwarded,
+      pointsAwarded: 0,
     });
   }
 
@@ -438,7 +456,14 @@ homework.post('/homework/:id/submit', async (c) => {
       const row = await c.env.DB.prepare('SELECT h.*, s.name_fa AS subject_name_fa FROM student_homeworks h LEFT JOIN subjects s ON s.id = h.subject_id WHERE h.id = ?')
         .bind(hw.id)
         .first<any>();
-      return c.json({ homework: homeworkJson(row), graded: false, notice: 'نمره‌دهی هوشمند موقتاً ناموفق بود؛ عکس شما ذخیره شد.' });
+      return c.json({
+        homework: homeworkJson(row),
+        graded: false,
+        notice: 'نمره‌دهی هوشمند موقتاً ناموفق بود؛ عکس شما ذخیره شد.',
+        chapterJustCompleted,
+        chapterBonusAwarded,
+        pointsAwarded: 0,
+      });
     }
     await c.env.DB.prepare(
       "UPDATE student_homeworks SET extracted_text = ?, ai_score = ?, ai_feedback = ?, status = 'graded', graded_at = datetime('now') WHERE id = ?",
@@ -470,13 +495,30 @@ homework.post('/homework/:id/submit', async (c) => {
     const row = await c.env.DB.prepare('SELECT h.*, s.name_fa AS subject_name_fa FROM student_homeworks h LEFT JOIN subjects s ON s.id = h.subject_id WHERE h.id = ?')
       .bind(hw.id)
       .first<any>();
-    return c.json({ homework: homeworkJson(row), graded: true });
+    return c.json({
+      homework: homeworkJson(row),
+      graded: true,
+      chapterJustCompleted,
+      chapterBonusAwarded,
+      // رفعِ اشکالِ «بنرِ جشنِ امتیاز همیشه ۰ نشان می‌دهد»: قبلاً امتیازِ
+      // واقعیِ کارِ خانگی (`POINTS_PER_HOMEWORK_GRADED`) هرگز در پاسخ فرستاده
+      // نمی‌شد — کلاینت مجبور بود مقدارِ ثابتِ '0' را نشان دهد چون اصلاً
+      // چیزی برای خواندن نداشت.
+      pointsAwarded: POINTS_PER_HOMEWORK_GRADED,
+    });
   } catch (err) {
     console.error('[homework/submit] grading failed —', err);
     const row = await c.env.DB.prepare('SELECT h.*, s.name_fa AS subject_name_fa FROM student_homeworks h LEFT JOIN subjects s ON s.id = h.subject_id WHERE h.id = ?')
       .bind(hw.id)
       .first<any>();
-    return c.json({ homework: homeworkJson(row), graded: false, notice: 'نمره‌دهی هوشمند موقتاً ناموفق بود؛ عکس شما ذخیره شد.' });
+    return c.json({
+      homework: homeworkJson(row),
+      graded: false,
+      notice: 'نمره‌دهی هوشمند موقتاً ناموفق بود؛ عکس شما ذخیره شد.',
+      chapterJustCompleted,
+      chapterBonusAwarded,
+      pointsAwarded: 0,
+    });
   }
 });
 

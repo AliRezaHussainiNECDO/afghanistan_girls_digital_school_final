@@ -90,9 +90,29 @@ export async function getPromotionStatus(
   studentId: string,
   grade: number,
 ): Promise<PromotionStatus> {
-  const subjectsProgress = await getSubjectProgressList(db, studentId, grade);
-  const withContent = subjectsProgress.filter((s) => s.totalLessons > 0);
-  const allSubjectsComplete = withContent.length > 0 && withContent.every((s) => s.percent >= 100);
+  // رفع اشکال (H5 — همسویی معیارِ ارتقا با معیارِ واقعیِ قفلِ فصل/درس):
+  // قبلاً اینجا از [getSubjectProgressList] استفاده می‌شد که «تکمیل» را فقط
+  // از روی «دیده‌شدنِ درس» (percent >= 100) می‌سنجد — یعنی شاگردی که هرگز
+  // «یاد گرفتم» نزده، کار خانگی نداده، یا آزمونِ هیچ فصلی را نداده بود هم
+  // می‌توانست فقط با بازکردنِ صفحهٔ همهٔ درس‌ها واجدِ شرایطِ ارتقا شود؛ در
+  // حالی‌که خودِ قفلِ فصل ([getChapterList]) معیارِ بسیار سخت‌گیرانه‌تری
+  // (یاد گرفتم + کار خانگی + در صورت وجود، آزمونِ فصل) دارد. `percent` فقط
+  // برای نوارهای پیشرفتِ نمایشی در داشبوردها همان تعریفِ قدیمی («دیده‌شده»)
+  // را نگه می‌دارد؛ ارتقا از این پس مستقیماً از همان معیارِ سخت‌گیرانه‌ای
+  // استفاده می‌کند که خودِ فصل/درس را باز می‌کند.
+  const { results: subjects } = await db.prepare('SELECT id FROM subjects ORDER BY order_index').all<{ id: string }>();
+  let anySubjectHasContent = false;
+  let allSubjectsComplete = true;
+  for (const s of subjects) {
+    const chapters = await getChapterList(db, s.id, grade, studentId);
+    if (chapters.length === 0) continue; // این مضمون در این صنف اصلاً محتوا ندارد.
+    anySubjectHasContent = true;
+    if (!chapters.every((ch) => ch.completed)) {
+      allSubjectsComplete = false;
+      break;
+    }
+  }
+  allSubjectsComplete = anySubjectHasContent && allSubjectsComplete;
 
   // رفع اشکال «امتحان فاینل تک‌مضمونه»: امتحان نهایی از این پس یک امتحان
   // چندمضمونهٔ واحد برای کل صنف است (migration 0041: final_exams/
@@ -176,6 +196,20 @@ export async function getChapterList(
          (SELECT COUNT(*) FROM lessons l WHERE l.chapter_id=ch.id AND l.status='published') AS lesson_count,
          (SELECT COUNT(*) FROM lessons l JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
             WHERE l.chapter_id=ch.id AND l.status='published') AS viewed_count,
+         (SELECT COUNT(*) FROM lessons l WHERE l.chapter_id=ch.id AND l.status='published'
+            AND EXISTS (SELECT 1 FROM student_lesson_views v WHERE v.lesson_id=l.id AND v.user_id=?)
+            -- رفع اشکال امنیتی/منطقی (migration 0050): «کار خانگی وجود ندارد»
+            -- فقط وقتی fail-safe حساب می‌شود که شاگرد واقعاً دکمهٔ «یاد گرفتم»
+            -- را زده باشد — وگرنه شاگردی که هرگز این دکمه را نمی‌زند هم با
+            -- همین Fail-safe به‌اشتباه «تکمیل‌شده» حساب می‌شد. نگاه کنید به
+            -- کامنتِ کامل در [getLessonLockList] پایین همین فایل.
+            AND EXISTS (SELECT 1 FROM student_lesson_learned ll WHERE ll.lesson_id=l.id AND ll.student_id=?)
+            AND COALESCE(
+              (SELECT h.status FROM student_homeworks h WHERE h.student_id=? AND h.lesson_id=l.id
+                 ORDER BY h.created_at DESC LIMIT 1),
+              'submitted'
+            ) IN ('submitted','graded')
+         ) AS fully_completed_count,
          (SELECT cq.id FROM chapter_quizzes cq WHERE cq.chapter_id=ch.id AND cq.status='published') AS quiz_id,
          (SELECT COUNT(*) FROM chapter_quiz_attempts qa JOIN chapter_quizzes cq2 ON cq2.id=qa.quiz_id
             WHERE cq2.chapter_id=ch.id AND qa.user_id=?) AS quiz_attempted_count
@@ -183,7 +217,7 @@ export async function getChapterList(
        WHERE ch.subject_id=? AND ch.grade_number=? AND ch.status='published'
        ORDER BY ch.order_index`,
     )
-    .bind(studentId ?? '', studentId ?? '', subjectId, grade)
+    .bind(studentId ?? '', studentId ?? '', studentId ?? '', studentId ?? '', studentId ?? '', subjectId, grade)
     .all<{
       id: string;
       title_fa: string;
@@ -191,6 +225,7 @@ export async function getChapterList(
       source_book_id: string | null;
       lesson_count: number;
       viewed_count: number;
+      fully_completed_count: number;
       quiz_id: string | null;
       quiz_attempted_count: number;
     }>();
@@ -203,11 +238,29 @@ export async function getChapterList(
     // معیار «تکمیل» دیگر صرفِ دیدن درس‌ها نیست، بلکه ارسال همان آزمون است —
     // فصل بعدی فقط بعد از سپری‌کردن امتحان فصل باز می‌شود. اگر (به هر دلیلی،
     // مثلاً هوش مصنوعی پیکربندی نشده) هیچ آزمونی برای این فصل ساخته نشده،
-    // fail-safe: به همان رفتار قدیمی (دیدن تمام درس‌ها) برمی‌گردیم تا هیچ
-    // شاگردی برای همیشه پشت قفل نماند.
+    // fail-safe به‌جای «همهٔ درس‌ها دیده‌شده» حالا از همان معیارِ یکپارچهٔ
+    // «تکمیلِ درس» استفاده می‌کند که [getLessonLockList]/[checkAndCompleteChapter]
+    // هم استفاده می‌کنند (دیده‌شده + کار خانگی ارسال/نمره‌داده‌شده، یا نبودِ
+    // کار خانگی) — رفع اشکالِ ریشه‌ایِ «فصل قبل از خواندنِ واقعیِ درس‌ها
+    // تکمیل‌شده اعلام می‌شد»: قبلاً همین‌که همهٔ درس‌ها فقط «دیده» می‌شدند
+    // (حتی صرفِ بازکردنِ صفحه، بدون خواندن/چت/کار خانگی) کافی بود.
     const hasQuiz = r.quiz_id != null;
     const quizSubmitted = (r.quiz_attempted_count ?? 0) > 0;
-    const completed = hasQuiz ? quizSubmitted : r.lesson_count > 0 && r.viewed_count >= r.lesson_count;
+    // رفع اشکالِ ریشه‌ای («آزمونِ فصل قبل از خواندنِ حتی یک درس آماده نشان
+    // داده می‌شود»): `chapter_quizzes` یک ردیفِ *مشترک برای کل فصل* است —
+    // یک‌بار توسط هر شاگردی که اول به آخر فصل برسد ساخته می‌شود و از آن پس
+    // برای همهٔ شاگردانِ همان فصل (حتی آن‌هایی که هنوز هیچ درسی از این فصل
+    // را نخوانده‌اند) در جدول موجود است؛ نگاه کنید به کامنتِ بالای
+    // `ensureChapterQuiz` در `lib/chapterQuiz.ts`. پس صرفِ «آزمون برای این
+    // فصل وجود دارد» هرگز نباید به‌معنیِ «این شاگردِ خاص برای آزمون آماده
+    // است» باشد — وگرنه دقیقاً همان چیزی رخ می‌دهد که گزارش شد: شاگردی که
+    // درسِ اول را هم باز نکرده، با «آزمون فصل آماده است» روبه‌رو می‌شود. حالا
+    // این معیار هم اضافه شده: فقط وقتی *خودِ همین شاگرد* همهٔ درس‌های فصل را
+    // به‌طور کامل (دیده + کار خانگی ارسال/نمره‌داده‌شده) تمام کرده باشد، وجودِ
+    // آزمون به‌معنیِ «آماده/در انتظار» حساب می‌شود.
+    const lessonsFullyDone = r.lesson_count > 0 && r.fully_completed_count >= r.lesson_count;
+    const quizPending = hasQuiz && lessonsFullyDone && !quizSubmitted;
+    const completed = hasQuiz ? lessonsFullyDone && quizSubmitted : lessonsFullyDone;
     const percent = r.lesson_count > 0 ? Math.round((r.viewed_count / r.lesson_count) * 1000) / 10 : 0;
     const unlocked = previousCompleted;
     previousCompleted = completed;
@@ -221,7 +274,7 @@ export async function getChapterList(
       completed,
       unlocked,
       sourceBookId: r.source_book_id,
-      quizPending: hasQuiz && !quizSubmitted,
+      quizPending,
     };
   });
 }
@@ -235,6 +288,18 @@ export async function getChapterList(
 // نداشته باشد (مثلاً تولید Gemini در لحظهٔ «یاد گرفتم» به‌خاطر اتمام سهمیهٔ
 // رایگان ناموفق بود)، همان «دیده‌شدن درس» شرط تکمیل حساب می‌شود — شاگرد
 // هرگز به‌خاطر خطای سرویس بیرونی برای همیشه پشت قفل نمی‌ماند.
+//
+// 🔒 رفع اشکال امنیتی (migration 0050 — «دورزدنِ قفل با هرگز نزدنِ یاد
+// گرفتم»): Fail-safeِ بالا («کار خانگی نبود = مشکلی نیست») قبلاً هیچ راهی
+// نداشت که «شاگرد هرگز دکمهٔ یاد گرفتم را نزده» را از «زده ولی هوش مصنوعی
+// خطا داد» تشخیص دهد — چون کار خانگی *فقط* از داخل همان دکمه ساخته می‌شود
+// (POST /lessons/:lessonId/learned، lib/lessonHomework.ts). نتیجه: شاگردی
+// که فقط صفحهٔ درس را باز می‌کرد (بدون خواندن/چت/یاد گرفتم) هم با همین
+// Fail-safe به‌اشتباه «تکمیل‌شده» حساب می‌شد و کل فصل را دور می‌زد. از این
+// پس خودِ رویدادِ «یاد گرفتم» مستقیماً در جدول `student_lesson_learned`
+// ثبت می‌شود (صرف‌نظر از موفقیتِ ساختِ کار خانگی) و همین ردیف، شرط جدیدِ
+// جداگانهٔ «تکمیل» است — Fail-safeِ کار خانگی فقط *بعد از* وجود این ردیف
+// اعمال می‌شود.
 //
 // 🚨 این بخش یک لایهٔ *جدید و جداگانه* است: هیچ تغییری در محاسبهٔ فیصدی
 // پیشرفت، امتیازدهی، یا منطق «یاد گرفتم ← کار خانگی» (بالا/پایین همین فایل)
@@ -268,22 +333,28 @@ export async function getLessonLockList(
     .prepare(
       `SELECT l.id, l.order_index,
          CASE WHEN v.lesson_id IS NULL THEN 0 ELSE 1 END AS viewed,
+         CASE WHEN ll.lesson_id IS NULL THEN 0 ELSE 1 END AS learned,
          (SELECT h.status FROM student_homeworks h
             WHERE h.student_id = ? AND h.lesson_id = l.id
             ORDER BY h.created_at DESC LIMIT 1) AS hw_status
        FROM lessons l
        LEFT JOIN student_lesson_views v ON v.lesson_id = l.id AND v.user_id = ?
+       LEFT JOIN student_lesson_learned ll ON ll.lesson_id = l.id AND ll.student_id = ?
        WHERE l.chapter_id = ? AND l.status = 'published'
        ORDER BY l.order_index`,
     )
-    .bind(studentId ?? '', studentId ?? '', chapterId)
-    .all<{ id: string; order_index: number; viewed: number; hw_status: string | null }>();
+    .bind(studentId ?? '', studentId ?? '', studentId ?? '', chapterId)
+    .all<{ id: string; order_index: number; viewed: number; learned: number; hw_status: string | null }>();
 
   let previousCompleted = true; // درس اولِ فصلِ باز، همیشه باز است
   return results.map((r) => {
     const viewed = r.viewed === 1;
+    // رفع اشکال امنیتی (migration 0050): «تکمیل» دیگر صرفِ دیده‌شدن نیست —
+    // باید خودِ «یاد گرفتم» هم واقعاً زده شده باشد؛ نگاه کنید به کامنتِ کامل
+    // بالای این تابع.
+    const learned = r.learned === 1;
     const homeworkDone = r.hw_status === null || r.hw_status === 'submitted' || r.hw_status === 'graded';
-    const completed = viewed && homeworkDone;
+    const completed = learned && homeworkDone;
     const unlocked = chapterUnlocked && previousCompleted;
     previousCompleted = completed;
     return { id: r.id, orderIndex: r.order_index, viewed, completed, unlocked };
@@ -316,6 +387,88 @@ export async function isLessonUnlockedFor(
   const locks = await getLessonLockList(db, lesson.chapter_id, studentId, chapterUnlocked);
   const info = locks.find((l) => l.id === lessonId);
   return { found: true, unlocked: info?.unlocked ?? false };
+}
+
+/**
+ * بررسیِ متمرکز و یکپارچهٔ «آیا این فصل الان تکمیل شد؟» — منبعِ واحدِ
+ * حقیقت که از هر دو نقطه‌ای صدا زده می‌شود که می‌تواند آخرین قطعهٔ ناقصِ
+ * یک فصل را کامل کند: دیدنِ یک درس ([recordLessonView]) و ارسالِ کار خانگی
+ * ([routes/homework.ts]::`POST /homework/:id/submit`).
+ *
+ * رفع اشکالِ ریشه‌ایِ گزارش‌شده («فصل تکمیل شد» قبل از خواندنِ واقعیِ درسِ
+ * اول/تنها؛ یا همین‌که وارد یک درس می‌شود بلافاصله امتحان می‌آید): قبلاً
+ * «تکمیلِ فصل» فقط از روی «همهٔ درس‌های فصل *دیده*‌شده‌اند» تصمیم می‌گرفت —
+ * و این فقط داخل [recordLessonView] چک می‌شد، یعنی دقیقاً همان لحظه‌ای که
+ * شاگرد صفحهٔ آخرین درسِ فصل را باز می‌کرد (حتی یک ثانیه، پیش از خواندنِ
+ * واقعیِ متن، چت با معلم، زدنِ «یاد گرفتم»، یا فرستادنِ کار خانگیِ همان
+ * درس)، سرور فوراً chapterJustCompleted=true برمی‌گرداند و کلاینت ۱.۴ ثانیه
+ * بعد مستقیم به «آزمون فصل» می‌رفت. همین معیارِ «صرفِ دیده‌شدن» با معیارِ
+ * قفلِ درس‌به‌درس ([getLessonLockList]: دیده‌شده + کار خانگی ارسال/نمره‌
+ * داده‌شده) هم ناهماهنگ بود.
+ *
+ * قاعدهٔ یکپارچهٔ تازه: فصل فقط وقتی «تازه تکمیل شده» حساب می‌شود که
+ * **همهٔ** درس‌های آن هم دیده‌شده و هم (کار خانگی‌شان ارسال/نمره‌داده‌شده یا
+ * اصلاً کار خانگی‌ای برایشان ساخته نشده — همان Fail-safe موجود) باشند —
+ * دقیقاً همان تعریفِ «تکمیلِ درس» که قفلِ درسِ بعدی از آن استفاده می‌کند. تا
+ * وقتی این شرط برای آخرین درسِ فصل هم برقرار نشود (که معمولاً با فرستادنِ
+ * کار خانگیِ همان درس، نه صرفِ بازکردنِ صفحه‌اش، اتفاق می‌افتد)،
+ * chapterJustCompleted هرگز true برنمی‌گردد — پس جشن/هدایتِ خودکار به آزمونِ
+ * فصل هم زودتر از موعد رخ نمی‌دهد.
+ *
+ * Idempotent: اگر فصل قبلاً تکمیل ثبت شده باشد (`student_chapter_completions`)،
+ * دوباره امتیاز نمی‌دهد و chapterJustCompleted=false برمی‌گرداند.
+ */
+export async function checkAndCompleteChapter(
+  db: D1Database,
+  studentId: string,
+  chapterId: string,
+): Promise<{ chapterJustCompleted: boolean }> {
+  const already = await db
+    .prepare('SELECT 1 FROM student_chapter_completions WHERE user_id=? AND chapter_id=?')
+    .bind(studentId, chapterId)
+    .first();
+  if (already) return { chapterJustCompleted: false };
+
+  const { results } = await db
+    .prepare(
+      `SELECT l.id,
+         CASE WHEN v.lesson_id IS NULL THEN 0 ELSE 1 END AS viewed,
+         CASE WHEN ll.lesson_id IS NULL THEN 0 ELSE 1 END AS learned,
+         (SELECT h.status FROM student_homeworks h
+            WHERE h.student_id = ? AND h.lesson_id = l.id
+            ORDER BY h.created_at DESC LIMIT 1) AS hw_status
+       FROM lessons l
+       LEFT JOIN student_lesson_views v ON v.lesson_id = l.id AND v.user_id = ?
+       LEFT JOIN student_lesson_learned ll ON ll.lesson_id = l.id AND ll.student_id = ?
+       WHERE l.chapter_id = ? AND l.status = 'published'`,
+    )
+    .bind(studentId, studentId, studentId, chapterId)
+    .all<{ id: string; viewed: number; learned: number; hw_status: string | null }>();
+
+  if (results.length === 0) return { chapterJustCompleted: false };
+
+  // رفع اشکال امنیتی (migration 0050): «تکمیل» دیگر صرفِ دیده‌شدن نیست —
+  // باید خودِ «یاد گرفتم» هم واقعاً زده شده باشد (نه فقط بازکردنِ صفحه)؛
+  // نگاه کنید به کامنتِ کامل بالای [getLessonLockList].
+  const allLessonsCompleted = results.every((r) => {
+    const learned = r.learned === 1;
+    const homeworkDone = r.hw_status === null || r.hw_status === 'submitted' || r.hw_status === 'graded';
+    return learned && homeworkDone;
+  });
+  if (!allLessonsCompleted) return { chapterJustCompleted: false };
+
+  // INSERT OR IGNORE + بررسیِ meta.changes: اگر دو درخواستِ هم‌زمان (مثلاً
+  // دیدنِ درس و ارسالِ کار خانگی، تقریباً هم‌لحظه) هر دو به اینجا برسند، فقط
+  // یکی واقعاً درج می‌کند — همان یکی امتیازِ پاداش را می‌گیرد و
+  // chapterJustCompleted=true برمی‌گرداند، دیگری idempotent خاموش می‌ماند.
+  const insertResult = await db
+    .prepare('INSERT OR IGNORE INTO student_chapter_completions (user_id, chapter_id) VALUES (?, ?)')
+    .bind(studentId, chapterId)
+    .run();
+  if ((insertResult.meta?.changes ?? 0) === 0) return { chapterJustCompleted: false };
+
+  await awardPoints(db, studentId, POINTS_PER_CHAPTER_COMPLETE, 'chapter_complete', chapterId);
+  return { chapterJustCompleted: true };
 }
 
 // ═══════════════════════ امتیازدهی بر اساس فعالیت (Gamification) ═══════════
@@ -404,6 +557,18 @@ function daysBetween(a: string, b: string): number {
  */
 export async function touchDailyStreak(db: D1Database, studentId: string): Promise<void> {
   const today = todayIso();
+
+  // 🔒 رفع اشکالِ نژادی (migration 0051): گاردِ اتمیکِ «ادعای امروز» — فقط
+  // درخواستی که واقعاً این ردیف را درج می‌کند (meta.changes>0) اجازه دارد
+  // پاداشِ روزانه/نقطهٔ عطف را محاسبه و ثبت کند؛ هر درخواستِ هم‌زمانِ دیگر
+  // برای همان (شاگرد، امروز) بی‌صدا و idempotent برمی‌گردد — نگاه کنید به
+  // توضیح کامل بالای این تابع.
+  const claim = await db
+    .prepare('INSERT OR IGNORE INTO student_streak_daily_claims (student_id, claim_date) VALUES (?, ?)')
+    .bind(studentId, today)
+    .run();
+  if ((claim.meta?.changes ?? 0) === 0) return;
+
   const row = await db
     .prepare('SELECT current_streak, longest_streak, last_active_date, milestones_awarded FROM student_streaks WHERE student_id = ?')
     .bind(studentId)
@@ -567,31 +732,15 @@ export async function recordLessonView(
   if (firstView) {
     await awardPoints(db, studentId, POINTS_PER_LESSON_VIEW, 'lesson_view', lessonId);
 
-    const chapterId = lesson.chapter_id;
-    const counts = await db
-      .prepare(
-        `SELECT
-           (SELECT COUNT(*) FROM lessons WHERE chapter_id=? AND status='published') AS total,
-           (SELECT COUNT(*) FROM lessons l JOIN student_lesson_views v ON v.lesson_id=l.id AND v.user_id=?
-              WHERE l.chapter_id=? AND l.status='published') AS viewed`,
-      )
-      .bind(chapterId, studentId, chapterId)
-      .first<{ total: number; viewed: number }>();
-
-    if (counts && counts.total > 0 && counts.viewed >= counts.total) {
-      const already = await db
-        .prepare('SELECT 1 FROM student_chapter_completions WHERE user_id=? AND chapter_id=?')
-        .bind(studentId, chapterId)
-        .first();
-      if (!already) {
-        await db
-          .prepare('INSERT OR IGNORE INTO student_chapter_completions (user_id, chapter_id) VALUES (?, ?)')
-          .bind(studentId, chapterId)
-          .run();
-        await awardPoints(db, studentId, POINTS_PER_CHAPTER_COMPLETE, 'chapter_complete', chapterId);
-        chapterJustCompleted = true;
-      }
-    }
+    // رفع اشکالِ ریشه‌ای: قبلاً اینجا فقط «همهٔ درس‌های فصل دیده‌شده؟» چک
+    // می‌شد — یعنی صرفِ بازکردنِ صفحهٔ آخرین/تنها درسِ فصل (حتی بدون خواندنِ
+    // واقعی/چت/کار خانگی) کافی بود تا فصل «تکمیل» اعلام و کلاینت بلافاصله
+    // به آزمونِ فصل هدایت شود. حالا از همان معیارِ یکپارچهٔ [checkAndCompleteChapter]
+    // استفاده می‌شود — که علاوه‌بر «دیده‌شدن»، «کار خانگیِ ارسال/نمره‌داده‌شده
+    // (یا نبودِ کار خانگی)» را هم برای *همهٔ* درس‌های فصل شرط می‌داند؛ همان
+    // معیاری که [getLessonLockList] برای قفلِ درسِ بعدی استفاده می‌کند.
+    const result = await checkAndCompleteChapter(db, studentId, lesson.chapter_id);
+    chapterJustCompleted = result.chapterJustCompleted;
   }
 
   return { found: true, firstView, chapterJustCompleted, chapterId: lesson.chapter_id };

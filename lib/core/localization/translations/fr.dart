@@ -158,6 +158,7 @@ const Map<String, String> frStrings = {
 'curriculum.units': 'Unités',
 'curriculum.lessons': 'Leçons',
 'curriculum.viewLesson': 'Voir la leçon',
+'curriculum.backToLessonList': 'Retour à la liste des leçons',
 'curriculum.lessonLearnedButton': 'J\'ai appris cette leçon',
 'curriculum.homeworkAssigned': 'Bravo ! Le devoir de cette leçon est prêt 📝 — voir la section « Devoirs ».',
 'curriculum.homeworkAlreadyAssigned': 'Le devoir de cette leçon a déjà été attribué.',
@@ -411,6 +412,7 @@ const Map<String, String> frStrings = {
 'studyPlan.noBooksYet': "Aucun livre n'a encore été ajouté pour créer un emploi du temps. Demandez à l'administrateur d'ajouter les manuels du programme.",
 'studyPlan.browseBooksCta': 'Voir les manuels du programme',
 'studyPlan.todayMinutesLabel': "{minutes} min aujourd'hui",
+'studyPlan.newSubjectBadge': 'Nouvelle matière',
 
 // exams
 'exams.available': 'Examens disponibles',

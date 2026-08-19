@@ -1,19 +1,38 @@
 import 'package:equatable/equatable.dart';
 
 /// یک «جلسهٔ درسی» در تقسیم اوقات — واحد پایهٔ برنامهٔ روزانه.
+///
+/// **این کلاس عمداً فقط دربارهٔ «کدام مضمون، چه مدت، آیا تازه است» است —
+/// نه «کدام درس/فصل دقیقاً باز است».** آن بخش (که باید همیشه تازه/زنده
+/// باشد، نه هفته‌ای یک‌بار Cache‌شده) از `todaySubjectPointerProvider`
+/// (در `study_plan_providers.dart`) خوانده می‌شود — همان Provider که
+/// مستقیماً `chaptersProvider`/`lessonsProvider`ی خودِ نصاب درسی را
+/// می‌خواند. این جداسازی دقیقاً رفع اشکال ریشه‌ای «امروز و نصاب درسی یک
+/// منبع معلومات ندارند» است: قبلاً «کدام درس» هم همین‌جا محاسبه و در
+/// SharedPreferences ذخیره می‌شد، پس تا آخر هفته (یا تا «تولید دوباره»)
+/// حتی بعد از ارسال کار خانگی به‌روز نمی‌شد؛ حالا هیچ اشارهٔ درس/فصلی اینجا
+/// ذخیره نمی‌شود، فقط در لحظهٔ نمایش، زنده، از همان نصاب درسی خوانده می‌شود.
 class StudySlot extends Equatable {
   final String subjectId;
   final String subjectNameFa;
 
-  /// توضیح تمرکز جلسه، مثلاً «ادامه از بخش ۱۲ کتاب» یا «مرور بخش‌های قبلی».
+  /// توضیح انگیزشیِ Fail-safe — فقط وقتی نمایش داده می‌شود که نصاب این
+  /// مضمون اصلاً ساختاربندی نشده (چیزی برای قفل شدن نیست)؛ در غیر این
+  /// صورت UI همیشه پیام زندهٔ `todaySubjectPointerProvider` را نشان می‌دهد.
   final String focusFa;
   final int minutes;
+
+  /// این مضمون امروز اولین‌بار به شاگرد «پیشنهاد» می‌شود (هنوز شروع نکرده،
+  /// این هفته هم برایش تازه است) — کارت UI برایش نشان «مضمون جدید» می‌گذارد
+  /// تا برنامهٔ امروز واقعاً مثل یک کاریکولم زنده حس شود، نه فهرست ثابت.
+  final bool isNew;
 
   const StudySlot({
     required this.subjectId,
     required this.subjectNameFa,
     required this.focusFa,
     this.minutes = 45,
+    this.isNew = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -21,6 +40,7 @@ class StudySlot extends Equatable {
         'subjectNameFa': subjectNameFa,
         'focusFa': focusFa,
         'minutes': minutes,
+        'isNew': isNew,
       };
 
   factory StudySlot.fromJson(Map<String, dynamic> j) => StudySlot(
@@ -28,10 +48,11 @@ class StudySlot extends Equatable {
         subjectNameFa: j['subjectNameFa'] as String? ?? '',
         focusFa: j['focusFa'] as String? ?? '',
         minutes: j['minutes'] as int? ?? 45,
+        isNew: j['isNew'] as bool? ?? false,
       );
 
   @override
-  List<Object?> get props => [subjectId, focusFa, minutes];
+  List<Object?> get props => [subjectId, focusFa, minutes, isNew];
 }
 
 /// برنامهٔ یک روز — weekday مطابق DateTime.weekday (شنبه=6، جمعه=5).

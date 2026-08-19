@@ -158,6 +158,7 @@ const Map<String, String> psStrings = {
 'curriculum.units': 'واحدونه',
 'curriculum.lessons': 'درسونه',
 'curriculum.viewLesson': 'درس کتل',
+'curriculum.backToLessonList': 'د درسونو لست ته بیرته',
 'curriculum.lessonLearnedButton': 'دا درس مې زده کړ',
 'curriculum.homeworkAssigned': 'آفرین! د دې درس کورنۍ دنده درته چمتو شوه 📝 — د «کورنۍ دنده» له برخې یې وګورئ.',
 'curriculum.homeworkAlreadyAssigned': 'د دې درس کورنۍ دنده مخکې درکړل شوې ده.',
@@ -411,6 +412,7 @@ const Map<String, String> psStrings = {
 'studyPlan.noBooksYet': 'تر اوسه هېڅ کتاب د مهال ویش جوړولو لپاره اضافه شوی نه دی. له مدیر څخه وغواړئ چې د نصاب کتابونه اضافه کړي.',
 'studyPlan.browseBooksCta': 'د نصاب کتابونه وګورئ',
 'studyPlan.todayMinutesLabel': 'نن {minutes} دقیقې',
+'studyPlan.newSubjectBadge': 'نوی مضمون',
 
 // exams
 'exams.available': 'شته ازموینې',

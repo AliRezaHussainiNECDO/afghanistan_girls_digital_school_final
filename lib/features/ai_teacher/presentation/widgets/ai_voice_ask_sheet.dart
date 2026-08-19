@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,8 +8,13 @@ import 'package:record/record.dart';
 
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/tts_text_splitter.dart';
 import '../../../../shared_models/subject.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../competition/presentation/providers/competition_providers.dart';
 import '../../../curriculum/presentation/providers/curriculum_providers.dart';
+import '../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/chat_message.dart';
 import '../providers/ai_teacher_providers.dart';
 
@@ -31,6 +38,7 @@ Future<void> showAiVoiceAskSheet(
   required String lessonId,
   required String lessonTitle,
   required String lessonContent,
+  String? chapterId,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -44,6 +52,7 @@ Future<void> showAiVoiceAskSheet(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: AiVoiceAskSheet(
         subjectId: subjectId,
+        chapterId: chapterId,
         lessonId: lessonId,
         lessonTitle: lessonTitle,
         lessonContent: lessonContent,
@@ -58,6 +67,12 @@ class AiVoiceAskSheet extends ConsumerStatefulWidget {
   final String lessonTitle;
   final String lessonContent;
 
+  /// شناسهٔ فصلِ همین درس — فقط برای Invalidate کردن دقیقِ
+  /// `lessonsProvider(chapterId)` بعد از «یاد گرفتم» لازم است (رفع اشکال
+  /// هماهنگی نصاب درسی/امروز، نگاه کنید به [_markLearned])؛ اختیاری است چون
+  /// [showAiVoiceAskSheet] در حالت غیر-Embedded ممکن است بدون چپتر صدا زده شود.
+  final String? chapterId;
+
   /// حالت «کلاس تعاملی تمام‌صفحه» (طبق درخواست کاربر): وقتی true باشد، همین
   /// ویجت مستقیماً بدنهٔ (body) صفحهٔ درس می‌شود — بدون دستگیرهٔ کشیدن شیت و
   /// بدون سقف ارتفاع ۷۲٪؛ کل فضای صفحه را می‌گیرد تا شاگرد به‌محض ورود به
@@ -67,6 +82,7 @@ class AiVoiceAskSheet extends ConsumerStatefulWidget {
   const AiVoiceAskSheet({
     super.key,
     required this.subjectId,
+    this.chapterId,
     required this.lessonId,
     required this.lessonTitle,
     required this.lessonContent,
@@ -87,6 +103,66 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
   bool _isRecording = false;
   bool _transcribing = false;
   String? _speakingId;
+
+  // ── پخشِ صدای پاسخِ معلم — قطعه‌به‌قطعه با بازآزمایی (Fail-safe) ──
+  //
+  // رفع اشکالِ ریشه‌ای «صدای متنِ طولانی هنوز پلی نمی‌شود»: قاعدهٔ
+  // «هیچ‌قطعه‌ای از سقفِ مجاز بزرگ‌تر نشود + هر قطعه تا ۲ بار دوباره تلاش
+  // شود + یک قطعهٔ خراب کل جلسه را متوقف نکند» قبلاً فقط در صفحهٔ درس
+  // («شنیدنِ درس») پیاده شده بود. اما همین دکمهٔ 🔊 اینجا — که پاسخِ کاملِ
+  // معلمِ هوشمند را در یک درخواستِ تکی و بدون‌سقف می‌فرستاد — دقیقاً همان
+  // مسیرِ فراموش‌شده بود که با یک پاسخِ طولانی (که برای تولیدِ صدایش بیش از
+  // زمانِ انتظار مجاز طول می‌کشید) دوباره همان خطای «در دسترس نیست» را
+  // نشان می‌داد. حالا این متد هم از همان تابعِ مشترکِ [splitForTts] و همان
+  // منطقِ قطعه‌به‌قطعهٔ [LessonDetailScreen] پیروی می‌کند.
+  List<String> _speakChunks = const [];
+  int _speakIndex = 0;
+  bool _speakAnyChunkPlayed = false;
+  AiChatMessage? _speakingMsg;
+
+  // رفعِ اشکالِ گزارش‌شده («صدا چند لحظه معطل می‌ماند تا پلی شود، خسته‌کننده
+  // است») — دقیقاً همان ترفندِ `LessonDetailScreen`: هر قطعه فقط یک‌بار
+  // ساخته می‌شود (نتیجه در این Mapها کش می‌شود، به‌ازای هر پیام جداگانه چون
+  // چند پاسخِ معلم می‌توانند هم‌زمان روی صفحه باشند) و همین‌که پخشِ یک قطعه
+  // *شروع* شد، ساختِ قطعهٔ بعدی هم بلافاصله در پس‌زمینه آغاز می‌شود — تا وقتی
+  // نوبتش برسد معمولاً از قبل آماده است. علاوه‌براین، همین که خودِ پاسخِ
+  // معلم می‌رسد (نه از لحظهٔ زدنِ دکمهٔ 🔊)، صدای قطعهٔ *اولش* هم پیشاپیش و
+  // در پس‌زمینه ساخته می‌شود؛ نگاه کنید `_prefetchSpeakChunk0` و `ref.listen`
+  // پایینِ build().
+  final Map<String, List<String>> _speakChunksByMsg = {};
+  final Map<String, Map<int, Future<String?>>> _speakFuturesByMsg = {};
+  final Set<String> _speakPrefetchStarted = {};
+
+  /// تولیدِ صدای یک قطعه با تلاشِ مجدد (تا ۲ بارِ دیگر، مکثِ فزاینده).
+  Future<String?> _synthesizeWithRetry(String chunk, {int attempt = 0}) async {
+    final voice = ref.read(aiVoiceServiceProvider);
+    if (voice == null) return null;
+    final path = await voice.synthesize(chunk);
+    if (path != null || attempt >= 2) return path;
+    await Future.delayed(Duration(milliseconds: 700 * (attempt + 1)));
+    return _synthesizeWithRetry(chunk, attempt: attempt + 1);
+  }
+
+  List<String> _chunksFor(AiChatMessage msg) =>
+      _speakChunksByMsg.putIfAbsent(msg.id, () => splitForTts(msg.body));
+
+  /// اگر ساختِ صدای قطعهٔ [index] از همین پیام قبلاً آغاز نشده، همین حالا
+  /// (در پس‌زمینه) آغازش می‌کند و Future مشترک را برمی‌گرداند.
+  Future<String?> _ensureSpeakChunkFuture(AiChatMessage msg, int index) {
+    final chunks = _chunksFor(msg);
+    if (index < 0 || index >= chunks.length) return Future.value(null);
+    final futures = _speakFuturesByMsg.putIfAbsent(msg.id, () => {});
+    return futures.putIfAbsent(index, () => _synthesizeWithRetry(chunks[index]));
+  }
+
+  /// یک‌بار برای هر پیام، همین که پاسخِ تازهٔ معلم می‌رسد (پیش از اینکه
+  /// شاگرد اصلاً دکمهٔ 🔊 را بزند)، صدای قطعهٔ *اول* آن را در پس‌زمینه
+  /// می‌سازد — هزینه عمداً کم نگه داشته شده (فقط یک قطعهٔ کوچک، نه کل پاسخ).
+  void _prefetchSpeakChunk0(AiChatMessage msg) {
+    if (!_speakPrefetchStarted.add(msg.id)) return;
+    if (ref.read(aiVoiceServiceProvider) == null) return;
+    _ensureSpeakChunkFuture(msg, 0);
+  }
 
   /// «این درس را یاد گرفتم» — کار خانگی فقط با زدن همین دکمه ساخته می‌شود
   /// (نه با باز کردن درس). برای هر درس فقط یک کار خانگی؛ زدن دوباره روی
@@ -110,6 +186,33 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
           return;
         }
         setState(() => _learnedThisSession = true);
+        // ── رفع اشکال ریشه‌ای هماهنگی «نصاب درسی» ↔ «امروز»: قبلاً بعد از
+        // ارسال کار خانگی هیچ Providerای Invalidate نمی‌شد — یعنی
+        // `lessonsProvider(chapterId)`/`chaptersProvider(subjectId)` (که هم
+        // LessonsScreen/ChaptersScreen و هم `todaySubjectPointerProvider` در
+        // «امروز» دقیقاً از همین دو می‌خوانند) تا خروج کامل از کل پشتهٔ
+        // ناوبری همان وضعیت قفلِ *قبل از* همین کار خانگی را نشان می‌دادند؛
+        // یعنی «درس بعدی باز شد» فقط با تأخیر/گاهی اصلاً دیده نمی‌شد. حالا
+        // بلافاصله همین‌جا Invalidate می‌شود — چون این دو Provider منبع واحد
+        // هر دو بخش‌اند، هر دو همین لحظه با هم به‌روز می‌شوند.
+        if (r.assigned || r.alreadyAssigned) {
+          ref.invalidate(chaptersProvider(widget.subjectId));
+          final chapterId = widget.chapterId;
+          if (chapterId != null) ref.invalidate(lessonsProvider(chapterId));
+          ref.invalidate(lessonProvider(widget.lessonId));
+          final studentId = ref.read(authSessionProvider)?.id;
+          if (studentId != null) {
+            ref.invalidate(dashboardSummaryProvider(studentId));
+            ref.invalidate(gradeMapProvider);
+          }
+          // رفع اشکال (H6 — کهنه‌ماندنِ رقابت/جدولِ امتیازات): «یاد گرفتم»
+          // می‌تواند امتیاز فعالیت و/یا پاداشِ تکمیلِ فصل بدهد (progress.ts::
+          // recordLessonView/checkAndCompleteChapter) — قبلاً این هیچ اثری
+          // روی صفحهٔ رقابت/جدولِ امتیازات نداشت تا شاگرد خودش دستی صفحه را
+          // باز/بسته می‌کرد. حالا دقیقاً مثلِ claimMission/claimDailyQuest
+          // در competition_providers.dart بلافاصله تازه می‌شود.
+          ref.read(competitionRefreshProvider.notifier).state++;
+        }
         if (r.assigned) {
           _snack(context.tr('curriculum.homeworkAssigned'));
         } else if (r.alreadyAssigned) {
@@ -135,8 +238,12 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
   @override
   void initState() {
     super.initState();
+    // با پایانِ پخشِ هر قطعه، خودکار سراغِ قطعهٔ بعدیِ همان پاسخ می‌رویم —
+    // نه اینکه فقط _speakingId را پاک کنیم (که فقط برای متنِ تک‌قطعه‌ای درست
+    // بود).
     _player.onPlayerComplete.listen((_) {
-      if (mounted) setState(() => _speakingId = null);
+      final msg = _speakingMsg;
+      if (mounted && msg != null) _playSpeakChunkAt(msg, _speakIndex);
     });
   }
 
@@ -211,23 +318,78 @@ class _AiVoiceAskSheetState extends ConsumerState<AiVoiceAskSheet> {
     if (voice == null) return;
     if (_speakingId == msg.id) {
       await _player.stop();
-      if (mounted) setState(() => _speakingId = null);
+      if (mounted) {
+        setState(() {
+          _speakingId = null;
+          _speakingMsg = null;
+          _speakIndex = 0;
+        });
+      }
       return;
     }
-    setState(() => _speakingId = msg.id);
-    final path = await voice.synthesize(msg.body);
-    if (!mounted) return;
+    // اگر پیامِ دیگری در حالِ پخش بود، اول متوقفش کن — یک بار در لحظه فقط.
+    await _player.stop();
+    setState(() {
+      _speakingId = msg.id;
+      _speakingMsg = msg;
+      // معمولاً از قبل با `_prefetchSpeakChunk0` ساخته شده — همان لیستِ کش‌شده
+      // استفاده می‌شود تا دوباره‌محاسبه نشود.
+      _speakChunks = _chunksFor(msg);
+      _speakIndex = 0;
+      _speakAnyChunkPlayed = false;
+    });
+    await _playSpeakChunkAt(msg, 0);
+  }
+
+  /// پخشِ قطعهٔ [index] از پاسخِ [msg] — با تا ۲ بار بازآزماییِ هر قطعه
+  /// (داخلِ `_synthesizeWithRetry`) و ادامه به قطعهٔ بعدی به‌جای توقفِ کاملِ
+  /// پخش اگر فقط همان یک قطعه شکست خورد. پیامِ «در دسترس نیست» فقط وقتی
+  /// نشان داده می‌شود که حتی قطعهٔ اول هم (بعد از تلاش‌های تکراری) شکست
+  /// بخورد. رفعِ اشکالِ «صدا معطل می‌ماند»: همین‌که پخشِ این قطعه آغاز شد،
+  /// بلافاصله ساختِ قطعهٔ بعدی هم در پس‌زمینه شروع می‌شود.
+  Future<void> _playSpeakChunkAt(AiChatMessage msg, int index) async {
+    if (!mounted || _speakingId != msg.id) return;
+    final chunks = _chunksFor(msg);
+    if (index >= chunks.length) {
+      setState(() {
+        _speakingId = null;
+        _speakingMsg = null;
+      });
+      return;
+    }
+    final path = await _ensureSpeakChunkFuture(msg, index);
+    if (!mounted || _speakingId != msg.id) return;
     if (path == null) {
-      setState(() => _speakingId = null);
-      _snack(context.tr('curriculum.audioUnavailable'));
-      return;
+      if (!_speakAnyChunkPlayed) {
+        setState(() {
+          _speakingId = null;
+          _speakingMsg = null;
+        });
+        _snack(context.tr('curriculum.audioUnavailable'));
+        return;
+      }
+      setState(() => _speakIndex = index + 1);
+      return _playSpeakChunkAt(msg, index + 1);
     }
+    setState(() {
+      _speakAnyChunkPlayed = true;
+      _speakIndex = index + 1;
+    });
+    unawaited(_ensureSpeakChunkFuture(msg, index + 1));
     await _player.play(DeviceFileSource(path));
   }
 
   @override
   Widget build(BuildContext context) {
     final messages = ref.watch(aiLessonConversationProvider(_focus));
+    // پیش‌بارگذاریِ صدای هر پاسخِ تازهٔ معلم، همین لحظه‌ای که به گفتگو اضافه
+    // می‌شود — نه از لحظهٔ زدنِ 🔊 (رفعِ اشکالِ «صدا معطل می‌ماند»؛ نگاه کنید
+    // به کامنتِ `_prefetchSpeakChunk0` بالا).
+    ref.listen<List<AiChatMessage>>(aiLessonConversationProvider(_focus), (prev, next) {
+      if (next.isEmpty) return;
+      final last = next.last;
+      if (last.sender == ChatSender.ai) _prefetchSpeakChunk0(last);
+    });
     final voiceEnabled = ref.watch(aiVoiceServiceProvider) != null;
     final progressAsync = ref.watch(aiLessonProgressProvider(_focus));
     final scheme = Theme.of(context).colorScheme;

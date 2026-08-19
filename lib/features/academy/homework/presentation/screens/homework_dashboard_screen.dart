@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../../app/router/app_routes.dart';
 import '../../../../../app/theme/design_tokens.dart';
 import '../../../../../core/localization/app_localizations.dart';
 import '../../../../../core/widgets/app_scaffold.dart';
 import '../../../../../core/widgets/error_view.dart';
 import '../../../../auth/domain/entities/app_user.dart';
 import '../../../../auth/presentation/providers/auth_providers.dart';
+import '../../../../competition/presentation/providers/competition_providers.dart';
 import '../../../../curriculum/presentation/providers/curriculum_providers.dart';
 import '../../../../grade_map/presentation/providers/grade_map_providers.dart';
 import '../../../../student_dashboard/presentation/providers/dashboard_providers.dart';
@@ -40,6 +43,60 @@ class _HomeworkDashboardScreenState extends ConsumerState<HomeworkDashboardScree
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// جشنِ تکمیلِ فصل — دقیقاً همان بنر طلاییِ `_showPointsFeedback` در
+  /// `LessonDetailScreen`، اینجا هم استفاده می‌شود چون از این پس تکمیلِ فصل
+  /// ممکن است با ارسالِ کار خانگی (نه فقط دیدنِ درس) اتفاق بیفتد.
+  void _celebrateChapterCompletion(int bonusPoints, {int basePoints = 0}) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        duration: const Duration(seconds: 4),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: AppColors.sunriseGradient,
+            borderRadius: BorderRadius.circular(AppRadii.lg),
+            boxShadow: AppShadows.green,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 26),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      context.tr('curriculum.chapterCompletedCelebration'),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                    ),
+                    Text(
+                      context.tr('curriculum.pointsChapterCompleted', {
+                        // رفعِ اشکالِ «همیشه ۰ امتیاز نشان می‌داد»: قبلاً این
+                        // مقدار مستقیماً هاردکد بود چون سرور اصلاً امتیازِ
+                        // پایهٔ همین ارسال را برنمی‌گرداند — حالا از
+                        // `pointsAwarded`ی واقعیِ پاسخ خوانده می‌شود.
+                        'points': '$basePoints',
+                        'bonus': '$bonusPoints',
+                      }),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.25, end: 0, curve: Curves.easeOutCubic),
+      ),
+    );
   }
 
   Future<ImageSource?> _chooseSource() {
@@ -111,7 +168,8 @@ class _HomeworkDashboardScreenState extends ConsumerState<HomeworkDashboardScree
       if (!mounted) return;
       result.fold(
         (f) => _snack(f.message),
-        (updated) {
+        (r) {
+          final updated = r.homework;
           ref.invalidate(homeworksProvider);
           // رفع اشکال «مشق را فرستادم ولی درس بعدی هنوز قفل نشان داده می‌شود»:
           // این وضعیت واقعاً به نمرهٔ AI ربطی ندارد (سرور با هر وضعیت
@@ -127,11 +185,29 @@ class _HomeworkDashboardScreenState extends ConsumerState<HomeworkDashboardScree
           final studentId = ref.read(authSessionProvider)?.id;
           if (studentId != null) ref.invalidate(dashboardSummaryProvider(studentId));
           ref.invalidate(gradeMapProvider);
+          // رفع اشکال (H6 — کهنه‌ماندنِ رقابت): نمره‌دهیِ کار خانگی هم امتیاز
+          // فعالیت می‌دهد (POINTS_PER_HOMEWORK_GRADED) — صفحهٔ رقابت/جدولِ
+          // امتیازات باید همین لحظه تازه شود.
+          ref.read(competitionRefreshProvider.notifier).state++;
           _snack(
             updated.isGraded
                 ? context.tr('homework.gradedSnack', {'score': '${updated.aiScore}'})
                 : context.tr('homework.submittedSnack'),
           );
+          // رفع اشکالِ ریشه‌ای «فصل قبل از خواندنِ واقعیِ درس‌ها تکمیل‌شده
+          // اعلام می‌شود»: تکمیلِ فصل حالا می‌تواند دقیقاً همین‌جا (با ارسالِ
+          // آخرین کار خانگیِ باقی‌مانده) رخ دهد — نه فقط با بازکردنِ صفحهٔ
+          // درس. اگر سرور اعلام کرد همین ارسال فصل را تکمیل کرد، همان
+          // جشن/هدایتِ خودکار به «آزمون فصل» که در `LessonDetailScreen` است
+          // اینجا هم نشان داده می‌شود.
+          if (r.chapterJustCompleted && updated.chapterId.isNotEmpty && updated.subjectId.isNotEmpty) {
+            _celebrateChapterCompletion(r.chapterBonusAwarded, basePoints: r.pointsAwarded);
+            Future.delayed(const Duration(milliseconds: 1400), () {
+              if (mounted) {
+                context.push(AppRoutes.chapterQuiz(updated.subjectId, updated.chapterId));
+              }
+            });
+          }
         },
       );
     } finally {

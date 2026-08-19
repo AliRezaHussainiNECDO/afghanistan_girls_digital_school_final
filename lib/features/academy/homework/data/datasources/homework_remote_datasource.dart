@@ -56,7 +56,7 @@ class HomeworkRemoteDataSource implements HomeworkDataSource {
   }
 
   @override
-  Future<Homework> submitPhoto({
+  Future<HomeworkSubmitResult> submitPhoto({
     required String homeworkId,
     required List<int> bytes,
     required String fileName,
@@ -77,7 +77,16 @@ class HomeworkRemoteDataSource implements HomeworkDataSource {
     if (hw is! Map) {
       throw const ApiException(message: 'پاسخ نامعتبر از سرور', type: ApiErrorType.unknown);
     }
-    return _withAbsoluteImage(HomeworkModel.fromJson(Map<String, dynamic>.from(hw)));
+    // رفع اشکالِ ریشه‌ای «فصل قبل از خواندنِ واقعیِ درس‌ها تکمیل‌شده اعلام
+    // می‌شود»: سرور حالا با همین پاسخ هم اعلام می‌کند که آیا همین ارسال
+    // (نه لزوماً نمره‌دهیِ آن) فصل را تکمیل کرده — نگاه کنید به
+    // `backend/src/routes/homework.ts`::`checkAndCompleteChapter`.
+    return HomeworkSubmitResult(
+      homework: _withAbsoluteImage(HomeworkModel.fromJson(Map<String, dynamic>.from(hw))),
+      chapterJustCompleted: map['chapterJustCompleted'] == true,
+      chapterBonusAwarded: (map['chapterBonusAwarded'] as num?)?.toInt() ?? 0,
+      pointsAwarded: (map['pointsAwarded'] as num?)?.toInt() ?? 0,
+    );
   }
 
   @override

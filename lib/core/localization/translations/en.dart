@@ -158,6 +158,7 @@ const Map<String, String> enStrings = {
 'curriculum.units': 'Units',
 'curriculum.lessons': 'Lessons',
 'curriculum.viewLesson': 'View lesson',
+'curriculum.backToLessonList': 'View lesson list',
 'curriculum.lessonLearnedButton': 'I learned this lesson',
 'curriculum.homeworkAssigned': 'Well done! Homework for this lesson is ready 📝 — see the "Homework" section.',
 'curriculum.homeworkAlreadyAssigned': 'Homework for this lesson was already assigned.',
@@ -411,6 +412,7 @@ const Map<String, String> enStrings = {
 'studyPlan.noBooksYet': 'No books have been added yet to build a schedule. Ask the administrator to add curriculum books.',
 'studyPlan.browseBooksCta': 'Browse curriculum books',
 'studyPlan.todayMinutesLabel': '{minutes} min today',
+'studyPlan.newSubjectBadge': 'New subject',
 
 // exams
 'exams.available': 'Available exams',

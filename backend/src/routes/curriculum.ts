@@ -33,7 +33,7 @@ import { autoAssignLessonHomework } from '../lib/lessonHomework';
 import { logAudit, clientIp } from '../lib/audit';
 import { rateLimitFailBody } from '../lib/gemini';
 import { hasAdminPermission } from '../lib/permissions';
-import { ensureLessonContent, isPendingAiContent } from '../lib/aiLessonContent';
+import { ensureLessonContent, isPendingAiContent, prefetchNextLessonContent } from '../lib/aiLessonContent';
 import { ensureChapterQuiz } from '../lib/chapterQuiz';
 import {
   type EntityType,
@@ -340,6 +340,13 @@ c11m.post('/lessons/:lessonId/view', async (c) => {
     c.executionCtx.waitUntil(ensureChapterQuiz(c.env, result.chapterId));
   }
 
+  // رفعِ اشکالِ گزارش‌شده («هر درس کمی طول می‌کشد تا لود شود»): متنِ درسِ
+  // *بعدی* را همین حالا، در پس‌زمینه پیش‌بارگذاری می‌کنیم — نگاه کنید به
+  // کامنتِ کاملِ `prefetchNextLessonContent` در lib/aiLessonContent.ts. تا
+  // وقتی شاگرد واقعاً به آن درس برسد، معمولاً متن از قبل آماده است و
+  // GET /lessons/:id دیگر منتظرِ تولیدِ AI نمی‌ماند.
+  c.executionCtx.waitUntil(prefetchNextLessonContent(c.env, lessonId, new URL(c.req.url).origin));
+
   // رفع اشکال (طبق درخواست کاربر): قبلاً با همین بازدیدِ اول، کار خانگی
   // خودکار ساخته و ارسال می‌شد — یعنی شاگرد هنوز درس را نخوانده، کار خانگی
   // می‌گرفت. حالا کار خانگی فقط وقتی ساخته می‌شود که شاگرد خودش در صفحهٔ
@@ -396,6 +403,17 @@ c11m.post('/lessons/:lessonId/learned', async (c) => {
       subject_name_fa: string | null;
     }>();
   if (!lessonRow) return c.json(fail('NOT_FOUND', 'درس یافت نشد', 'Lesson not found', 'درس ونه موندل شو', 'Leçon introuvable'), 404);
+
+  // 🔒 رفع اشکال امنیتی (migration 0050 — «دورزدنِ قفل با هرگز نزدنِ یاد
+  // گرفتم»): خودِ همین رویداد («یاد گرفتم» واقعاً زده شد) را — جدا از نتیجهٔ
+  // ساختِ کار خانگیِ زیر (که ممکن است fail/rate_limited/not_configured شود)
+  // — همین‌جا و بدون قید و شرط ثبت می‌کنیم. progress.ts دیگر «نبودِ کار
+  // خانگی» را به‌تنهایی fail-safe حساب نمی‌کند؛ فقط وقتی این ردیف وجود دارد
+  // (یعنی شاگرد واقعاً این دکمه را زده) نبودِ کار خانگی را «مشکلِ سرویسِ
+  // بیرونی» در نظر می‌گیرد، نه «شاگرد هرگز درس را یاد نگرفته».
+  await c.env.DB.prepare('INSERT OR IGNORE INTO student_lesson_learned (student_id, lesson_id) VALUES (?, ?)')
+    .bind(uid, lessonId)
+    .run();
 
   // (رفع اشکال «کار خانگی بی‌ربط به درس») اگر متن کامل درس هنوز Lazy تولید
   // نشده (AI_PENDING — مثلاً شاگرد یک‌راست از کلاس گفت‌وگو «یاد گرفتم» زده)،

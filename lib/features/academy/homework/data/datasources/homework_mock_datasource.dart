@@ -62,7 +62,7 @@ class HomeworkMockDataSource implements HomeworkDataSource {
   }
 
   @override
-  Future<Homework> submitPhoto({
+  Future<HomeworkSubmitResult> submitPhoto({
     required String homeworkId,
     required List<int> bytes,
     required String fileName,
@@ -70,7 +70,9 @@ class HomeworkMockDataSource implements HomeworkDataSource {
   }) async {
     await Future.delayed(const Duration(seconds: 1)); // شبیه‌سازی زمان Vision
     final idx = _homeworks.indexWhere((h) => h.id == homeworkId);
-    if (idx == -1) return getHomeworkById(homeworkId);
+    if (idx == -1) {
+      return HomeworkSubmitResult(homework: await getHomeworkById(homeworkId));
+    }
     final graded = Homework(
       id: _homeworks[idx].id,
       studentId: _homeworks[idx].studentId,
@@ -91,7 +93,10 @@ class HomeworkMockDataSource implements HomeworkDataSource {
       gradedAt: DateTime.now(),
     );
     _homeworks[idx] = graded;
-    return graded;
+    // پیش‌نمایش Mock عمداً ساده نگه داشته شده — شبیه‌سازیِ منطقِ واقعیِ
+    // «تکمیل فصل» (که نیازمند وضعیتِ همهٔ درس‌های فصل است) اینجا لازم نیست؛
+    // در حالتِ بدون بک‌اند واقعی هیچ‌وقت جشنِ تکمیلِ فصل نشان داده نمی‌شود.
+    return HomeworkSubmitResult(homework: graded);
   }
 
   @override

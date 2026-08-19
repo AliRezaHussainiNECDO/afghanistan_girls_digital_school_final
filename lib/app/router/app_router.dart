@@ -239,16 +239,19 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
-      GoRoute(
-        path: '/student/curriculum/:subjectId/:chapterId/:lessonId',
-        pageBuilder: (c, s) => fadeSlidePage(
-          s,
-          LessonDetailScreen(
-            subjectId: s.pathParameters['subjectId']!,
-            lessonId: s.pathParameters['lessonId']!,
-          ),
-        ),
-      ),
+      // رفع اشکال ریشه‌ای «درس یافت نشد» با lessonId=quiz (کشف‌شده از لاگِ
+      // Debug واقعیِ کاربر): این دو مسیر هم‌شکل‌اند —
+      // «.../:chapterId/:lessonId» (پویا، هر رشته‌ای را می‌پذیرد) و
+      // «.../:chapterId/quiz» (ثابت). go_router دقیقاً مثل بستهٔ `path`،
+      // مسیرها را به همان ترتیبِ اعلامشان امتحان می‌کند و روی اولین
+      // تطبیق می‌ایستد — قبلاً مسیرِ پویا *قبل* از مسیرِ ثابتِ «quiz» اعلام
+      // شده بود، پس هر بار که کاربر می‌خواست وارد «آزمونِ فصل» شود
+      // (`AppRoutes.chapterQuiz` → `.../chapterId/quiz`)، همان مسیرِ اول
+      // (پویا) آن را می‌قاپید و رشتهٔ «quiz» را به‌جای یک lessonId واقعی به
+      // LessonDetailScreen می‌داد — که طبیعتاً چنین درسی روی سرور وجود
+      // نداشت. مسیرِ ثابتِ «quiz» اصلاً قابل‌دسترسی نبود (کدِ مرده). قاعدهٔ
+      // درست (و اکنون رعایت‌شده): مسیرهای **ثابت/خاص‌تر** همیشه باید قبل از
+      // مسیرهای **پویا/عمومی‌تر** در همان سطح اعلام شوند.
       GoRoute(
         path: '/student/curriculum/:subjectId/:chapterId/quiz',
         pageBuilder: (c, s) => fadeSlidePage(
@@ -256,6 +259,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           ChapterQuizScreen(
             subjectId: s.pathParameters['subjectId']!,
             chapterId: s.pathParameters['chapterId']!,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/student/curriculum/:subjectId/:chapterId/:lessonId',
+        pageBuilder: (c, s) => fadeSlidePage(
+          s,
+          LessonDetailScreen(
+            subjectId: s.pathParameters['subjectId']!,
+            lessonId: s.pathParameters['lessonId']!,
           ),
         ),
       ),

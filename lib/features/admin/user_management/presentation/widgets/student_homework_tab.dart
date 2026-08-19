@@ -13,6 +13,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../../core/localization/app_localizations.dart';
+import '../../../../../core/network/network_providers.dart';
 import '../../../../academy/homework/domain/entities/homework.dart';
 import '../../../../academy/homework/presentation/providers/homework_providers.dart';
 import 'common_widgets.dart';
@@ -388,10 +389,17 @@ class _AdminHomeworkDetailSheet extends ConsumerWidget {
                         builder: (_) => Dialog(
                           insetPadding: const EdgeInsets.all(16),
                           child: InteractiveViewer(
-                            child: Image.network(hw.studentImageUrl, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Icon(Icons.broken_image_outlined, size: 48),
-                            )),
+                            child: Image.network(
+                              hw.studentImageUrl,
+                              // رفعِ اشکالِ امنیتی: عکسِ کارِ خانگی حالا فقط با
+                              // هدرِ Authorization سرو می‌شود.
+                              headers: authImageHeaders(context),
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const Padding(
+                                padding: EdgeInsets.all(24),
+                                child: Icon(Icons.broken_image_outlined, size: 48),
+                              ),
+                            ),
                           ),
                         ),
                       ),

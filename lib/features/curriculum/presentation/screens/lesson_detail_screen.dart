@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -6,12 +8,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/router/app_routes.dart';
 import '../../../../app/theme/design_tokens.dart';
+import '../../../../core/errors/app_error_handler.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/tts_text_splitter.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../../ai_teacher/presentation/providers/ai_teacher_providers.dart';
 import '../../../ai_teacher/presentation/widgets/ai_voice_ask_sheet.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../competition/presentation/providers/competition_providers.dart';
 import '../../../grade_map/presentation/providers/grade_map_providers.dart';
 import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/curriculum_entities.dart';
@@ -51,12 +56,21 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       final result = await ref.read(markLessonViewedUseCaseProvider).call(widget.lessonId);
       ref.invalidate(lessonProvider(widget.lessonId));
       ref.invalidate(chaptersProvider(widget.subjectId));
+      // رفع اشکال هماهنگی: بدون این خط، فهرست درس‌های همین فصل
+      // (`lessonsProvider(chapterId)`) که «امروز» و LessonsScreen هر دو از
+      // همان می‌خوانند، وضعیت «دیده‌شدهٔ» همین درس را تا پاک‌شدن کامل کش
+      // (خروج از کل پشتهٔ ناوبری) کهنه نشان می‌داد.
+      ref.invalidate(lessonsProvider(lesson.chapterId));
       // خانهٔ شاگرد و نقشهٔ صنوف همین لحظه امتیاز/پیشرفت تازه را ببینند.
       final studentId = ref.read(authSessionProvider)?.id;
       if (studentId != null) {
         ref.invalidate(dashboardSummaryProvider(studentId));
         ref.invalidate(gradeMapProvider);
       }
+      // رفع اشکال (H6 — کهنه‌ماندنِ رقابت): دیدنِ درس هم امتیازِ فعالیت
+      // می‌دهد (و می‌تواند فصل را هم تکمیل کند) — صفحهٔ رقابت/جدولِ
+      // امتیازات باید همین لحظه تازه شود، نه فقط با claim کردنِ میشن‌ها.
+      ref.read(competitionRefreshProvider.notifier).state++;
       if (mounted) {
         result.fold((_) {}, (r) {
           _showPointsFeedback(r);
@@ -82,11 +96,60 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
   int _ttsIndex = 0;
   bool _isReading = false; // در حال پخش یا آماده‌سازی
   bool _ttsLoading = false; // در حال دریافت قطعهٔ بعدی از سرور
+  bool _ttsAnyChunkPlayed = false; // آیا در همین جلسهٔ خواندن، حداقل یک قطعه با موفقیت پخش شده
+
+  // رفعِ اشکالِ گزارش‌شده («صدا چند لحظه معطل می‌ماند تا پلی شود، خسته‌کننده
+  // است»): قبلاً هر قطعه فقط *بعد از* اینکه قطعهٔ قبلی کاملاً تمام می‌شد
+  // ساخته می‌شد (پخش → onComplete → ساختِ قطعهٔ بعدی → پخش) — یعنی شاگرد
+  // بینِ هر دو قطعهٔ پیاپی، دقیقاً به‌اندازهٔ زمانِ کاملِ تولیدِ صدای سرور
+  // (چند ثانیه) در سکوت می‌ماند. حالا هر قطعه فقط یک‌بار ساخته می‌شود (نتیجه
+  // در همین Map کش می‌شود) و همین‌که پخشِ یک قطعه *شروع* شد، بلافاصله ساختِ
+  // قطعهٔ بعدی هم در پس‌زمینه آغاز می‌شود — تا وقتی قطعهٔ فعلی تمام شود،
+  // قطعهٔ بعدی معمولاً از قبل آماده است و هیچ سکوتی حس نمی‌شود. علاوه‌براین،
+  // اولین قطعه از همان لحظه‌ای که خودِ درس لود می‌شود (نه از لحظهٔ زدنِ دکمهٔ
+  // پخش) در پس‌زمینه پیش‌بارگذاری می‌شود — نگاه کنید به `_prefetchListenAudioOnce`.
+  final Map<int, Future<String?>> _ttsChunkFutures = {};
+  bool _ttsPrefetchStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _player.onPlayerComplete.listen((_) => _playNextChunk());
+    _player.onPlayerComplete.listen((_) => _playChunkAt(_ttsIndex));
+  }
+
+  /// یک‌بار، همین که متنِ درس آماده شد (قبل از اینکه شاگرد اصلاً دکمهٔ
+  /// «شنیدنِ درس» را بزند)، ساختِ صدای قطعهٔ *اول* را در پس‌زمینه آغاز
+  /// می‌کند — تا اگر شاگرد بخواهد گوش بدهد، معمولاً بدونِ هیچ معطلی
+  /// بلافاصله پخش شود. هزینهٔ این کار عمداً کم نگه داشته شده: فقط یک قطعهٔ
+  /// کوچک (حداکثر ۴۵۰ حرف)، نه کلِ درس — بقیهٔ قطعات فقط اگر شاگرد واقعاً
+  /// «شنیدن» را زد ساخته می‌شوند (پایین‌تر، به‌صورت پیوسته حینِ پخش).
+  void _prefetchListenAudioOnce(String title, String body) {
+    if (_ttsPrefetchStarted) return;
+    if (ref.read(aiVoiceServiceProvider) == null) return; // صدا غیرفعال — بی‌اثر
+    _ttsPrefetchStarted = true;
+    _ttsChunks = splitForTts('$title. $body');
+    _ensureChunkFuture(0);
+  }
+
+  /// تولیدِ صدای یک قطعه با تلاشِ مجدد (تا ۲ بارِ دیگر، با مکثِ فزاینده) —
+  /// دقیقاً همان قاعدهٔ قبلی، فقط حالا در قالبِ یک Future قابلِ‌کش تا هم
+  /// پیش‌بارگذاری و هم پخشِ واقعی بتوانند به همان یک نتیجه برسند بدونِ
+  /// دوبار-درخواست‌دادن.
+  Future<String?> _synthesizeWithRetry(String chunk, {int attempt = 0}) async {
+    final voice = ref.read(aiVoiceServiceProvider);
+    if (voice == null) return null;
+    final path = await voice.synthesize(chunk);
+    if (path != null || attempt >= 2) return path;
+    await Future.delayed(Duration(milliseconds: 700 * (attempt + 1)));
+    return _synthesizeWithRetry(chunk, attempt: attempt + 1);
+  }
+
+  /// اگر ساختِ صدای قطعهٔ [index] قبلاً آغاز نشده، همین حالا (در پس‌زمینه)
+  /// آغازش می‌کند و Future مشترک را برمی‌گرداند — فراخوانی‌های بعدی برای
+  /// همان اندیس، به همان یک Future وصل می‌شوند (نه یک درخواستِ تازه).
+  Future<String?> _ensureChunkFuture(int index) {
+    if (index < 0 || index >= _ttsChunks.length) return Future.value(null);
+    return _ttsChunkFutures.putIfAbsent(index, () => _synthesizeWithRetry(_ttsChunks[index]));
   }
 
   @override
@@ -95,22 +158,10 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
     super.dispose();
   }
 
-  /// تقسیم متن درس به قطعه‌های کوتاه در مرز جمله‌ها (محدودیت طول TTS).
-  static List<String> _splitForTts(String text, {int maxLen = 900}) {
-    final sentences = text.split(RegExp(r'(?<=[.!?؟।۔\n])\s*'));
-    final chunks = <String>[];
-    final buf = StringBuffer();
-    for (final s in sentences) {
-      if (s.trim().isEmpty) continue;
-      if (buf.length + s.length > maxLen && buf.isNotEmpty) {
-        chunks.add(buf.toString());
-        buf.clear();
-      }
-      buf.write('$s ');
-    }
-    if (buf.isNotEmpty) chunks.add(buf.toString());
-    return chunks;
-  }
+  // تقسیمِ متنِ درس به قطعه‌های کوتاه، طبقِ «قاعدهٔ تضمینیِ» مشترکِ
+  // core/utils/tts_text_splitter.dart (نگاه کنید آنجا برای تاریخچهٔ کامل
+  // رفع اشکال — این منطق حالا بینِ این صفحه و AiVoiceAskSheet مشترک است تا
+  // هر دو مسیرِ «شنیدنِ صدا» در اپ همیشه یک قاعده را رعایت کنند).
 
   Future<void> _toggleReadLesson(String title, String body) async {
     final voice = ref.read(aiVoiceServiceProvider);
@@ -120,42 +171,90 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       setState(() {
         _isReading = false;
         _ttsLoading = false;
-        _ttsChunks = const [];
         _ttsIndex = 0;
       });
       return;
     }
+    // معمولاً `_ttsChunks`/قطعهٔ اول از قبل با `_prefetchListenAudioOnce`
+    // ساخته شده‌اند (همان لحظه‌ای که خودِ درس لود شد)؛ این فقط Fail-safe
+    // برای حالتِ نادری است که هنوز آغاز نشده باشد (مثلاً پیش‌بارگذاری با
+    // خطا مواجه شده بود).
+    if (_ttsChunks.isEmpty) {
+      _ttsChunks = splitForTts('$title. $body');
+    }
     setState(() {
       _isReading = true;
-      _ttsChunks = _splitForTts('$title. $body');
+      _ttsAnyChunkPlayed = false;
       _ttsIndex = 0;
     });
-    await _playNextChunk();
+    await _playChunkAt(0);
   }
 
-  Future<void> _playNextChunk() async {
+  /// رفع اشکال ریشه‌ای «هرچه درسِ طولانی‌تر، احتمال بیشترِ قطع‌شدنِ کاملِ
+  /// صدا»: یک درسِ طولانی به چند ده قطعهٔ پیاپی تبدیل می‌شود (بعد از رفعِ
+  /// اشکالِ قبلیِ اندازهٔ قطعه‌ها). قبلاً اگر فقط **یکی** از این درخواست‌های
+  /// پیاپی به هر دلیلِ گذرا (یک نوسانِ لحظه‌ایِ شبکهٔ موبایل، نه یک خرابیِ
+  /// واقعی سرویس) شکست می‌خورد، کل جلسهٔ «شنیدنِ درس» بی‌بازگشت متوقف می‌شد و
+  /// پیام عمومیِ «در دسترس نیست» نشان داده می‌شد — یعنی هرچه درس طولانی‌تر
+  /// (پس تعداد درخواست‌های پیاپی بیشتر)، احتمالِ برخوردن به همین یک شکستِ
+  /// گذرا در جایی وسطِ درس ریاضی‌وار بیشتر می‌شد؛ این خودش، مستقل از هر
+  /// Timeout یا اندازهٔ قطعه، دقیقاً همان الگوی گزارش‌شده («درس‌های طولانی‌تر
+  /// پخش نمی‌شوند») را توضیح می‌دهد.
+  ///
+  /// قاعدهٔ تضمینیِ (بدونِ وابستگی به این‌که هر تک‌درخواست حتماً موفق شود):
+  /// ساختِ هر قطعه — با تلاشِ مجدد — داخلِ `_synthesizeWithRetry`/
+  /// `_ensureChunkFuture` بالا انجام می‌شود. اگر همان یک قطعهٔ خاص بعد از
+  /// همهٔ تلاش‌ها هم شکست خورد، *فقط همان قطعه* رد می‌شود و به قطعهٔ بعدی
+  /// می‌رویم — نه این‌که کل تجربهٔ شنیدنِ درس را به‌خاطر یک بخشِ کوچک خراب
+  /// کنیم. پیامِ «در دسترس نیست» فقط زمانی نشان داده می‌شود که حتی اولین
+  /// قطعه هم (بعد از تلاش‌های تکراری) شکست بخورد — یعنی وقتی مشکل واقعاً
+  /// کلی/سیستمی است (مثلاً اصلاً اینترنت نیست)، نه یک نوسانِ لحظه‌ای وسط
+  /// یک درسِ در حال پخش.
+  ///
+  /// رفعِ اشکالِ «صدا معطل می‌ماند» (بالای فایل، کنارِ `_ttsChunkFutures`):
+  /// این متد صبر می‌کند تا صدای قطعهٔ [index] آماده شود (که معمولاً از قبل،
+  /// در پس‌زمینه، یا با پخشِ قطعهٔ قبلی هم‌زمان، شروع به ساختن شده)، و درست
+  /// همین‌که پخش را آغاز می‌کند، بلافاصله ساختِ قطعهٔ *بعدی* را هم در
+  /// پس‌زمینه شروع می‌کند — بدونِ صبر کردن برای تمام‌شدنِ پخشِ فعلی.
+  Future<void> _playChunkAt(int index) async {
     if (!mounted || !_isReading) return;
-    if (_ttsIndex >= _ttsChunks.length) {
+    if (index >= _ttsChunks.length) {
       setState(() {
         _isReading = false;
         _ttsIndex = 0;
       });
       return;
     }
-    final voice = ref.read(aiVoiceServiceProvider);
-    if (voice == null) return;
     setState(() => _ttsLoading = true);
-    final chunk = _ttsChunks[_ttsIndex];
-    _ttsIndex += 1;
-    final path = await voice.synthesize(chunk);
+    final path = await _ensureChunkFuture(index);
     if (!mounted || !_isReading) return;
-    setState(() => _ttsLoading = false);
     if (path == null) {
-      setState(() => _isReading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(context.tr('curriculum.audioUnavailable'))));
-      return;
+      // این قطعهٔ خاص بعد از چند تلاشِ داخلیِ `_synthesizeWithRetry` هم جواب نداد.
+      if (!_ttsAnyChunkPlayed) {
+        // حتی یک قطعه هم تا الان پخش نشده — مشکل احتمالاً کلی/سیستمی است،
+        // نه یک نوسانِ گذرای وسطِ درس؛ اینجا واقعاً باید به کاربر خبر داد.
+        setState(() {
+          _isReading = false;
+          _ttsLoading = false;
+        });
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.tr('curriculum.audioUnavailable'))));
+        }
+        return;
+      }
+      // بخشی از درس قبلاً با موفقیت پخش شده — همین یک قطعه را رد کن و ادامه بده.
+      setState(() => _ttsIndex = index + 1);
+      return _playChunkAt(index + 1);
     }
+    setState(() {
+      _ttsAnyChunkPlayed = true;
+      _ttsIndex = index + 1;
+      _ttsLoading = false;
+    });
+    // پیش‌بارگذاریِ قطعهٔ بعدی هم‌زمان با شروعِ پخشِ همین قطعه — نه بعد از
+    // تمام‌شدنِ آن — تا وقتی نوبتِ آن برسد، معمولاً از قبل آماده باشد.
+    unawaited(_ensureChunkFuture(index + 1));
     await _player.play(DeviceFileSource(path));
   }
 
@@ -354,13 +453,50 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
       ),
       body: lessonAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(
-              error: e,
-              onRetry: () => ref.invalidate(lessonProvider(widget.lessonId)),
-            ),
+        // رفع اشکالِ «درس یافت نشد، ولی معلوم نیست چرا/از کجا»: قبلاً این حالت
+        // فقط یک ErrorView با «تلاش دوباره» نشان می‌داد — اما اگر lessonId
+        // واقعاً دیگر روی سرور وجود نداشته باشد (مثلاً حذف/بازسازیِ نصاب،
+        // یا یک اشارهٔ نامعتبر از یک مسیر ناوبریِ دیگر مثل «برنامهٔ درسی
+        // امروز»)، تلاشِ دوباره هم همیشه همان خطا را می‌دهد و دانش‌آموز در
+        // یک بن‌بست گیر می‌کرد. حالا دو کار اضافه شده: ۱) این خطا (همراه
+        // subjectId/lessonId دقیق) در «گزارش خطاهای برنامه» (پنل مدیر) ثبت
+        // می‌شود تا اگر باز هم رخ داد، بشود دقیقاً دید کدام مسیر ناوبری این
+        // شناسهٔ نامعتبر را ساخته؛ ۲) یک دکمهٔ «بازگشت به فهرست دروس» اضافه
+        // شد تا دانش‌آموز هرگز در بن‌بست نماند.
+        error: (e, st) {
+          AppErrorHandler.record(
+            e,
+            st,
+            context: 'LessonDetail.load subjectId=${widget.subjectId} lessonId=${widget.lessonId}',
+          );
+          return Column(
+            children: [
+              Expanded(
+                child: ErrorView(
+                  error: e,
+                  onRetry: () => ref.invalidate(lessonProvider(widget.lessonId)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.go(AppRoutes.curriculumChapters(widget.subjectId)),
+                    icon: const Icon(Icons.list_alt_rounded, size: 18),
+                    label: Text(context.tr('curriculum.backToLessonList')),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
         data: (lesson) {
           // ثبت خودکار «دیدن درس» (زنجیرهٔ امتیاز/پیشرفت، فقط بار اول).
           _autoMarkViewedOnce(lesson);
+          // پیش‌بارگذاریِ صدای قطعهٔ اول در پس‌زمینه (رفعِ اشکالِ «صدا معطل
+          // می‌ماند») — فقط یک‌بار، همین که متنِ درس آماده شد.
+          _prefetchListenAudioOnce(lesson.titleFa, lesson.contentBody);
           // چت معلم هوشمند = کل بدنهٔ صفحه؛ متن درس به‌عنوان زمینهٔ (Context)
           // قفل‌شده به سرور می‌رود، دکمهٔ «یاد گرفتم» و نوار «بخش X از Y» در
           // سرآیند خود کلاس قرار دارند (داخل AiVoiceAskSheet).
@@ -368,6 +504,7 @@ class _LessonDetailScreenState extends ConsumerState<LessonDetailScreen> {
             child: AiVoiceAskSheet(
               embedded: true,
               subjectId: widget.subjectId,
+              chapterId: lesson.chapterId,
               lessonId: lesson.id,
               lessonTitle: lesson.titleFa,
               lessonContent: lesson.contentBody,

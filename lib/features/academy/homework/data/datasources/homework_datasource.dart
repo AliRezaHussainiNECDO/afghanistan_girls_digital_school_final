@@ -16,8 +16,10 @@ abstract class HomeworkDataSource {
   Future<List<HomeworkReply>> getReplies(String homeworkId);
 
   /// ارسال عکس دست‌خط — بایت‌های خام عکس + نوع فایل. مشق نمره‌دهی‌شده برمی‌گردد
-  /// (یا همان مشق با status='submitted' اگر نمره‌دهی هنوز آماده نبود).
-  Future<Homework> submitPhoto({
+  /// (یا همان مشق با status='submitted' اگر نمره‌دهی هنوز آماده نبود) — همراه
+  /// با علامتِ «همین ارسال، فصل را تکمیل کرد یا نه» (رفع اشکالِ ریشه‌ای —
+  /// نگاه کنید به [HomeworkSubmitResult]).
+  Future<HomeworkSubmitResult> submitPhoto({
     required String homeworkId,
     required List<int> bytes,
     required String fileName,

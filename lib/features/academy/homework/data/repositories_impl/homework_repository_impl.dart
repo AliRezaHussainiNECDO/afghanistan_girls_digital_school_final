@@ -50,7 +50,7 @@ class HomeworkRepositoryImpl implements HomeworkRepository {
   }
 
   @override
-  Future<Either<Failure, Homework>> submitPhoto({
+  Future<Either<Failure, HomeworkSubmitResult>> submitPhoto({
     required String homeworkId,
     required List<int> bytes,
     required String fileName,

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,6 +57,20 @@ class TokenStore {
 
 /// انبار Token — یک نمونه برای کل اپ.
 final tokenStoreProvider = Provider<TokenStore>((ref) => TokenStore());
+
+/// هدرِ Authorization برای درخواست‌های تصویر/فایلِ مستقیم (`Image.network`
+/// و مشابه) که از میان‌کارِ خودکارِ `ApiClient` عبور نمی‌کنند.
+///
+/// رفعِ اشکالِ امنیتی: `GET /files/*` سمت سرور دیگر برای همهٔ کلیدها بدونِ
+/// ورود پاسخ نمی‌دهد (نگاه کنید backend/src/routes/media.ts — بخصوص
+/// `homework/…` و `voice/…`)، پس هرجا مستقیماً (نه از طریق `ApiClient`) به
+/// چنین آدرسی وصل می‌شویم باید همین هدر را هم بفرستیم، وگرنه با ۴۰۱ مواجه
+/// می‌شویم. از هر `BuildContext` قابلِ‌فراخوانی است (حتی در ویجت‌های
+/// Stateless/غیر-Consumer) چون از `ProviderScope.containerOf` استفاده می‌کند.
+Map<String, String> authImageHeaders(BuildContext context) {
+  final token = ProviderScope.containerOf(context).read(tokenStoreProvider).accessToken;
+  return (token == null || token.isEmpty) ? const {} : {'Authorization': 'Bearer $token'};
+}
 
 /// کلاینت API پیکربندی‌شده. Token را از `TokenStore` می‌خواند و روی 401
 /// به‌صورت خودکار Tokenها را پاک می‌کند (Logout سبک).
