@@ -87,11 +87,30 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
     // گرفتن در Dart)، هر قدم را *قبل* از انجامش ثبت می‌کنیم — اگر پردازه از
     // بین برود، در «گزارش خطاهای برنامه» می‌بینیم دقیقاً کدام قدم آخرین بار
     // موفق بوده (رجوع کن core/errors/app_error_handler.dart::breadcrumb).
-    await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون', context: 'SeminarJoin.permissions');
+    await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون/بلوتوث', context: 'SeminarJoin.permissions');
     final cameraOk = await PermissionService.request(Permission.camera);
     final micOk = await PermissionService.request(Permission.microphone);
+    // رفع اشکالِ بازگشتیِ «روی سامسونگ/گوشی واقعی هنگام ورود به ویدیوکنفرانس
+    // برنامه بسته می‌شود، ولی روی آیفون/امولاتور مشکلی نیست»: AndroidManifest.xml
+    // از قبل (با توضیح کامل همان‌جا) BLUETOOTH_CONNECT را اعلام کرده بود —
+    // چون لایهٔ بومی WebRTC/Jitsi برای مدیریت مسیر صدا (بلندگو/هندزفری/
+    // بلوتوث) به آن نیاز دارد. اما BLUETOOTH_CONNECT از نوع مجوز «خطرناک»ِ
+    // Android 12+ است: صرفِ اعلام در Manifest کافی نیست، باید در **زمان
+    // اجرا** هم صریحاً گرفته شود — دقیقاً مثل دوربین/میکروفون. این درخواستِ
+    // زمان‌اجرا اینجا از قلم افتاده بود؛ روی امولاتور/آیفون هیچ‌وقت این کد بومیِ
+    // خاص (تشخیص/تعویض مسیر صدا با سخت‌افزار بلوتوث واقعی) اصلاً اجرا نمی‌شود
+    // (امولاتورها بلوتوث واقعی ندارند)، پس آن‌جا مشکل هرگز خودش را نشان
+    // نمی‌داد — ولی روی گوشی واقعیِ سامسونگ (که بلوتوث واقعی دارد)، همان
+    // لحظهٔ ورود به تماس این مسیر صدا زده می‌شود و بدون این مجوز زمان‌اجرا با
+    // SecurityException بومی (غیرقابل‌گرفتن در Dart) کل برنامه را می‌بندد.
+    // روی iOS و Android زیر نسخهٔ ۱۲ این درخواست بی‌اثر/خودکار-مجاز است، پس
+    // اینجا در هر دو حالت بی‌خطر است. عمداً نتیجهٔ آن مانعِ ورود نمی‌شود (اگر
+    // کاربر رد کند، تماس هنوز باید با بلندگوی پیش‌فرض کار کند) — فقط مهم است
+    // که این درخواست واقعاً *صدا زده شده* باشد، تا وضعیت مجوز از «هنوز
+    // پرسیده‌نشده» (که در آن لایهٔ بومی می‌تواند کرش کند) خارج شود.
+    final bluetoothOk = await PermissionService.request(Permission.bluetoothConnect);
     await AppErrorHandler.breadcrumb(
-      'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk',
+      'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk bluetooth=$bluetoothOk',
       context: 'SeminarJoin.permissions',
     );
     if (cameraOk && micOk) return true;

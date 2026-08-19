@@ -37,6 +37,25 @@ class App extends ConsumerWidget {
       routerConfig: router,
       builder: (context, child) {
         final isRtl = locale.languageCode == 'fa' || locale.languageCode == 'ps';
+        // رفعِ اشکالِ امنیتیِ ایمنی («حالت پنهان» — بلاکرِ پیش از انتشار):
+        // خواندنِ پرچمِ ذخیره‌شدهٔ `isHidden` از حافظهٔ محلی Async است
+        // (`hiddenModeProvider`ی `_load()`)؛ تا وقتی کامل نشده، وضعیتِ
+        // پیش‌فرض `isHidden: false` است — یعنی روترِ GoRouter در همان یکی-دو
+        // فریمِ اولِ راه‌اندازی ممکن است هنوز تصمیم بگیرد صفحهٔ واقعیِ
+        // برنامه (نه ماشین‌حسابِ نمایشی) را بسازد، درست همان لحظه‌ای که
+        // برنامه از حافظه (بعد از کشته‌شدنِ پردازه توسط اندروید در پس‌زمینه)
+        // دوباره راه‌اندازی می‌شود — دقیقاً پرخطرترین لحظه (بازرسیِ ناگهانیِ
+        // گوشی). اینجا، به‌عنوانِ آخرین لایهٔ دفاعی، تا وقتی این پرچم واقعاً
+        // از حافظه خوانده نشده، به‌جای هر صفحه‌ای از خودِ برنامه (حتی
+        // ماشین‌حساب)، فقط یک صفحهٔ کاملاً خنثی/خالی نشان داده می‌شود — نه
+        // برندِ مکتب، نه هیچ محتوایی — تا این پنجرهٔ کوتاه هرگز چیزی افشا نکند.
+        final hiddenModeLoading = ref.watch(hiddenModeProvider.select((s) => s.loading));
+        if (hiddenModeLoading) {
+          return const Directionality(
+            textDirection: TextDirection.ltr,
+            child: ColoredBox(color: Colors.black),
+          );
+        }
         return Directionality(
           textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
           child: _HiddenModeLifecycleGuard(

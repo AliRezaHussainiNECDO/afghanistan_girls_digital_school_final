@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io' show File;
 import 'package:audioplayers/audioplayers.dart';
+import 'package:dio/dio.dart' show Options, ResponseType;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../../../app/theme/design_tokens.dart';
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/network/network_providers.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
 import '../../domain/entities/chat_entities.dart';
@@ -533,6 +536,33 @@ class _VoiceBubbleState extends State<VoiceBubble> {
     super.dispose();
   }
 
+  /// رفعِ اشکالِ امنیتی/حریمِ‌خصوصی: `GET /files/voice/…` سمت سرور دیگر
+  /// بدونِ هدرِ Authorization پاسخ نمی‌دهد (نگاه کنید backend/src/routes/
+  /// media.ts — پیامِ صوتیِ خصوصیِ چتِ ایمنی دیگر برای هرکسی که آدرسش را
+  /// حدس بزند در دسترس نیست). اما `audioplayers`ی `UrlSource` نمی‌تواند
+  /// هدرِ سفارشی روی موبایل/دسکتاپ بگذارد — پس اینجا اول با یک درخواستِ
+  /// احرازهویت‌شده (همان `ApiClient` که Bearer را خودکار اضافه می‌کند)
+  /// بایت‌ها را می‌گیریم و در یک فایلِ موقتِ محلی ذخیره می‌کنیم، دقیقاً همان
+  /// الگویی که برای صدای TTS استفاده شده (`ai_voice_remote_datasource.dart`)
+  /// — بعد از آن مثلِ همیشه از روی فایلِ محلی پخش می‌شود.
+  Future<String?> _downloadVoiceToTemp(String url) async {
+    try {
+      final api = ProviderScope.containerOf(context).read(apiClientProvider);
+      final res = await api.raw.get<List<int>>(
+        url,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = (res.data ?? const <int>[]).cast<int>();
+      if (bytes.isEmpty) return null;
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/chat_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await File(path).writeAsBytes(bytes);
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _toggle() async {
     final url = widget.message.audioUrl;
     if (url == null) return;
@@ -542,7 +572,15 @@ class _VoiceBubbleState extends State<VoiceBubble> {
       return;
     }
     try {
-      if (kIsWeb || url.startsWith('http') || url.startsWith('blob:')) {
+      if (!kIsWeb && (url.startsWith('http://') || url.startsWith('https://'))) {
+        final localPath = await _downloadVoiceToTemp(url);
+        if (!mounted) return;
+        if (localPath == null) throw Exception('voice download failed');
+        await _player.play(DeviceFileSource(localPath));
+      } else if (kIsWeb || url.startsWith('http') || url.startsWith('blob:')) {
+        // وب: دانلود به فایلِ محلی امکان‌پذیر نیست — همان مسیرِ قبلی. اگر
+        // سرور روی وب هم Authorization بخواهد، این حالت باید جداگانه با
+        // Blob+fetch رفع شود؛ فعلاً محدودیتِ شناخته‌شده برای پلتفرمِ وب است.
         await _player.play(UrlSource(url));
       } else {
         await _player.play(DeviceFileSource(url));

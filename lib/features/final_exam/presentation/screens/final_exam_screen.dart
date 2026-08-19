@@ -7,6 +7,10 @@ import '../../../../core/widgets/celebration_overlay.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/widgets/error_view.dart';
 import '../../../../core/widgets/loading_view.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../competition/presentation/providers/competition_providers.dart';
+import '../../../grade_map/presentation/providers/grade_map_providers.dart';
+import '../../../student_dashboard/presentation/providers/dashboard_providers.dart';
 import '../../domain/entities/final_exam_entities.dart';
 import '../../domain/usecases/final_exam_usecases.dart';
 import '../providers/final_exam_providers.dart';
@@ -322,6 +326,16 @@ class _FinalExamTakingScreenState extends ConsumerState<_FinalExamTakingScreen> 
       (f) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(f.message))),
       (r) async {
         if (r.passed) CelebrationOverlay.of(context)?.burst();
+        // رفع اشکال (H8 — کهنه‌ماندنِ داشبورد/نقشهٔ صنوف/رقابت بعد از امتحانِ
+        // نهایی): قبولی می‌تواند هم امتیازِ فعالیت بدهد و هم صنف را واقعاً
+        // ارتقا دهد (promoteIfEligible در progress.ts) — قبلاً فقط
+        // finalExamAvailabilityProvider/myFinalExamResultsProvider (توسطِ
+        // صفحهٔ والد) باطل می‌شدند؛ خانه/نقشهٔ صنوف/رقابت کهنه می‌ماندند تا
+        // خروج کامل از پشتهٔ ناوبری.
+        final studentId = ref.read(authSessionProvider)?.id;
+        if (studentId != null) ref.invalidate(dashboardSummaryProvider(studentId));
+        ref.invalidate(gradeMapProvider);
+        ref.read(competitionRefreshProvider.notifier).state++;
         await showDialog(
           context: context,
           barrierDismissible: false,
@@ -358,7 +372,10 @@ class _FinalExamTakingScreenState extends ConsumerState<_FinalExamTakingScreen> 
       appBar: AppBar(title: Text(context.tr('finalExam.title')), backgroundColor: Colors.transparent, elevation: 0, foregroundColor: AppColors.ink900),
       body: questionsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, st) => ErrorView(error: e),
+        // رفع اشکال (H8 — بدون راهِ بازگشت هنگام خطا): قبلاً هیچ دکمهٔ «تلاش
+        // دوباره» نبود؛ شاگرد فقط با دکمهٔ بازگشت می‌توانست از صفحهٔ خطا خارج
+        // شود. حالا مثل بقیهٔ صفحات نصاب، امکانِ تلاشِ دوبارهٔ بارگذاری هست.
+        error: (e, st) => ErrorView(error: e, onRetry: () => ref.invalidate(finalExamQuestionsProvider(widget.examId))),
         data: (questions) {
           // گروه‌بندی بر اساس مضمون تا شاگرد ساختار امتحان را واضح ببیند.
           final bySubject = <String, List<FinalExamQuestion>>{};
