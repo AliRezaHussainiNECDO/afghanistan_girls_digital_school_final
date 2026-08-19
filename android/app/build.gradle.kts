@@ -48,6 +48,13 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // پیش‌فرض امن: intent-filter مستقیمِ MainActivity (در
+        // AndroidManifest.xml اصلی، برای رفع اشکال «flutter run» — نگاه کنید
+        // به کامنت آن‌جا) به‌صورت پیش‌فرض غیرفعال است تا در build های بدون
+        // buildType مشخص هم رفتار production/«حالت پنهان» حفظ شود. debug و
+        // profile پایین‌تر آن را صراحتاً به "true" override می‌کنند.
+        manifestPlaceholders["mainActivityLauncherEnabled"] = "false"
     }
 
     signingConfigs {
@@ -72,6 +79,21 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // release: مقدار پیش‌فرض defaultConfig ("false") دست‌نخورده می‌ماند
+            // تا در نسخهٔ منتشرشده فقط activity-alias فعال («حالت پنهان») دیده
+            // شود، نه خودِ MainActivity.
+        }
+        getByName("debug") {
+            // رفع اشکال «flutter run» → «package identifier or launch activity
+            // not found»: نگاه کنید به کامنت کامل در
+            // android/app/src/main/AndroidManifest.xml. فقط در debug، خودِ
+            // MainActivity هم یک آیکون Launcher می‌گیرد تا ابزار flutter آن را
+            // پیدا/اجرا کند.
+            manifestPlaceholders["mainActivityLauncherEnabled"] = "true"
+        }
+        getByName("profile") {
+            // همان رفع اشکال بالا، برای «flutter run --profile».
+            manifestPlaceholders["mainActivityLauncherEnabled"] = "true"
         }
     }
 }

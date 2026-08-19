@@ -5,24 +5,13 @@
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <!-- رفع اشکال «flutter run» → «package identifier or launch activity not found»:
-         در Manifest اصلی (main/AndroidManifest.xml)، intent-filter LAUNCHER عمداً از
-         خودِ MainActivity به دو activity-alias («حالت پنهان») منتقل شده تا فقط یکی از
-         آن دو (نمایهٔ واقعی/نمایهٔ ماشین‌حساب) آیکون برنامه را در Launcher نشان دهد.
-         ابزار flutter run هنگام پیداکردن activity برای اجرا، فقط <activity> با
-         intent-filter LAUNCHER را می‌شناسد و <activity-alias> را نادیده می‌گیرد؛ در
-         نتیجه در حالت debug اصلاً نمی‌تواند برنامه را پیدا/اجرا کند. راه‌حل: فقط در
-         نسخهٔ debug (این فایل، که هنگام Build با Manifest اصلی ادغام/Merge می‌شود و
-         روی نسخهٔ release/production در Play Store اصلاً اثر نمی‌گذارد)، همان
-         intent-filter را مستقیماً به MainActivity هم اضافه می‌کنیم تا flutter run آن
-         را پیدا کند. عارضهٔ جانبی: در بیلدهای debug، یک آیکون برنامهٔ اضافه (کنار
-         نمایهٔ فعال) در App Drawer دیده می‌شود — کاملاً بی‌ضرر و فقط مخصوص توسعه است. -->
-    <application>
-        <activity android:name=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-    </application>
+    <!-- توجه: راه‌حل قبلیِ «افزودن intent-filter LAUNCHER فقط در این فایل»
+         اشتباه بود و مشکل «flutter run → package identifier or launch
+         activity not found» را واقعاً حل نمی‌کرد، چون ابزار flutter برای
+         تشخیص launch activity فقط android/app/src/main/AndroidManifest.xml
+         را می‌خواند، نه نسخهٔ merge‌شدهٔ Gradle این overlay را (نگاه کنید:
+         github.com/flutter/flutter/issues/134018). رفع اشکال واقعی الان
+         مستقیماً در همان فایل اصلی انجام شده (با android:enabled کنترل‌شده
+         توسط manifestPlaceholders در android/app/build.gradle.kts)، پس اینجا
+         دیگر نیازی به تعریف تکراری MainActivity نیست. -->
 </manifest>

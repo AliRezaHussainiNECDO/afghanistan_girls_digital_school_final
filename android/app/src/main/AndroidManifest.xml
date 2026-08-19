@@ -60,6 +60,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:enabled="${mainActivityLauncherEnabled}"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
@@ -74,6 +75,31 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+
+            <!-- رفع واقعیِ اشکال «flutter run» → «package identifier or launch
+                 activity not found»: تلاش قبلی (افزودن intent-filter فقط در
+                 src/debug و src/profile) کار نمی‌کرد، چون ابزار flutter تشخیص
+                 launch activity را با پارس مستقیمِ همین فایل (main/AndroidManifest.xml)
+                 انجام می‌دهد — قبل از این‌که Gradle آن overlay ها را merge کند
+                 و همچنین activity-alias را اصلاً نمی‌شناسد (این یک محدودیت
+                 شناخته‌شده و هنوز رفع‌نشدهٔ خودِ Flutter است، نگاه کنید:
+                 github.com/flutter/flutter/issues/80532 و
+                 github.com/flutter/flutter/issues/134018). پس این intent-filter
+                 باید مستقیماً روی خودِ MainActivity در همین فایل اصلی باشد تا
+                 flutter آن را پیدا کند — اما برای این‌که در نسخهٔ release آیکون
+                 اضافه (علاوه بر نمایهٔ واقعی/ماشین‌حساب) در Launcher ظاهر نشود و
+                 قابلیت «حالت پنهان» سالم بماند، فعال/غیرفعال بودن خودِ این
+                 intent-filter با android:enabled="${mainActivityLauncherEnabled}"
+                 کنترل می‌شود: در android/app/build.gradle.kts این مقدار برای
+                 debug/profile به "true" و برای release به "false" ست شده است.
+                 نتیجه: در debug/profile یک آیکون توسعه اضافه (بی‌ضرر) دیده
+                 می‌شود تا flutter run/attach کار کند؛ در release فقط همان
+                 activity-alias فعال (نمایهٔ واقعی یا ماشین‌حساب) دیده می‌شود،
+                 دقیقاً مثل قبل. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
         </activity>
 
         <!-- ── نمایه‌های «حالت پنهان» ────────────────────────────────────────
