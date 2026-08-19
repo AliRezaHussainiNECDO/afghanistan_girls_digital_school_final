@@ -12,6 +12,7 @@ import { logAudit, clientIp } from '../lib/audit';
 import { gradeEssaysWithAi } from '../lib/essayGrading';
 import { hasAdminPermission } from '../lib/permissions';
 import { COMPETITION_POINTS, awardWithDailyCap } from '../lib/competition';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
 
 type Bindings = {
   DB: D1Database;
@@ -501,6 +502,11 @@ academy.post('/academy/submissions', async (c) => {
   const hasEssay = drafts.some((d) => d.kind === 'essay');
   let aiGraded = false;
   if (essayItems.length > 0) {
+    // محدودیت نرخ — این Endpoint upsert است (شناسه از کلاینت می‌آید، بدون
+    // سقفِ «یک‌بار در هر آزمون» مثل exams.ts/finalExams.ts)، پس بدون این سقف
+    // می‌شد با ارسال پیاپی، فراخوانی‌های Gemini را نامحدود هزینه‌بر کرد.
+    const essayRl = await hitRateLimit(c.env.DB, `academy-essay-grade:${studentId}`, 3600, 60);
+    if (essayRl.limited) return c.json(rateLimitFail(), 429);
     const graded = await gradeEssaysWithAi(c.env, essayItems);
     if (graded) {
       aiGraded = true;

@@ -29,6 +29,7 @@ import { awardPoints, checkAndCompleteChapter, POINTS_PER_CHAPTER_COMPLETE, POIN
 import { sendPushToUser } from '../lib/push';
 import { logAudit, clientIp } from '../lib/audit';
 import { hasAdminPermission } from '../lib/permissions';
+import { hitRateLimit, rateLimitFail } from '../lib/rateLimit';
 
 type Bindings = {
   DB: D1Database;
@@ -369,6 +370,13 @@ homework.post('/homework/:id/submit', async (c) => {
   if (!owned.ok) return owned.response;
   const hw = owned.row;
 
+  // محدودیت نرخ — همان الگوی چت/TTS/STT معلم هوشمند (routes/ai.ts): هر ارسال
+  // موفق یک فراخوانی Gemini Vision هزینه‌بر است و loadOwnedHomework فقط مالکیت
+  // را چک می‌کند، نه دفعات ارسال؛ بدون این سقف یک شاگرد (یا حساب هک‌شده)
+  // می‌توانست همین Endpoint را پیاپی صدا بزند و هزینهٔ AI را بدون محدودیت بالا ببرد.
+  const submitRl = await hitRateLimit(c.env.DB, `homework-submit:${actor.sub}`, 3600, 30);
+  if (submitRl.limited) return c.json(rateLimitFail(), 429);
+
   const form = await c.req.formData().catch(() => null);
   const file = form?.get('file') as File | null;
   if (!file) {
@@ -546,6 +554,11 @@ homework.post('/homework/:id/reply', async (c) => {
   const owned = await loadOwnedHomework(c, c.req.param('id'), actor);
   if (!owned.ok) return owned.response;
   const hw = owned.row;
+
+  // محدودیت نرخ — این Endpoint هم مثل چت اصلی معلم هوشمند هر پیام یک
+  // فراخوانی AI هزینه‌بر است؛ همان سقفِ `ai-chat` در routes/ai.ts (۱۲۰ در ساعت).
+  const replyRl = await hitRateLimit(c.env.DB, `homework-reply:${actor.sub}`, 3600, 120);
+  if (replyRl.limited) return c.json(rateLimitFail(), 429);
 
   const b = await c.req.json<{ text?: string }>().catch(() => null);
   const studentText = (b?.text ?? '').trim();
