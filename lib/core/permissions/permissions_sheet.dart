@@ -23,10 +23,6 @@ List<_PermItem> _items(BuildContext context) => [
           context.tr('permissions.galleryTitle'), context.tr('permissions.gallerySubtitle')),
       _PermItem(Permission.notification, Icons.notifications_active_rounded,
           context.tr('permissions.notificationsTitle'), context.tr('permissions.notificationsSubtitle')),
-      // رفع ریشه‌ای اشکال کرش سمینار روی گوشی‌های واقعی — نگاه کنید به
-      // توضیح کامل در permission_service.dart::core.
-      _PermItem(Permission.bluetoothConnect, Icons.bluetooth_rounded,
-          context.tr('permissions.bluetoothTitle'), context.tr('permissions.bluetoothSubtitle')),
     ];
 
 /// بلوک شیت مدرن درخواست دسترسی‌های دستگاه.

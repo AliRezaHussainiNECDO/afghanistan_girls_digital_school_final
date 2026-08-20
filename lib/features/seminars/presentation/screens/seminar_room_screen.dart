@@ -87,65 +87,26 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
     // گرفتن در Dart)، هر قدم را *قبل* از انجامش ثبت می‌کنیم — اگر پردازه از
     // بین برود، در «گزارش خطاهای برنامه» می‌بینیم دقیقاً کدام قدم آخرین بار
     // موفق بوده (رجوع کن core/errors/app_error_handler.dart::breadcrumb).
-    await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون/بلوتوث', context: 'SeminarJoin.permissions');
-    // ردِ نان تشخیصیِ اضافه (رفع اشکال کرشِ باقی‌مانده روی سامسونگ/گوشی‌های
-    // واقعی، حتی پس از افزودن درخواست زمان‌اجرای BLUETOOTH_CONNECT پایین‌تر):
-    // بررسی Logcat خودِ دستگاه واقعی در لحظهٔ کرش نشان داد که آخرین Activity
-    // ازسرگرفته‌شده، دقیقاً دیالوگ سیستمی مجوز (GrantPermissionsActivity) بوده
-    // — یعنی این‌جا (اگر کاربر تا این لحظه هنوز مجوز بلوتوث را نداده بود) یک
-    // دیالوگ سیستمی روی صفحه ظاهر می‌شود که خودِ MainActivity را موقتاً
-    // pause می‌کند. اگر بلافاصله پس از بسته‌شدن آن دیالوگ (بدون فرصت کافی
-    // برای resume کامل Activity) کد بومی WebRTC/Jitsi تلاش کند سخت‌افزار
-    // صدا/دوربین را راه‌اندازی کند، این دقیقاً همان مسابقهٔ شرایطی (race
-    // condition) است که در گزارش‌های مشابه Jitsi/WebRTC روی OEMهای سامسونگ
-    // دیده شده. راه‌حل ریشه‌ای (که دیگر اصلاً این دیالوگ را در وسط جریان ورود
-    // به تماس نشان نمی‌دهد) این مجوز را به لیست PermissionService.core منتقل
-    // کرده (پرسیده‌شده در onboarding، قبل از رسیدن کاربر به این صفحه — نگاه
-    // کنید به کامنت کامل در core/permissions/permission_service.dart). اما
-    // برای کاربرانی که این آپدیت را از نسخهٔ قبلی گرفته‌اند و onboarding را
-    // قبلاً (بدون آیتم بلوتوث) رد کرده‌اند، ممکن است دیالوگ هنوز همین‌جا یک‌بار
-    // ظاهر شود؛ برای آن‌ها یک «مکث تنظیم مجدد» کوتاه بعد از درخواست مجوزهای
-    // ناگرانته‌شده اضافه شده تا Activity قبل از فراخوانی SDK بومی Jitsi
-    // فرصت resume کامل داشته باشد.
+    await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون', context: 'SeminarJoin.permissions');
+    // نکتهٔ ۲۰ اوت ۲۰۲۶: درخواستِ زمان‌اجرای Permission.bluetoothConnect که
+    // اینجا بود (به همراه «مکث تنظیم مجدد» بعد از آن) حذف شد. آن بر پایهٔ
+    // نظریهٔ «مسابقهٔ شرایط دیالوگ مجوز بلوتوث» اضافه شده بود که با بررسی
+    // دقیق‌تر (Logcat فیلترشده + بازکاویِ باینری build) نادرست ثابت شد؛ علتِ
+    // واقعیِ کرشِ سمینار روی گوشی‌های واقعی، R8 code/resource shrinking در
+    // build های release بود (رفع کامل در android/app/build.gradle.kts).
     final cameraWasUngranted = !(await Permission.camera.status).isGranted;
     final micWasUngranted = !(await Permission.microphone.status).isGranted;
-    final bluetoothWasUngranted = !(await Permission.bluetoothConnect.status).isGranted;
     final cameraOk = await PermissionService.request(Permission.camera);
     final micOk = await PermissionService.request(Permission.microphone);
-    // رفع اشکالِ بازگشتیِ «روی سامسونگ/گوشی واقعی هنگام ورود به ویدیوکنفرانس
-    // برنامه بسته می‌شود، ولی روی آیفون/امولاتور مشکلی نیست»: AndroidManifest.xml
-    // از قبل (با توضیح کامل همان‌جا) BLUETOOTH_CONNECT را اعلام کرده بود —
-    // چون لایهٔ بومی WebRTC/Jitsi برای مدیریت مسیر صدا (بلندگو/هندزفری/
-    // بلوتوث) به آن نیاز دارد. اما BLUETOOTH_CONNECT از نوع مجوز «خطرناک»ِ
-    // Android 12+ است: صرفِ اعلام در Manifest کافی نیست، باید در **زمان
-    // اجرا** هم صریحاً گرفته شود — دقیقاً مثل دوربین/میکروفون. این درخواستِ
-    // زمان‌اجرا اینجا از قلم افتاده بود؛ روی امولاتور/آیفون هیچ‌وقت این کد بومیِ
-    // خاص (تشخیص/تعویض مسیر صدا با سخت‌افزار بلوتوث واقعی) اصلاً اجرا نمی‌شود
-    // (امولاتورها بلوتوث واقعی ندارند)، پس آن‌جا مشکل هرگز خودش را نشان
-    // نمی‌داد — ولی روی گوشی واقعیِ سامسونگ (که بلوتوث واقعی دارد)، همان
-    // لحظهٔ ورود به تماس این مسیر صدا زده می‌شود و بدون این مجوز زمان‌اجرا با
-    // SecurityException بومی (غیرقابل‌گرفتن در Dart) کل برنامه را می‌بندد.
-    // روی iOS و Android زیر نسخهٔ ۱۲ این درخواست بی‌اثر/خودکار-مجاز است، پس
-    // اینجا در هر دو حالت بی‌خطر است. عمداً نتیجهٔ آن مانعِ ورود نمی‌شود (اگر
-    // کاربر رد کند، تماس هنوز باید با بلندگوی پیش‌فرض کار کند) — فقط مهم است
-    // که این درخواست واقعاً *صدا زده شده* باشد، تا وضعیت مجوز از «هنوز
-    // پرسیده‌نشده» (که در آن لایهٔ بومی می‌تواند کرش کند) خارج شود.
-    final bluetoothOk = await PermissionService.request(Permission.bluetoothConnect);
     await AppErrorHandler.breadcrumb(
-      'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk bluetooth=$bluetoothOk',
+      'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk',
       context: 'SeminarJoin.permissions',
     );
     // «مکث تنظیم مجدد» — فقط وقتی حداقل یکی از مجوزهای بالا واقعاً از حالت
     // «تعیین‌نشده» درخواست شد (یعنی به‌احتمال زیاد یک دیالوگ سیستمی واقعی روی
-    // صفحه ظاهر و بسته شد). اگر هر سه مجوز از قبل (مثلاً از onboarding) اعطا
-    // شده بودند، هیچ دیالوگی نشان داده نمی‌شود و PermissionService.request
-    // فوراً و بدون تعامل با UI سیستم برمی‌گردد — پس این تأخیر برای اکثریت
-    // کاربرانی که onboarding جدید را دیده‌اند اصلاً اجرا نمی‌شود. وقتی هم
-    // اجرا شود، فقط یک مکث کوتاه (بی‌ضرر برای تجربهٔ کاربری) قبل از فراخوانی
-    // SDK بومی Jitsi است تا چرخهٔ حیات MainActivity واقعاً به‌طور کامل resume
-    // شود — نگاه کنید به توضیح کامل بالا دربارهٔ ارتباط GrantPermissionsActivity
-    // با کرش در Logcat.
-    if (cameraWasUngranted || micWasUngranted || bluetoothWasUngranted) {
+    // صفحه ظاهر و بسته شد)، تا چرخهٔ حیات MainActivity قبل از فراخوانی SDK
+    // بومی Jitsi فرصت resume کامل داشته باشد.
+    if (cameraWasUngranted || micWasUngranted) {
       await AppErrorHandler.breadcrumb(
         'مکث تنظیم مجدد پس از دیالوگ مجوز سیستمی (احتمال نمایش داده شدن)',
         context: 'SeminarJoin.permissions',

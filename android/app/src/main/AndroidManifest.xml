@@ -7,21 +7,19 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- رفع اشکال «اتاق ویدیوکنفرانس روی گوشی واقعی برنامه را می‌بندد، ولی
-         روی امولاتور کار می‌کند»: این مجوزها دقیقاً همان‌هایی هستند که مستندات
-         رسمی نصب Android برای jitsi_meet_flutter_sdk/WebRTC می‌خواهند
-         (مدیریت مسیر صدا بین بلندگو/گوشی/بلوتوث، وضعیت شبکه، سرویس
-         پیش‌زمینهٔ تماس در حال انجام). امولاتورها معمولاً سخت‌افزار
-         بلوتوث/صدای واقعی ندارند، پس همان مسیر کدِ WebRTC که این مجوزها را
-         در زمان اجرا لازم دارد اصلاً روی امولاتور اجرا نمی‌شود — ولی روی
-         گوشی واقعی (که بلوتوث/کارت صدای واقعی دارد) همان لحظه که تماس واقعاً
-         شروع می‌شود این کد صدا زده می‌شود؛ بدون این مجوزها یک SecurityException
-         بومی پرتاب می‌شود که سمت Dart قابل گرفتن نیست و کل برنامه می‌بندد.
-         افزودن این مجوزها اپ را روی هیچ دستگاهی مجبور به داشتن بلوتوث نمی‌کند
-         (خودِ jitsi/WebRTC در نبود سخت‌افزار، آن مسیر را نادیده می‌گیرد). -->
+    <!-- مجوزهای لازم برای مسیر صدا/شبکهٔ تماس ویدیویی Jitsi/WebRTC.
+
+         نکتهٔ ۲۰ اوت ۲۰۲۶: مجوزهای بلوتوث (BLUETOOTH/BLUETOOTH_CONNECT) که
+         قبلاً اینجا بودند عمداً حذف شدند. علتِ واقعی و تأییدشدهٔ (با
+         stack trace واقعی از Logcat) کرشِ «اتاق ویدیوکنفرانس روی گوشی واقعی
+         برنامه را می‌بندد» چیز کاملاً دیگری بود: R8 code/resource shrinking
+         در build های release (رفع کامل در android/app/build.gradle.kts —
+         isMinifyEnabled=false). نظریهٔ قبلی «بدون این مجوزها SecurityException
+         بومی در مسیر صدای بلوتوث رخ می‌دهد» هرگز با یک stack trace واقعی
+         تأیید نشده بود؛ صرفاً یک احتیاطِ حدسی بود. حذف این دو مجوز هم زمان
+         بررسی انتشار در Play Store/App Store را کوتاه‌تر می‌کند و هم اپ را
+         از درخواست یک دسترسیِ واقعاً غیرضروری برای کاربران بازمی‌دارد. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>

@@ -1933,8 +1933,6 @@ const Map<String, String> enStrings = {
 'permissions.gallerySubtitle': 'For selecting and saving images and files',
 'permissions.notificationsTitle': 'Notifications',
 'permissions.notificationsSubtitle': 'For updates on books, exams, and grades',
-'permissions.bluetoothTitle': 'Bluetooth',
-'permissions.bluetoothSubtitle': 'For audio routing (speaker/headset) during video seminars',
 'permissions.sheetTitle': 'App permissions',
 'permissions.sheetDescription': 'To use all features, please allow the items below. You can change this anytime from settings.',
 'permissions.requestingButton': 'Requesting…',
