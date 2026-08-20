@@ -1932,6 +1932,8 @@ const Map<String, String> faStrings = {
 'permissions.gallerySubtitle': 'برای انتخاب و ذخیرهٔ تصاویر و فایل‌ها',
 'permissions.notificationsTitle': 'اعلان‌ها',
 'permissions.notificationsSubtitle': 'برای اطلاع از کتاب‌ها، امتحان‌ها و نمرات',
+'permissions.bluetoothTitle': 'بلوتوث',
+'permissions.bluetoothSubtitle': 'برای مدیریت مسیر صدا (بلندگو/هندزفری) در سمینارهای ویدیویی',
 'permissions.sheetTitle': 'دسترسی‌های برنامه',
 'permissions.sheetDescription': 'برای استفادهٔ کامل از امکانات، لطفاً به موارد زیر اجازه بده. هر زمان می‌توانی از تنظیمات تغییر بدهی.',
 'permissions.requestingButton': 'در حال درخواست…',

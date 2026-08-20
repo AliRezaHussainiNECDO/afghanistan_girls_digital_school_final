@@ -88,6 +88,28 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
     // بین برود، در «گزارش خطاهای برنامه» می‌بینیم دقیقاً کدام قدم آخرین بار
     // موفق بوده (رجوع کن core/errors/app_error_handler.dart::breadcrumb).
     await AppErrorHandler.breadcrumb('شروع درخواست مجوز دوربین/میکروفون/بلوتوث', context: 'SeminarJoin.permissions');
+    // ردِ نان تشخیصیِ اضافه (رفع اشکال کرشِ باقی‌مانده روی سامسونگ/گوشی‌های
+    // واقعی، حتی پس از افزودن درخواست زمان‌اجرای BLUETOOTH_CONNECT پایین‌تر):
+    // بررسی Logcat خودِ دستگاه واقعی در لحظهٔ کرش نشان داد که آخرین Activity
+    // ازسرگرفته‌شده، دقیقاً دیالوگ سیستمی مجوز (GrantPermissionsActivity) بوده
+    // — یعنی این‌جا (اگر کاربر تا این لحظه هنوز مجوز بلوتوث را نداده بود) یک
+    // دیالوگ سیستمی روی صفحه ظاهر می‌شود که خودِ MainActivity را موقتاً
+    // pause می‌کند. اگر بلافاصله پس از بسته‌شدن آن دیالوگ (بدون فرصت کافی
+    // برای resume کامل Activity) کد بومی WebRTC/Jitsi تلاش کند سخت‌افزار
+    // صدا/دوربین را راه‌اندازی کند، این دقیقاً همان مسابقهٔ شرایطی (race
+    // condition) است که در گزارش‌های مشابه Jitsi/WebRTC روی OEMهای سامسونگ
+    // دیده شده. راه‌حل ریشه‌ای (که دیگر اصلاً این دیالوگ را در وسط جریان ورود
+    // به تماس نشان نمی‌دهد) این مجوز را به لیست PermissionService.core منتقل
+    // کرده (پرسیده‌شده در onboarding، قبل از رسیدن کاربر به این صفحه — نگاه
+    // کنید به کامنت کامل در core/permissions/permission_service.dart). اما
+    // برای کاربرانی که این آپدیت را از نسخهٔ قبلی گرفته‌اند و onboarding را
+    // قبلاً (بدون آیتم بلوتوث) رد کرده‌اند، ممکن است دیالوگ هنوز همین‌جا یک‌بار
+    // ظاهر شود؛ برای آن‌ها یک «مکث تنظیم مجدد» کوتاه بعد از درخواست مجوزهای
+    // ناگرانته‌شده اضافه شده تا Activity قبل از فراخوانی SDK بومی Jitsi
+    // فرصت resume کامل داشته باشد.
+    final cameraWasUngranted = !(await Permission.camera.status).isGranted;
+    final micWasUngranted = !(await Permission.microphone.status).isGranted;
+    final bluetoothWasUngranted = !(await Permission.bluetoothConnect.status).isGranted;
     final cameraOk = await PermissionService.request(Permission.camera);
     final micOk = await PermissionService.request(Permission.microphone);
     // رفع اشکالِ بازگشتیِ «روی سامسونگ/گوشی واقعی هنگام ورود به ویدیوکنفرانس
@@ -113,6 +135,24 @@ class _SeminarRoomScreenState extends ConsumerState<SeminarRoomScreen> {
       'نتیجهٔ مجوز: camera=$cameraOk mic=$micOk bluetooth=$bluetoothOk',
       context: 'SeminarJoin.permissions',
     );
+    // «مکث تنظیم مجدد» — فقط وقتی حداقل یکی از مجوزهای بالا واقعاً از حالت
+    // «تعیین‌نشده» درخواست شد (یعنی به‌احتمال زیاد یک دیالوگ سیستمی واقعی روی
+    // صفحه ظاهر و بسته شد). اگر هر سه مجوز از قبل (مثلاً از onboarding) اعطا
+    // شده بودند، هیچ دیالوگی نشان داده نمی‌شود و PermissionService.request
+    // فوراً و بدون تعامل با UI سیستم برمی‌گردد — پس این تأخیر برای اکثریت
+    // کاربرانی که onboarding جدید را دیده‌اند اصلاً اجرا نمی‌شود. وقتی هم
+    // اجرا شود، فقط یک مکث کوتاه (بی‌ضرر برای تجربهٔ کاربری) قبل از فراخوانی
+    // SDK بومی Jitsi است تا چرخهٔ حیات MainActivity واقعاً به‌طور کامل resume
+    // شود — نگاه کنید به توضیح کامل بالا دربارهٔ ارتباط GrantPermissionsActivity
+    // با کرش در Logcat.
+    if (cameraWasUngranted || micWasUngranted || bluetoothWasUngranted) {
+      await AppErrorHandler.breadcrumb(
+        'مکث تنظیم مجدد پس از دیالوگ مجوز سیستمی (احتمال نمایش داده شدن)',
+        context: 'SeminarJoin.permissions',
+      );
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return false;
+    }
     if (cameraOk && micOk) return true;
     if (!mounted) return false;
     await showDialog<void>(

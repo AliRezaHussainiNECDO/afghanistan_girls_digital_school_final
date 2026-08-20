@@ -1941,6 +1941,8 @@ const Map<String, String> frStrings = {
 'permissions.gallerySubtitle': 'Pour sélectionner et enregistrer des images et des fichiers',
 'permissions.notificationsTitle': 'Notifications',
 'permissions.notificationsSubtitle': 'Pour être informé des livres, examens et notes',
+'permissions.bluetoothTitle': 'Bluetooth',
+'permissions.bluetoothSubtitle': 'Pour le routage audio (haut-parleur/casque) pendant les séminaires vidéo',
 'permissions.sheetTitle': 'Autorisations de l’application',
 "permissions.sheetDescription": "Pour profiter pleinement des fonctionnalités, veuillez autoriser les éléments ci-dessous. Vous pouvez les modifier à tout moment depuis les paramètres.",
 'permissions.requestingButton': 'Demande en cours…',

@@ -1930,6 +1930,8 @@ const Map<String, String> psStrings = {
 'permissions.gallerySubtitle': 'د انځورونو او فایلونو د غوره کولو او ساتلو لپاره',
 'permissions.notificationsTitle': 'خبرتیاوې',
 'permissions.notificationsSubtitle': 'د کتابونو، ازموینو او نمرو د خبرتیا لپاره',
+'permissions.bluetoothTitle': 'بلوتوث',
+'permissions.bluetoothSubtitle': 'د ویډیویي سیمینارونو په جریان کې د غږ لارې (سپیکر/هینډسفري) د مدیریت لپاره',
 'permissions.sheetTitle': 'د اپلیکیشن اجازې',
 'permissions.sheetDescription': 'د ټولو ځانګړتیاوو د بشپړ ګټې اخیستنې لپاره، مهرباني وکړئ لاندې مواردو ته اجازه ورکړئ. تاسو کولی شئ هر وخت د تنظیماتو له لارې یې بدل کړئ.',
 'permissions.requestingButton': 'غوښتنه روانه ده…',
