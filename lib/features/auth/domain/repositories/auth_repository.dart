@@ -76,6 +76,11 @@ abstract class AuthRepository {
     required String newPassword,
   });
 
+  /// حذف کامل حساب کاربر واردشده (نیاز به رمز فعلی برای تأیید) — الزام
+  /// App Store Guideline 5.1.1(v): اپی که امکان ساخت حساب دارد باید امکان
+  /// واقعیِ حذف آن را هم از داخل خودِ اپ بدهد (نه فقط غیرفعال‌سازی موقت).
+  Future<Either<Failure, Unit>> deleteAccount({required String password});
+
   Future<Either<Failure, Unit>> logout();
 
   Future<AppUser?> getCurrentUser();

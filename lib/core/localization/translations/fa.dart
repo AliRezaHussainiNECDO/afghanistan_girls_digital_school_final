@@ -927,6 +927,12 @@ const Map<String, String> faStrings = {
 'profile.passwordChanged': 'رمز عبور با موفقیت تغییر کرد',
 'profile.passwordMismatch': 'رمزهای عبور جدید با هم مطابقت ندارند',
 'profile.photoUpdated': 'عکس پروفایل به‌روزرسانی شد',
+'profile.deleteAccount': 'حذف حساب کاربری',
+'profile.deleteAccountSubtitle': 'حذف کامل و همیشگی حساب و معلومات شما',
+'profile.deleteAccountConfirmTitle': 'حساب کاربری‌تان حذف شود؟',
+'profile.deleteAccountConfirmBody': 'این کار حساب و تمام معلومات شما را برای همیشه حذف می‌کند. این عمل قابل بازگشت نیست.',
+'profile.deleteAccountPasswordLabel': 'برای تأیید، رمز عبور خود را وارد کنید',
+'profile.accountDeleted': 'حساب کاربری شما حذف شد',
 
 // terms & privacy
 'terms.title': 'قوانین استفاده',
@@ -1935,7 +1941,7 @@ const Map<String, String> faStrings = {
 'permissions.sheetTitle': 'دسترسی‌های برنامه',
 'permissions.sheetDescription': 'برای استفادهٔ کامل از امکانات، لطفاً به موارد زیر اجازه بده. هر زمان می‌توانی از تنظیمات تغییر بدهی.',
 'permissions.requestingButton': 'در حال درخواست…',
-'permissions.allowButton': 'اجازه دادن',
+'permissions.allowButton': 'ادامه',
 'permissions.laterButton': 'بعداً',
 'errors.network': 'خطای اتصال به شبکه',
 'errors.cache': 'داده‌ای در حافظهٔ محلی یافت نشد',

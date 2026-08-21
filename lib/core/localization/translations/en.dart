@@ -936,6 +936,12 @@ const Map<String, String> enStrings = {
 'profile.passwordChanged': 'Password changed successfully',
 'profile.passwordMismatch': 'New passwords do not match',
 'profile.photoUpdated': 'Profile photo updated',
+'profile.deleteAccount': 'Delete account',
+'profile.deleteAccountSubtitle': 'Permanently delete your account and data',
+'profile.deleteAccountConfirmTitle': 'Delete your account?',
+'profile.deleteAccountConfirmBody': 'This will permanently delete your account and all your data. This action cannot be undone.',
+'profile.deleteAccountPasswordLabel': 'Enter your password to confirm',
+'profile.accountDeleted': 'Your account has been deleted',
 
 // terms & privacy
 'terms.title': 'Terms of Use',
@@ -1936,7 +1942,7 @@ const Map<String, String> enStrings = {
 'permissions.sheetTitle': 'App permissions',
 'permissions.sheetDescription': 'To use all features, please allow the items below. You can change this anytime from settings.',
 'permissions.requestingButton': 'Requesting…',
-'permissions.allowButton': 'Allow',
+'permissions.allowButton': 'Continue',
 'permissions.laterButton': 'Later',
 'errors.network': 'Network connection error',
 'errors.cache': 'No data found in local storage',

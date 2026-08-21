@@ -178,6 +178,20 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, Unit>> deleteAccount({required String password}) async {
+    try {
+      await dataSource.deleteAccount(password: password);
+      return const Right(unit);
+    } on ApiException catch (e) {
+      return Left(_mapApi(e));
+    } on Failure catch (f) {
+      return Left(f);
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, Unit>> logout() async {
     try {
       await dataSource.logout();

@@ -760,5 +760,60 @@ auth.patch('/me', async (c) => {
   return c.json({ user: await publicUser(c.env.DB, user) });
 });
 
+// ───────────────────────────── Delete Account ──────────────────────────────
+
+// رفع الزام App Store Guideline 5.1.1(v): اپی که امکان ساخت حساب دارد باید
+// امکان واقعیِ حذف آن را هم از داخل خودِ اپ بدهد (نه فقط غیرفعال‌سازی موقت).
+// این Endpoint با رمز عبور فعلی کاربر تأیید می‌شود، سپس:
+//  ۱. وضعیت حساب را 'deleted' می‌کند (همان مقداری که login/forgot-password/
+//     reset-password از قبل چک می‌کنند و ورود را مسدود می‌سازند).
+//  ۲. اطلاعات هویتی/تماس (ایمیل، نام، شماره تلفن، تاریخ تولد، عکس، بیوگرافی)
+//     را پاک/ناشناس می‌کند — طبق وعدهٔ «حذف کامل معلومات» در سیاست حریم
+//     خصوصی (بخش ۶ همان سند، routes/privacy.ts).
+//  ۳. همهٔ Refresh Tokenهای این کاربر را باطل می‌کند تا هیچ دستگاهی دیگر
+//     نتواند با نشست قدیمی وارد بماند.
+// ایمیل به یک مقدار یکتای غیرقابل‌ورود تغییر می‌کند تا هم همین آدرس بعداً
+// برای ثبت‌نام تازه آزاد شود، هم قید یکتایی ستون email نقض نشود.
+auth.delete('/me', async (c) => {
+  const payload = await verifyBearer(c.req.header('Authorization'), c.env.JWT_SECRET);
+  const sub = payload?.['sub'] as string | undefined;
+  if (!sub) return c.json(fail('UNAUTHORIZED', 'وارد نشده‌اید', 'Unauthorized', 'تاسو ننوتلي نه یاست', 'Vous n\'êtes pas connecté(e)'), 401);
+
+  const b = await c.req.json<{ password?: string }>().catch(() => null);
+  const password = String(b?.password ?? '');
+
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(sub).first<UserRow>();
+  if (!user || user.status === 'deleted') {
+    return c.json(fail('UNAUTHORIZED', 'کاربر یافت نشد', 'User not found', 'کارن ونه موندل شو', 'Utilisateur introuvable'), 401);
+  }
+  if (!(await verifyPassword(password, user.password_hash))) {
+    return c.json(fail('INVALID_CREDENTIALS', 'رمز عبور نادرست است', 'Incorrect password', 'پټنوم ناسم دی', 'Mot de passe incorrect'), 401);
+  }
+
+  const anonymizedEmail = `deleted-${sub}@deleted.afghanistangirlsdigitalschool.org`;
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      "UPDATE users SET status = 'deleted', email = ?, first_name = 'Deleted', last_name = 'User', " +
+        "phone = NULL, phone_enc = NULL, date_of_birth = NULL, dob_enc = NULL, avatar_url = NULL, bio = NULL, " +
+        "updated_at = datetime('now') WHERE id = ?",
+    ).bind(anonymizedEmail, sub),
+    c.env.DB.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').bind(sub),
+  ]);
+
+  c.executionCtx.waitUntil(
+    logAudit(c.env.DB, {
+      actorId: sub,
+      actorRole: user.role,
+      actionType: 'account_self_deleted',
+      targetTable: 'users',
+      targetId: sub,
+      ipAddress: clientIp(c),
+    }),
+  );
+
+  return c.json({ success: true, message_fa: 'حساب شما با موفقیت حذف شد' });
+});
+
 export default auth;
 // (audit wiring v1 — بخش ۲۰.۳)

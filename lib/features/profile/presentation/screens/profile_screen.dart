@@ -298,6 +298,79 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     confirmController.dispose();
   }
 
+  /// حذف کامل حساب کاربر — الزام App Store Guideline 5.1.1(v): اپی که امکان
+  /// ساخت حساب دارد باید امکان واقعیِ حذف آن را هم از داخل خودِ اپ بدهد (نه
+  /// فقط غیرفعال‌سازی موقت). با رمز عبور فعلی تأیید می‌شود؛ در صورت موفقیت
+  /// سرور حساب را برای همیشه حذف/ناشناس می‌کند و کاربر به صفحهٔ ورود می‌رود.
+  Future<void> _showDeleteAccountDialog() async {
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(context.tr('profile.deleteAccountConfirmTitle')),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(context.tr('profile.deleteAccountConfirmBody')),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(labelText: context.tr('profile.deleteAccountPasswordLabel')),
+                  validator: (v) => (v == null || v.isEmpty) ? context.tr('common.required') : null,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: submitting ? null : () => Navigator.of(dialogContext).pop(),
+              child: Text(context.tr('common.cancel')),
+            ),
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+                backgroundColor: Theme.of(dialogContext).colorScheme.error,
+              ),
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) return;
+                      setDialogState(() => submitting = true);
+                      final notifier = ref.read(authSessionProvider.notifier);
+                      final ok = await notifier.deleteAccount(password: passwordController.text);
+                      if (!mounted) return;
+                      Navigator.of(context).pop();
+                      if (ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(context.tr('profile.accountDeleted'))),
+                        );
+                        context.go(AppRoutes.login);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(notifier.lastError ?? context.tr('common.error')),
+                        ));
+                      }
+                    },
+              child: submitting
+                  ? const SizedBox(
+                      width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(context.tr('common.delete')),
+            ),
+          ],
+        ),
+      ),
+    );
+    passwordController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authSessionProvider);
@@ -658,6 +731,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 await ref.read(authSessionProvider.notifier).logout();
                 if (context.mounted) context.go(AppRoutes.login);
               },
+            ),
+            // الزام App Store Guideline 5.1.1(v): اپی که امکان ساخت حساب
+            // دارد باید امکان واقعیِ حذف آن را هم از داخل خودِ اپ بدهد.
+            _SettingsTile(
+              icon: Icons.delete_forever_rounded,
+              color: scheme.error,
+              title: context.tr('profile.deleteAccount'),
+              subtitle: context.tr('profile.deleteAccountSubtitle'),
+              onTap: _showDeleteAccountDialog,
             ),
           ]).animate().fadeIn(delay: 160.ms, duration: 300.ms).slideY(begin: 0.06, end: 0, duration: 300.ms),
         ],

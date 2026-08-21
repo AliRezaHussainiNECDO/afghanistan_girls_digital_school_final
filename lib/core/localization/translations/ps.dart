@@ -936,6 +936,12 @@ const Map<String, String> psStrings = {
 'profile.passwordChanged': 'پټنوم په بریالیتوب سره بدل شو',
 'profile.passwordMismatch': 'نوي پټنومونه سره مطابقت نلري',
 'profile.photoUpdated': 'د پروفایل انځور تازه شو',
+'profile.deleteAccount': 'د حساب ړنګول',
+'profile.deleteAccountSubtitle': 'ستاسو د حساب او معلوماتو بشپړ او همیشني ړنګول',
+'profile.deleteAccountConfirmTitle': 'ایا ستاسو حساب ړنګ شي؟',
+'profile.deleteAccountConfirmBody': 'دا کار به ستاسو حساب او ټول معلومات د تل لپاره ړنګ کړي. دا کړنه بېرته نشي کېدای.',
+'profile.deleteAccountPasswordLabel': 'د تایید لپاره خپل پټنوم ولیکئ',
+'profile.accountDeleted': 'ستاسو حساب ړنګ شو',
 
 // terms & privacy
 'terms.title': 'د کارونې قوانین',
@@ -1933,7 +1939,7 @@ const Map<String, String> psStrings = {
 'permissions.sheetTitle': 'د اپلیکیشن اجازې',
 'permissions.sheetDescription': 'د ټولو ځانګړتیاوو د بشپړ ګټې اخیستنې لپاره، مهرباني وکړئ لاندې مواردو ته اجازه ورکړئ. تاسو کولی شئ هر وخت د تنظیماتو له لارې یې بدل کړئ.',
 'permissions.requestingButton': 'غوښتنه روانه ده…',
-'permissions.allowButton': 'اجازه ورکول',
+'permissions.allowButton': 'دوام ورکړئ',
 'permissions.laterButton': 'وروسته',
 'errors.network': 'د شبکې د اړیکې تېروتنه',
 'errors.cache': 'په محلي حافظه کې کوم معلومات ونه موندل شول',

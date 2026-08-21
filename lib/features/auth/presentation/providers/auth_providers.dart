@@ -243,6 +243,21 @@ class AuthSessionNotifier extends StateNotifier<AppUser?> {
     });
   }
 
+  /// حذف کامل حساب کاربر — الزام App Store Guideline 5.1.1(v). سرور پس از
+  /// موفقیت همهٔ نشست‌ها را باطل و اطلاعات هویتی را پاک می‌کند؛ بلافاصله
+  /// `logout()` محلی هم اجرا می‌شود تا کاربر به صفحهٔ ورود برگردد.
+  Future<bool> deleteAccount({required String password}) async {
+    final result =
+        await ref.read(authRepositoryProvider).deleteAccount(password: password);
+    return result.fold((failure) {
+      lastError = failure.message;
+      return false;
+    }, (_) {
+      logout();
+      return true;
+    });
+  }
+
   /// ویرایش نام کاربر فعلی — رفع اشکال: قبلاً فقط `state` محلی نشست تغییر
   /// می‌کرد و هرگز روی سرور ذخیره نمی‌شد، پس با ورود مجدد یا در سایر
   /// داشبوردها (فهرست شاگردان مدیر، هم‌صنفی‌های چت، ثبت‌نامی سمینار و...) نام

@@ -265,6 +265,20 @@ class AuthMockDataSource implements AuthDataSource {
   }
 
   @override
+  Future<void> deleteAccount({required String password}) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final current = _currentUser;
+    if (current == null) throw ServerFailure(_t('notLoggedIn'), code: 'UNAUTHORIZED');
+    final key = current.email.trim().toLowerCase();
+    final account = _accounts[key];
+    if (account == null || account.password != password) {
+      throw ServerFailure(_t('wrongCurrentPassword'), code: 'INVALID_CREDENTIALS');
+    }
+    _accounts.remove(key);
+    _currentUser = null;
+  }
+
+  @override
   Future<void> logout() async {
     _currentUser = null;
   }

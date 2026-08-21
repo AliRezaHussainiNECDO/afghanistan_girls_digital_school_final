@@ -68,6 +68,11 @@ abstract class AuthDataSource {
   /// تغییر رمز عبور — رفع اشکال: قبلاً در UI کاملاً ساختگی بود.
   Future<void> changePassword({required String currentPassword, required String newPassword});
 
+  /// حذف کامل حساب کاربر واردشده (نیاز به رمز فعلی برای تأیید) — الزام
+  /// App Store Guideline 5.1.1(v): اپی که امکان ساخت حساب دارد باید امکان
+  /// واقعیِ حذف آن را هم از داخل خودِ اپ بدهد.
+  Future<void> deleteAccount({required String password});
+
   Future<void> logout();
 
   AppUserModel? get currentUser;
@@ -265,6 +270,15 @@ class AuthRemoteDataSource implements AuthDataSource {
       'currentPassword': currentPassword,
       'newPassword': newPassword,
     });
+  }
+
+  @override
+  Future<void> deleteAccount({required String password}) async {
+    await _api.delete('/auth/me', data: {'password': password});
+    // سرور همهٔ Refresh Tokenهای این کاربر را باطل کرده — نشست محلی هم فوراً
+    // پاک می‌شود تا وضعیت UI با سرور هماهنگ بماند.
+    _cached = null;
+    await _tokens.clear();
   }
 
   @override

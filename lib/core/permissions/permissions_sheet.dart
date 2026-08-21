@@ -30,10 +30,17 @@ class PermissionsSheet extends StatefulWidget {
   const PermissionsSheet({super.key});
 
   static Future<void> show(BuildContext context) {
+    // رفع الزام App Store Guideline 5.1.1(iv): این پیام سفارشی فقط توضیح
+    // می‌دهد که چرا دسترسی لازم است — کاربر نباید بتواند با بستن/کشیدن این
+    // بلوک‌شیت، درخواست واقعیِ سیستمی را دور بزند. به همین دلیل بستن با لمس
+    // بیرون یا کشیدن غیرفعال است؛ تنها راه ادامه، دکمهٔ اصلی است که بلافاصله
+    // درخواست‌های واقعی سیستم‌عامل را نشان می‌دهد (کاربر همچنان می‌تواند در
+    // همان پرامپت‌های سیستمی «اجازه نده» را بزند).
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.xl)),
@@ -70,8 +77,10 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
         ..addAll(res);
       _busy = false;
     });
-    final allSet = res.values.every((v) => v);
-    if (allSet && mounted) {
+    // بستن این بلوک‌شیت دیگر شرطی نیست: چون دکمهٔ «رد کردن/بعداً» حذف شده و
+    // بستن با لمس بیرون/کشیدن هم غیرفعال است، تنها راه ادامهٔ کاربر همین‌جاست
+    // — چه همهٔ دسترسی‌ها را در پرامپت‌های واقعی سیستم بدهد، چه رد کند.
+    if (mounted) {
       await Future.delayed(const Duration(milliseconds: 500));
       if (mounted) Navigator.pop(context);
     }
@@ -150,8 +159,6 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
                   : const Icon(Icons.check_rounded),
               label: Text(_busy ? context.tr('permissions.requestingButton') : context.tr('permissions.allowButton')),
             ),
-            const SizedBox(height: 6),
-            TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('permissions.laterButton'))),
           ],
         ),
       ),

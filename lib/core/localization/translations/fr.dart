@@ -936,6 +936,12 @@ const Map<String, String> frStrings = {
 'profile.passwordChanged': 'Mot de passe changé avec succès',
 'profile.passwordMismatch': 'Les nouveaux mots de passe ne correspondent pas',
 'profile.photoUpdated': 'Photo de profil mise à jour',
+'profile.deleteAccount': 'Supprimer le compte',
+'profile.deleteAccountSubtitle': 'Supprimer définitivement votre compte et vos données',
+'profile.deleteAccountConfirmTitle': 'Supprimer votre compte ?',
+'profile.deleteAccountConfirmBody': 'Cette action supprimera définitivement votre compte et toutes vos données. Cette action est irréversible.',
+'profile.deleteAccountPasswordLabel': 'Entrez votre mot de passe pour confirmer',
+'profile.accountDeleted': 'Votre compte a été supprimé',
 
 // terms & privacy
 'terms.title': "Conditions d'utilisation",
@@ -1944,7 +1950,7 @@ const Map<String, String> frStrings = {
 'permissions.sheetTitle': 'Autorisations de l’application',
 "permissions.sheetDescription": "Pour profiter pleinement des fonctionnalités, veuillez autoriser les éléments ci-dessous. Vous pouvez les modifier à tout moment depuis les paramètres.",
 'permissions.requestingButton': 'Demande en cours…',
-'permissions.allowButton': 'Autoriser',
+'permissions.allowButton': 'Continuer',
 'permissions.laterButton': 'Plus tard',
 'errors.network': 'Erreur de connexion réseau',
 "errors.cache": "Aucune donnée trouvée dans le stockage local",
