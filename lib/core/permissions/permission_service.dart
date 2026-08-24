@@ -25,7 +25,6 @@ class PermissionService {
   static const List<Permission> core = <Permission>[
     Permission.camera,
     Permission.microphone,
-    Permission.photos,
     Permission.notification,
   ];
 

@@ -19,8 +19,6 @@ List<_PermItem> _items(BuildContext context) => [
           context.tr('permissions.cameraTitle'), context.tr('permissions.cameraSubtitle')),
       _PermItem(Permission.microphone, Icons.mic_rounded,
           context.tr('permissions.microphoneTitle'), context.tr('permissions.microphoneSubtitle')),
-      _PermItem(Permission.photos, Icons.photo_library_rounded,
-          context.tr('permissions.galleryTitle'), context.tr('permissions.gallerySubtitle')),
       _PermItem(Permission.notification, Icons.notifications_active_rounded,
           context.tr('permissions.notificationsTitle'), context.tr('permissions.notificationsSubtitle')),
     ];

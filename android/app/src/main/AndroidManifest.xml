@@ -32,12 +32,13 @@
          می‌شود. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
-    <!-- خواندن رسانه‌ها: Android 13+ از READ_MEDIA_* و نسخه‌های پایین‌تر از READ_EXTERNAL_STORAGE استفاده می‌کنند. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"/>
+    <!-- نکتهٔ ۲۴ اوت ۲۰۲۶: READ_MEDIA_IMAGES/READ_MEDIA_VIDEO/READ_EXTERNAL_STORAGE عمداً حذف
+         شدند (طبق سیاست Google Play دربارهٔ photo/video permissions). انتخاب عکس/ویدیو در کل
+         اپ فقط از طریق image_picker (که خودش از Android Photo Picker سیستمی استفاده می‌کند) و
+         file_picker (Storage Access Framework) انجام می‌شود — هیچ‌کدام به این مجوزهای گسترده
+         نیاز ندارند. اگر در آینده جایی نیاز به دسترسی مستقیم/بدون‌واسطه به MediaStore پیدا شد
+         (نه از طریق پیکر سیستمی)، این تصمیم را دوباره بررسی کنید.
+    -->
 
     <!-- دوربین و میکروفون سخت‌افزار اجباری نیستند تا اپ روی همهٔ دستگاه‌ها نصب شود.
          رفع اشکال «آمادگی دستگاه واقعی»: کتابخانهٔ jitsi-meet-sdk/WebRTC خودش یک
