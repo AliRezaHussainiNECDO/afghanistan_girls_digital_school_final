@@ -82,6 +82,40 @@ android {
             // release: مقدار پیش‌فرض defaultConfig ("false") دست‌نخورده می‌ماند
             // تا در نسخهٔ منتشرشده فقط activity-alias فعال («حالت پنهان») دیده
             // شود، نه خودِ MainActivity.
+
+            // رفع ریشه‌ایِ کلاسِ کاملِ اشکالِ کرش سمینار روی گوشی‌های واقعی:
+            // dev.flutter.flutter-gradle-plugin به‌صورت پیش‌فرض R8 code
+            // shrinking را برای build های release فعال می‌کند (بدون این‌که ما
+            // جایی صراحتاً isMinifyEnabled=true نوشته باشیم — تأیید شد با
+            // بررسی مستقیم build واقعی: تسک‌های minifyReleaseWithR8 و
+            // optimizeReleaseResources در intermediates وجود داشتند). این
+            // shrinker با تحلیل استاتیک کد، هر resource/کلاسی که هیچ ارجاع
+            // مستقیمی به آن نمی‌بیند را حذف می‌کند — اما کد بومیِ SDK جیتسی
+            // (که خودش React Native را با خود می‌آورد) به‌شدت به lookup های
+            // پویا/reflection/SoLoader وابسته است که این تحلیل استاتیک اصلاً
+            // نمی‌تواند ببیند. دو کرش واقعی و جداگانه روی گوشی سامسونگ (هر دو
+            // با بازتولید زنده + Logcat فیلترشده تأیید شدند) از همین یک علتِ
+            // ریشه‌ای بودند:
+            //   ۱) resource رشته‌ای dropbox_app_key حذف شد (به رفع جداگانه در
+            //      res/raw/keep.xml نگاه کنید — آن هم نگه داشته می‌شود، چون
+            //      بی‌ضرر و یک لایهٔ ایمنیِ اضافه است).
+            //   ۲) کلاسِ com.facebook.react.devsupport.CxxInspectorPackagerConnection
+            //      (داخلیِ React Native، فقط با نامِ رشته‌ای از طریق
+            //      SoLoader.OpenSourceMergedSoMapping پیدا می‌شود) حذف شد →
+            //      ClassNotFoundException → FATAL EXCEPTION روی ترد
+            //      create_react_context → کرش کامل برنامه.
+            // به‌جای اضافه‌کردنِ قانون keep برای هر کلاس/resource که یکی‌یکی
+            // کشف می‌شود (بازیِ موش‌وگربه‌ای که پایانش معلوم نیست، چون کل SDK
+            // جیتسی/React Native از این نوع lookup های پویا پر است)، تصمیم
+            // گرفته شد کاملاً R8 code shrinking را برای این اپ غیرفعال کنیم.
+            // اپ ما به این سطح فشرده‌سازی/obfuscation جاوا/کاتلین نیازی ندارد
+            // (کدِ اصلیِ منطق تجاری Dart است که جداگانه و همیشه AOT-کامپایل و
+            // obfuscate می‌شود)؛ تنها هزینهٔ این تصمیم اندکی بزرگ‌تر شدن حجم
+            // APK است، در برابر پایداری کامل SDK ویدیوکنفرانس — یک مبادلهٔ
+            // کاملاً منطقی برای اپلیکیشنی که پایداری تماس ویدیویی برایش حیاتی
+            // است.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
         getByName("debug") {
             // رفع اشکال «flutter run» → «package identifier or launch activity

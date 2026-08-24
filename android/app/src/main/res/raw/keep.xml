@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ادامهٔ رفع کرش سمینار (org.jitsi.meet.sdk.DropboxModule) — لایهٔ سوم:
+
+    strings.xml/dropbox_app_key از قبل تعریف شده (با مقدار غیرخالی جعلی)،
+    اما با بررسی build واقعی (فایل build/app/outputs/mapping/release/
+    resources.txt که خودِ Android Gradle Plugin بعد از هر build تولید
+    می‌کند) این خط پیدا شد:
+
+        string:dropbox_app_key:... is not reachable.
+
+    یعنی «resource shrinker» ی که این پروژه به‌صورت پیش‌فرض (از طریق
+    dev.flutter.flutter-gradle-plugin، بدون این‌که خودمان جایی صراحتاً
+    shrinkResources=true نوشته باشیم) روی build های release فعال است، این
+    resource را حذف می‌کند — چون هیچ کد Java/Kotlin/Dart ما مستقیماً
+    R.string.dropbox_app_key را ارجاع نمی‌دهد (فقط SDK بومی جیتسی، درون
+    فایل AAR کامپایل‌شده‌اش، آن را از طریق نام رشته‌ای در زمان اجرا
+    (getIdentifier) پیدا می‌کند — و تحلیل استاتیکِ shrinker این نوع
+    دسترسیِ reflection را نمی‌بیند). پس فرقی نمی‌کرد مقدار این رشته خالی
+    باشد یا غیرخالی — در هر دو حالت shrinker آن را «غیرقابل‌دسترس» تشخیص
+    می‌داد و از APK نهایی حذف می‌کرد؛ یعنی getIdentifier() باز هم 0
+    برمی‌گرداند و کرش دقیقاً تکرار می‌شد.
+
+    رفع رسمی/مستندِ اندروید برای همین دقیقاً همین سناریو («resource ای که
+    فقط با reflection ارجاع داده می‌شود») همین فایل است: با
+    tools:keep="@string/..." به shrinker می‌گوییم این resource را، صرف‌نظر
+    از تحلیل reachability، نگه دار. مستندات رسمی:
+    https://developer.android.com/build/shrink-code#keep-resources
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/dropbox_app_key" />
