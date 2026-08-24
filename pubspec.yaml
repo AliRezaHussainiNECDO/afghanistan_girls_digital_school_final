@@ -1,7 +1,7 @@
 name: afghanistan_girls_digital_school
 description: "Afghanistan Girls Digital School — Flutter client for a real Cloudflare Workers backend."
 publish_to: 'none'
-version: 2.0.1+2
+version: 2.0.2+3
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
