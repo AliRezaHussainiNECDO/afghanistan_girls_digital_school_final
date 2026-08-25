@@ -6,17 +6,17 @@
 	<true/>
 	<!-- ── توضیح مجوزهای دستگاه (لازم برای انتشار در App Store) ── -->
 	<key>NSCameraUsageDescription</key>
-	<string>برای گرفتن عکس پروفایل و ارسال عکس تکالیف/سؤالات به دوربین دسترسی لازم است.</string>
+	<string>Camera access lets you take a profile photo and submit photos of your homework or questions.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>برای ارسال پیام صوتی در چت و شرکت در سمینارها به میکروفون دسترسی لازم است.</string>
+	<string>Microphone access lets you send voice messages in chat and speak during live seminars.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>برای انتخاب عکس پروفایل و بارگذاری فایل‌ها به گالری دسترسی لازم است.</string>
+	<string>Photo library access lets you choose a profile photo and upload files.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>برای ذخیرهٔ گواهی‌نامه‌ها و کتاب‌های دانلودشده در گالری دسترسی لازم است.</string>
+	<string>Photo library access lets the app save your downloaded certificates and books to your photos.</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>برای افزودن یادآور کلاس‌ها و سمینارها به تقویم دستگاه دسترسی لازم است.</string>
+	<string>Calendar access lets the app add reminders for your classes and seminars to your device calendar.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>برای افزودن یادآور کلاس‌ها و سمینارها به تقویم دستگاه دسترسی لازم است.</string>
+	<string>Calendar access lets the app add reminders for your classes and seminars to your device calendar.</string>
 	<!-- رفع اشکال «آمادگی دستگاه واقعی»: بدون این کلید، صدای کلاس زندهٔ Jitsi
 	     به‌محض قفل‌شدن صفحه یا رفتن به پس‌زمینه (مثلاً پاسخ به یک اعلان) قطع
 	     می‌شد چون iOS اپ را معلق می‌کند. فقط «audio» اضافه شده (نه «voip») تا
@@ -28,6 +28,10 @@
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Afghanistan Girls Digital School</string>
 	<key>CFBundleExecutable</key>
