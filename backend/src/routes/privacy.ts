@@ -180,8 +180,10 @@ export function privacyPolicyHandler(c: any) {
   :root{color-scheme:light}
   body{margin:0;background:#f4f6f8;font-family:Tahoma,'Segoe UI',sans-serif;color:#1c2530;line-height:1.9}
   .wrap{max-width:760px;margin:0 auto;padding:32px 20px 64px}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+  header{margin-bottom:24px}
   header h1{font-size:20px;margin:0}
+  .doc-label{font-size:26px;font-weight:800;margin:6px 0 4px;color:#12362a}
+  .doc-label .sep{color:#9aa7b0;font-weight:400;margin:0 6px}
   .card{background:#fff;border:1px solid #e3e8ee;border-radius:14px;padding:28px 24px}
   .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
   .tab{border:1px solid #d7dee6;background:#fff;border-radius:999px;padding:6px 16px;font-size:13px;cursor:pointer;color:#445;font-family:inherit}
@@ -197,6 +199,7 @@ export function privacyPolicyHandler(c: any) {
 <div class="wrap">
   <header>
     <h1>${escapeHtml(brand)}</h1>
+    <p class="doc-label" lang="en">Privacy Policy<span class="sep">—</span><span lang="fa">سیاست حریم خصوصی</span></p>
   </header>
   <div class="tabs">${tabs}</div>
   <div class="card">
