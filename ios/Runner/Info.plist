@@ -17,6 +17,14 @@
 	<string>Calendar access lets the app add reminders for your classes and seminars to your device calendar.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Calendar access lets the app add reminders for your classes and seminars to your device calendar.</string>
+	<!-- ITMS-90683: Apple's binary scan flags a bundled system library (the
+	     permission_handler plugin, used for the camera/microphone/photo
+	     permissions above) that links location API symbols even though this
+	     app never requests or uses location data. iOS requires this string
+	     to exist so the app cannot crash if that unused code path were ever
+	     triggered; the description is accurate: location is not used. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app does not use your location. This entry is required by a bundled system library and is never requested.</string>
 	<!-- رفع اشکال «آمادگی دستگاه واقعی»: بدون این کلید، صدای کلاس زندهٔ Jitsi
 	     به‌محض قفل‌شدن صفحه یا رفتن به پس‌زمینه (مثلاً پاسخ به یک اعلان) قطع
 	     می‌شد چون iOS اپ را معلق می‌کند. فقط «audio» اضافه شده (نه «voip») تا
