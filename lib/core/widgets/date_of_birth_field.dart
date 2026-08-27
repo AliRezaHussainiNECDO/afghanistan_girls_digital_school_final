@@ -20,11 +20,15 @@ class DateOfBirthField extends StatelessWidget {
     this.validator,
     this.minAge = 3,
     this.maxAge = 100,
+    this.required = true,
   });
 
   final TextEditingController controller;
   final String? label;
   final String? Function(String?)? validator;
+
+  /// اگر false باشد، فیلد خالی هم معتبر شمرده می‌شود (اختیاری).
+  final bool required;
 
   /// محدودهٔ سنی قابل انتخاب — برای جلوگیری از انتخاب تاریخ‌های نامعقول.
   final int minAge;
@@ -69,7 +73,7 @@ class DateOfBirthField extends StatelessWidget {
         suffixIcon: const Icon(Icons.calendar_month_rounded),
       ),
       validator: validator ??
-          (v) => (v == null || v.isEmpty) ? context.tr('common.required') : null,
+          (v) => (required && (v == null || v.isEmpty)) ? context.tr('common.required') : null,
       onTap: () => _pick(context),
     );
   }

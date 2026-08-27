@@ -184,7 +184,8 @@ class _RegisterInstructorScreenState extends ConsumerState<RegisterInstructorScr
                           // ثابتِ افغانستان، تا استادان از هر کشوری بتوانند ثبت‌نام کنند.
                           CountryPhoneField(
                             controller: _phone,
-                            label: context.tr('auth.phone'),
+                            label: context.tr('auth.phoneOptional'),
+                            required: false,
                           ),
                           const SizedBox(height: 12),
                           // ── معلومات ضروری تدریس ──

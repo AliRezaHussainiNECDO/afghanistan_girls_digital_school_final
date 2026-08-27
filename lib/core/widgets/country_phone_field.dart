@@ -261,7 +261,10 @@ class _CountryPhoneFieldState extends State<CountryPhoneField> {
   }
 
   void _syncToOuterController() {
-    widget.controller.text = '${_country.dialCode}${_localController.text.trim()}';
+    final local = _localController.text.trim();
+    // اگر شماره خالی گذاشته شود (فیلد اختیاری است)، کد کشور به‌تنهایی به‌عنوان
+    // «شماره تلفن» ارسال نشود — کنترلر بیرونی هم باید کاملاً خالی بماند.
+    widget.controller.text = local.isEmpty ? '' : '${_country.dialCode}$local';
   }
 
   @override

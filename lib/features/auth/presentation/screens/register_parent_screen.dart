@@ -125,7 +125,8 @@ class _RegisterParentScreenState extends ConsumerState<RegisterParentScreen> {
                           // اعتبارسنجی و ثابت روی افغانستان بود).
                           CountryPhoneField(
                             controller: _phone,
-                            label: context.tr('auth.phone'),
+                            label: context.tr('auth.phoneOptional'),
+                            required: false,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(

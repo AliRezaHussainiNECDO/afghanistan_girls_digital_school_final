@@ -142,7 +142,11 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                             ),
                           ]),
                           const SizedBox(height: 12),
-                          DateOfBirthField(controller: _dob),
+                          DateOfBirthField(
+                            controller: _dob,
+                            required: false,
+                            label: context.tr('auth.dateOfBirthOptional'),
+                          ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _email,
@@ -156,7 +160,8 @@ class _RegisterStudentScreenState extends ConsumerState<RegisterStudentScreen> {
                           // ثابتِ افغانستان، تا شاگردان از هر کشوری بتوانند ثبت‌نام کنند.
                           CountryPhoneField(
                             controller: _phone,
-                            label: context.tr('auth.phone'),
+                            label: context.tr('auth.phoneOptional'),
+                            required: false,
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<int>(
