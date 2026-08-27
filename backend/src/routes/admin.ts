@@ -1019,7 +1019,10 @@ function riskLevel(gradeAvg: number, attendance: number): string {
   return 'none';
 }
 
-/** نرخ حاضری ۱۴ روزهٔ یک کاربر از فعالیت واقعی (بازدید درس/تلاش امتحان). */
+/** نرخ حاضری ۱۴ روزهٔ یک کاربر از فعالیت واقعی (بازدید درس/امتحان/آزمون فصل/امتحان فاینل).
+ * رفع اشکال (۲۷ اوت ۲۰۲۶ — هماهنگ‌سازی با parents.ts): قبلاً فقط ۲ منبع
+ * قدیمی را می‌شمرد؛ همان ناهماهنگی که در داشبورد والد رفع شده بود، اینجا
+ * (ریسک/پنل مدیر) هنوز باقی بود. */
 async function attendanceRateOf(db: D1Database, userId: string): Promise<number> {
   const { results } = await db
     .prepare(
@@ -1029,9 +1032,15 @@ async function attendanceRateOf(db: D1Database, userId: string): Promise<number>
          UNION
          SELECT date(submitted_at) AS d FROM exam_attempts
          WHERE user_id = ? AND submitted_at >= date('now','-13 days')
+         UNION
+         SELECT date(submitted_at) AS d FROM chapter_quiz_attempts
+         WHERE user_id = ? AND submitted_at >= date('now','-13 days')
+         UNION
+         SELECT date(submitted_at) AS d FROM final_exam_attempts
+         WHERE user_id = ? AND submitted_at >= date('now','-13 days')
        )`,
     )
-    .bind(userId, userId)
+    .bind(userId, userId, userId, userId)
     .all<{ d: string }>();
   return Math.round((results.length / 14) * 1000) / 10;
 }

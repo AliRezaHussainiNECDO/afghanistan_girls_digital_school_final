@@ -36,6 +36,12 @@ engage.get('/attendance/:studentId/summary', async (c) => {
   const target = me.role === 'super_admin' ? c.req.param('studentId') : me.sub;
 
   // تاریخ‌های دارای فعالیت در ۱۴ روز اخیر (بازدید درس یا تلاش امتحان).
+  // رفع اشکال (۲۷ اوت ۲۰۲۶ — هماهنگ‌سازی با محاسبهٔ داشبورد والد در
+  // parents.ts): قبلاً اینجا فقط دیدن درس و امتحانِ رسمیِ قدیمی را «فعالیت»
+  // حساب می‌کرد؛ آزمون فصل و امتحان فاینل (migration 0041) هم اکنون فعالیت‌های
+  // واقعی شاگرد هستند و باید در همین محاسبه احتساب شوند — وگرنه درصد حاضری‌ای
+  // که خودِ شاگرد اینجا می‌بیند، از عددی که والدش در داشبوردش می‌بیند کمتر
+  // نشان داده می‌شود، با اینکه هر دو باید دقیقاً یکی باشند.
   const { results } = await c.env.DB.prepare(
     `SELECT DISTINCT d FROM (
         SELECT date(viewed_at) AS d FROM student_lesson_views
@@ -43,9 +49,15 @@ engage.get('/attendance/:studentId/summary', async (c) => {
         UNION
         SELECT date(submitted_at) AS d FROM exam_attempts
           WHERE user_id = ? AND submitted_at >= date('now','-13 days')
+        UNION
+        SELECT date(submitted_at) AS d FROM chapter_quiz_attempts
+          WHERE user_id = ? AND submitted_at >= date('now','-13 days')
+        UNION
+        SELECT date(submitted_at) AS d FROM final_exam_attempts
+          WHERE user_id = ? AND submitted_at >= date('now','-13 days')
      )`,
   )
-    .bind(target, target)
+    .bind(target, target, target, target)
     .all<{ d: string }>();
   const activeDays = new Set(results.map((r) => r.d));
 
